@@ -1,14 +1,24 @@
 "use client";
 
-import { supabase, supabaseReady } from '@/lib/supabase';
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useAppStore, BROADCAST_CHANNEL_NAME, ORDER_STATUS } from '@/lib/store';
+import { useAppStore, ORDER_STATUS } from '@/lib/store';
+import { subscribeToOrders, subscribeToAlerts, unsubscribeRealtime } from '@/lib/services/supabaseService';
 import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode } from 'lucide-react';
 import { OrderCard } from '@/components/staff/OrderCard';
 
 export function StaffApp() {
-  const { orders, updateOrderStatus, alerts, resolveAlert, tables, settings: rawSettings } = useAppStore();
+  const {
+    orders,
+    updateOrderStatus,
+    alerts,
+    resolveAlert,
+    tables,
+    loadOrders,
+    loadAlerts,
+    loadTables,
+    settings: rawSettings,
+  } = useAppStore();
   const settings = rawSettings || { restaurantName: 'MenuFlow' };
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'alerts'
   const [notification, setNotification] = useState(null);
@@ -67,89 +77,44 @@ export function StaffApp() {
     }, 5000);
   };
 
-  // Real-time listener for BroadcastChannel & Storage events
   useEffect(() => {
-    if (!supabaseReady) {
-      console.warn("Supabase client is not ready; skipping realtime subscriptions.");
-      return;
-    }
+    const setupRealtime = async () => {
+      await Promise.all([loadOrders(), loadAlerts(), loadTables()]);
 
-    const channel = supabase
-      .channel('staff-orders')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'orders',
-        },
-        (payload) => {
-          console.log("Yeni Supabase sifarişi:", payload.new);
+      const orderChannel = await subscribeToOrders(async (payload) => {
+        await loadOrders();
+        triggerNotification('⚡ Yeni sifariş gəldi!');
+      });
 
-          triggerNotification("⚡ Yeni sifariş gəldi!");
-
-          if (useAppStore.persist && typeof useAppStore.persist.rehydrate === 'function') {
-            useAppStore.persist.rehydrate();
-          }
-        }
-      )
-      .subscribe();
-
-    const handleRealtimeMessage = (eventData) => {
-      if (!eventData) return;
-      if (useAppStore.persist && typeof useAppStore.persist.rehydrate === 'function') {
-        useAppStore.persist.rehydrate();
-      }
-
-      const { type, payload } = eventData;
-      if (type === 'NEW_ORDER') {
-        const tableName = payload?.table ? getTableName(payload.table) : '';
-        triggerNotification(`⚡ YENİ SİFARİŞ GƏLDİ! ${tableName ? `(${tableName})` : ''}`);
-      } else if (type === 'NEW_ALERT') {
-        const tableName = payload?.table ? getTableName(payload.table) : '';
-        if (payload?.type === 'bill') {
-          triggerNotification(`💳 HESAB İSTƏNİLDİ! ${tableName ? `(${tableName})` : ''}`);
+      const alertChannel = await subscribeToAlerts(async (payload) => {
+        await loadAlerts();
+        const alertType = payload?.new?.type || payload?.record?.type;
+        if (alertType === 'bill') {
+          triggerNotification('💳 HESAB İSTƏNİLDİ!');
         } else {
-          triggerNotification(`🔔 OFİSİANT ÇAĞIRILDI! ${tableName ? `(${tableName})` : ''}`);
+          triggerNotification('🔔 OFİSİANT ÇAĞIRILDI!');
         }
-      }
+      });
+
+      return () => {
+        if (orderChannel) unsubscribeRealtime(orderChannel);
+        if (alertChannel) unsubscribeRealtime(alertChannel);
+      };
     };
 
-    let bc;
-    try {
-      if ('BroadcastChannel' in window) {
-        bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-        bc.onmessage = (event) => {
-          handleRealtimeMessage(event.data);
-        };
-      }
-    } catch (e) {
-      console.error(e);
-    }
-
-    const handleStorageChange = (e) => {
-      if (e.key === 'menuflow_realtime_event' && e.newValue) {
-        try {
-          const eventData = JSON.parse(e.newValue);
-          handleRealtimeMessage(eventData);
-        } catch (err) {
-          console.error(err);
-        }
-      } else if (e.key === 'restaurant-storage') {
-        if (useAppStore.persist && typeof useAppStore.persist.rehydrate === 'function') {
-          useAppStore.persist.rehydrate();
-        }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
+    let cleanup = null;
+    setupRealtime().then((unsubscribe) => {
+      cleanup = unsubscribe;
+    }).catch((error) => {
+      console.error('Realtime setup error:', error);
+    });
 
     return () => {
-      if (bc) bc.close();
-      window.removeEventListener('storage', handleStorageChange);
-      supabase.removeChannel(channel);
+      if (cleanup) {
+        cleanup();
+      }
     };
-  }, []);
+  }, [loadOrders, loadAlerts, loadTables]);
 
   useEffect(() => {
     if (!initializedRef.current) {

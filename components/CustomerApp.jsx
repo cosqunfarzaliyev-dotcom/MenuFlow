@@ -1,6 +1,5 @@
 "use client";
 
-import { supabase, supabaseReady } from "@/lib/supabase";
 import React, { useState, useEffect, useMemo } from "react";
 import Image from 'next/image';
 import Link from "next/link";
@@ -12,7 +11,19 @@ import { Bell, Receipt, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, QrCo
 import { getLocalizedText, getLocalizedCategoryName, getLocalizedProduct } from "@/lib/translations";
 
 export function CustomerApp() {
-  const { products: PRODUCTS, categories: CATEGORIES, orders, addAlert, tables, settings: rawSettings } = useAppStore();
+  const {
+    products: PRODUCTS,
+    categories: CATEGORIES,
+    orders,
+    createAlert,
+    loadMenuData,
+    loadOrders,
+    loadAlerts,
+    loadTables,
+    tables,
+    settings: rawSettings,
+  } = useAppStore();
+
   const settings = rawSettings || {
     restaurantName: 'MenuFlow',
     restaurantLogo: '',
@@ -29,39 +40,21 @@ export function CustomerApp() {
   
   const [tableId, setTableId] = useState("1"); 
   const [isMounted, setIsMounted] = useState(false);
-  const [supabaseTable, setSupabaseTable] = useState(null);
-  
+
   useEffect(() => {
     setIsMounted(true);
 
-    if (!supabaseReady) {
-      console.warn("Supabase client is not ready; skipping table lookup.");
-      return;
-    }
-
-    const loadTable = async () => {
+    const loadAppData = async () => {
       const searchParams = new URLSearchParams(window.location.search);
       const tableNumber = searchParams.get("table") || "1";
-
       setTableId(tableNumber);
 
-      // Supabase masa tap
-      const { data, error } = await supabase
-        .from("restaurant_tables")
-        .select("*")
-        .eq("table_number", Number(tableNumber))
-        .single();
-
-      if (error) {
-        console.log(error);
-        return;
-      }
-
-      setSupabaseTable(data);
+      await Promise.all([loadMenuData(), loadOrders(), loadAlerts(), loadTables()]);
     };
 
-    loadTable();
-  }, []);
+    loadAppData();
+  }, [loadMenuData, loadOrders, loadAlerts, loadTables]);
+
   const currentTable = tables.find(t => t.id === tableId) || { id: "1", name: "Masa 1" };
 
   const activeOrders = orders.filter(o => o.table === tableId);
@@ -90,18 +83,22 @@ export function CustomerApp() {
     setCartItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
   };
 
-  const handleCallWaiter = () => {
-    addAlert({ table: tableId, type: 'waiter', note: getLocalizedText('waiterRequestNote', lang) });
+  const handleCallWaiter = async () => {
+    await createAlert({
+      tableId: currentTable.id,
+      type: 'waiter',
+      note: getLocalizedText('waiterRequestNote', lang),
+    });
     alert(getLocalizedText("waiterCalled", lang));
   };
 
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
 
-  const handleRequestBill = (methodKey) => {
+  const handleRequestBill = async (methodKey) => {
     const paymentLabel = methodKey === 'cash' ? getLocalizedText('cash', lang) : getLocalizedText('card', lang);
 
-    addAlert({
-      table: tableId,
+    await createAlert({
+      tableId: currentTable.id,
       type: 'bill',
       paymentMethod: methodKey,
       paymentMethodLabel: paymentLabel,

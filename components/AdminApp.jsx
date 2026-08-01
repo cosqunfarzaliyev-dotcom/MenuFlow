@@ -14,8 +14,8 @@ const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 
 export function AdminApp() {
   const { 
-    products, categories, setProducts, setCategories, deleteProduct, deleteCategory, 
-    tables, updateTableName, isAdminAuthenticated, setIsAdminAuthenticated, orders,
+    products, categories, createProduct, updateProduct, deleteProduct, createCategory, updateCategory, deleteCategory, 
+    tables, loadTables, loadMenuData, loadOrders, loadAlerts, updateTableName, isAdminAuthenticated, setIsAdminAuthenticated, orders,
     settings: rawSettings, updateSettings 
   } = useAppStore();
 
@@ -51,20 +51,14 @@ export function AdminApp() {
     setIsCategoryModalOpen(true);
   };
 
-  const handleSaveCategory = (e) => {
+  const handleSaveCategory = async (e) => {
     e.preventDefault();
     if (!categoryForm.name.trim() || !categoryForm.icon.trim()) return;
 
     if (editingCategoryId) {
-      setCategories(categories.map(c => 
-        c.id === editingCategoryId ? { ...c, ...categoryForm } : c
-      ));
+      await updateCategory({ id: editingCategoryId, ...categoryForm });
     } else {
-      const newCategory = {
-        id: Date.now().toString(),
-        ...categoryForm
-      };
-      setCategories([...categories, newCategory]);
+      await createCategory({ ...categoryForm });
     }
     setIsCategoryModalOpen(false);
   };
@@ -128,24 +122,16 @@ export function AdminApp() {
     setIsProductModalOpen(true);
   };
 
-  const handleSaveProduct = (e) => {
+  const handleSaveProduct = async (e) => {
     e.preventDefault();
     if (!productForm.name.trim() || !productForm.price) return;
     
     const parsedPrice = parseFloat(productForm.price);
-    
+
     if (editingProductId) {
-      setProducts(products.map(p => 
-        p.id === editingProductId ? { ...p, ...productForm, price: parsedPrice } : p
-      ));
+      await updateProduct({ id: editingProductId, ...productForm, price: parsedPrice });
     } else {
-      const newProduct = {
-        id: Date.now().toString(),
-        currency: "₼",
-        ...productForm,
-        price: parsedPrice
-      };
-      setProducts([...products, newProduct]);
+      await createProduct({ currency: "₼", ...productForm, price: parsedPrice });
     }
     setIsProductModalOpen(false);
   };
@@ -250,6 +236,19 @@ export function AdminApp() {
     setIsMounted(true);
     setOrigin(window.location.origin);
   }, []);
+
+  useEffect(() => {
+    // load supabase-backed data for admin views
+    const load = async () => {
+      try {
+        await Promise.all([loadMenuData(), loadTables(), loadOrders(), loadAlerts()]);
+      } catch (err) {
+        // ignore load errors in admin
+        console.error('Admin data load error:', err);
+      }
+    };
+    load();
+  }, [loadMenuData, loadTables, loadOrders, loadAlerts]);
 
   if (!isMounted) return null;
 

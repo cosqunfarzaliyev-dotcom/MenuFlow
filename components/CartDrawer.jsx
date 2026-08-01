@@ -1,6 +1,5 @@
 "use client";
 
-import { supabase, supabaseReady } from "@/lib/supabase";
 import React, { useState } from "react";
 import Image from 'next/image';
 import { 
@@ -14,7 +13,8 @@ import {
   UtensilsCrossed 
 } from "lucide-react";
 
-import { ORDER_STATUS, useAppStore } from '@/lib/store';
+import { useAppStore } from '@/lib/store';
+import { fetchTableByNumber } from '@/lib/services/supabaseService';
 import { getLocalizedProduct, getLocalizedText } from '@/lib/translations';
 
 export const CartDrawer = ({
@@ -28,7 +28,7 @@ export const CartDrawer = ({
   tableNumber,
   lang = "az",
 }) => {
-  const addOrder = useAppStore(state => state.addOrder);
+  const createOrder = useAppStore(state => state.createOrder);
   const tables = useAppStore(state => state.tables);
   const currencySymbol = useAppStore(state => state.settings?.currencySymbol) || '₼';
   const [orderSubmitted, setOrderSubmitted] = useState(false);
@@ -65,60 +65,33 @@ export const CartDrawer = ({
   };
 
 const handleSendOrder = async () => {
-  if (!supabaseReady) {
-    console.warn("Supabase client is not ready, cannot send order.");
-    return;
-  }
-
   try {
+    let table = tables.find((t) =>
+      t.table_number?.toString() === tableNumber || t.id === tableNumber,
+    );
 
-    // Masa UUID-ni tap
-    const { data: table, error: tableError } = await supabase
-      .from("restaurant_tables")
-      .select("id")
-      .eq("table_number", Number(tableNumber))
-      .single();
+    if (!table) {
+      table = await fetchTableByNumber(tableNumber);
+    }
 
-    if (tableError) {
-      console.error(tableError);
+    if (!table?.id) {
+      console.error('Table record not found for table number', tableNumber);
       return;
     }
 
-    // Orders cədvəlinə yaz
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .insert({
-        table_id: table.id,
-        status: "pending",
-        total: totalPrice,
-      })
-      .select()
-      .single();
+    const { order, error } = await createOrder({
+      tableId: table.id,
+      total: totalPrice,
+      items,
+      note: kitchenNote,
+    });
 
-    if (orderError) {
-      console.error(orderError);
-      return;
-    }
-
-    // Order Items hazırla
-    const orderItems = items.map((item) => ({
-      order_id: order.id,
-      product_id: item.product.id,
-      quantity: item.quantity,
-      price: item.product.price,
-    }));
-
-    const { error: itemError } = await supabase
-      .from("order_items")
-      .insert(orderItems);
-
-    if (itemError) {
-      console.error(itemError);
+    if (error) {
+      console.error('createOrder error:', error);
       return;
     }
 
     setOrderSubmitted(true);
-
   } catch (err) {
     console.error(err);
   }
