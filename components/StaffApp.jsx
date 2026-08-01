@@ -315,31 +315,48 @@ export function StaffApp() {
         {/* Alerts Tab */}
         {activeTab === 'alerts' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {activeAlerts.map(alert => (
-              <div key={alert.id} className="bg-slate-900 border-2 border-amber-500/30 rounded-2xl p-5 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500">
-                      <Bell className="w-6 h-6 animate-pulse" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-lg text-white">{getTableName(alert.table)}</h4>
-                      <p className="text-amber-400 text-sm font-semibold">{alert.type === 'waiter' ? 'Ofisiant Çağırışı' : 'Hesab İstəyi'}</p>
+            {activeAlerts.map(alert => {
+              const isBill = alert.type === 'bill';
+              const isCash = alert.paymentMethod === 'cash';
+              const paymentLabel = alert.paymentMethodLabel || (isCash ? '💵 Cash' : '💳 POS Terminal');
+
+              return (
+                <div key={alert.id} className="bg-slate-900 border-2 border-amber-500/30 rounded-2xl p-5 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500">
+                        <Bell className="w-6 h-6 animate-pulse" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-lg text-white">{getTableName(alert.table)}</h4>
+                        <p className="text-amber-400 text-sm font-semibold">{alert.type === 'waiter' ? 'Ofisiant Çağırışı' : 'Hesab İstəyi'}</p>
+                      </div>
                     </div>
                   </div>
+
+                  {isBill && (
+                    <div className="bg-slate-950 border border-slate-800 rounded-3xl p-4 mb-4">
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Ödəniş Növü</div>
+                      <div className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold ${isCash ? 'bg-emerald-500/15 text-emerald-300' : 'bg-blue-500/15 text-blue-300'}`}>
+                        <span>{isCash ? '💵' : '💳'}</span>
+                        <span>{paymentLabel}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-xs text-slate-400 mb-4">
+                    Zaman: {new Date(alert.time).toLocaleTimeString()}
+                  </div>
+                  <button 
+                    onClick={() => resolveAlert(alert.id)}
+                    className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Check className="w-4 h-4" />
+                    Həll Edildi
+                  </button>
                 </div>
-                <div className="text-xs text-slate-400 mb-4">
-                  Zaman: {new Date(alert.time).toLocaleTimeString()}
-                </div>
-                <button 
-                  onClick={() => resolveAlert(alert.id)}
-                  className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
-                >
-                  <Check className="w-4 h-4" />
-                  Həll Edildi
-                </button>
-              </div>
-            ))}
+              );
+            })}
             {activeAlerts.length === 0 && (
               <div className="col-span-full p-12 text-center bg-slate-900/50 rounded-2xl border border-slate-800">
                 <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
