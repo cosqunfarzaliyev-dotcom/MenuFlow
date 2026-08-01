@@ -87,7 +87,7 @@ export function SettingsTab({ settings, updateSettings }) {
               Restoran Tənzimləmələri (Branding)
             </h4>
             <p className="text-xs text-slate-400 mt-1">
-              Bütün məlumatlar brauzerin <code className="text-blue-400 bg-slate-950 px-1.5 py-0.5 rounded font-mono">localStorage</code> yaddaşında saxlanılır. Başqa restorana verildikdə 1 dəqiqəyə bütün brendinqi dəyişə bilərsiniz.
+              Tənzimləmələr yadda saxlanıldıqdan sonra dərhal tətbiqə tətbiq olunur və bütün panellərdə görünür.
             </p>
           </div>
           <button type="button" onClick={handleResetDefaults} title="İlkin tənzimləmələrə sıfırla" className="p-2 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shrink-0">
