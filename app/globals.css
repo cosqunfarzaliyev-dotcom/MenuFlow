@@ -1,0 +1,121 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #050505;
+    color: #ffffff;
+    overflow-x: hidden;
+  }
+  
+  h1, h2, h3, .font-serif-title {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+}
+
+/* Glassmorphism & Custom Surfaces for Sophisticated Dark Theme */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-panel-interactive {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-panel-interactive:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 12px 32px -10px rgba(37, 99, 235, 0.25);
+}
+
+.glass-button-blue {
+  background: #2563eb;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(147, 197, 253, 0.2);
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.3);
+}
+
+.glass-button-blue:hover {
+  background: #1d4ed8;
+  box-shadow: 0 6px 25px rgba(37, 99, 235, 0.5);
+}
+
+.glow-blue {
+  box-shadow: 0 0 30px -5px rgba(37, 99, 235, 0.3);
+}
+
+/* Hide scrollbar for clean horizontal scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom scrollbar for vertical content */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #050505;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2563eb;
+}
+
+/* Premium Tactile QR Code Card with Animated Border Gradient */
+@keyframes borderGradientRotate {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.qr-code-card {
+  position: relative;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 1.25rem;
+  background-image: 
+    linear-gradient(#ffffff, #ffffff), 
+    linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899, #3b82f6);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-size: 100% 100%, 250% 250%;
+  animation: borderGradientRotate 6s ease infinite;
+  box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 1.5rem;
+}
+
+.qr-code-card:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 20px 30px -10px rgba(59, 130, 246, 0.2), 0 10px 15px -5px rgba(15, 23, 42, 0.1);
+}
+
+/* Hide Next.js dev indicator / debug overlay elements during local development */
+[data-nextjs-toast],
+[data-nextjs-dialog-overlay] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
