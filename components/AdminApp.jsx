@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ORDER_STATUS, useAppStore } from '@/lib/store';
+import { subscribeProducts, subscribeCategories, subscribeTables, subscribeOrders } from '@/lib/services/realtime';
 import { Settings, Plus, Edit2, Trash2, Shield, QrCode, Lock, BarChart3, Users, Download, Printer, TrendingUp, Clock, Activity, CheckCircle2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -249,6 +250,40 @@ export function AdminApp() {
     };
     load();
   }, [loadMenuData, loadTables, loadOrders, loadAlerts]);
+
+  useEffect(() => {
+    let prodSub, catSub, tableSub, orderSub;
+    const start = async () => {
+      try {
+        prodSub = await subscribeProducts(() => {
+          loadMenuData();
+        });
+
+        catSub = await subscribeCategories(() => {
+          loadMenuData();
+        });
+
+        tableSub = await subscribeTables(() => {
+          loadTables();
+        });
+
+        orderSub = await subscribeOrders(({ event }) => {
+          loadOrders();
+        });
+      } catch (err) {
+        console.warn('Admin realtime subscribe error', err);
+      }
+    };
+
+    start();
+
+    return () => {
+      if (prodSub && typeof prodSub.unsubscribe === 'function') prodSub.unsubscribe();
+      if (catSub && typeof catSub.unsubscribe === 'function') catSub.unsubscribe();
+      if (tableSub && typeof tableSub.unsubscribe === 'function') tableSub.unsubscribe();
+      if (orderSub && typeof orderSub.unsubscribe === 'function') orderSub.unsubscribe();
+    };
+  }, [loadMenuData, loadTables, loadOrders]);
 
   if (!isMounted) return null;
 

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import Image from 'next/image';
 import Link from "next/link";
 import { ORDER_STATUS, useAppStore } from "@/lib/store";
-import { subscribeOrders } from '@/lib/services/realtime';
+import { subscribeOrders, subscribeProducts } from '@/lib/services/realtime';
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { CartDrawer } from "@/components/CartDrawer";
@@ -84,6 +84,23 @@ export function CustomerApp() {
       }
     };
   }, [tableId, loadOrders]);
+
+  useEffect(() => {
+    let prodSub;
+    const start = async () => {
+      try {
+        prodSub = await subscribeProducts(() => {
+          loadMenuData();
+        });
+      } catch (err) {
+        console.warn('Failed to subscribe to products realtime:', err);
+      }
+    };
+    start();
+    return () => {
+      if (prodSub && typeof prodSub.unsubscribe === 'function') prodSub.unsubscribe();
+    };
+  }, [loadMenuData]);
 
   const currentTable = tables.find(t => t.id === tableId) || { id: "1", name: "Masa 1" };
 
