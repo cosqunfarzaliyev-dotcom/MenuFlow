@@ -1,5 +1,6 @@
 "use client";
 
+import { supabase, supabaseReady } from '@/lib/supabase';
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useAppStore, BROADCAST_CHANNEL_NAME, ORDER_STATUS } from '@/lib/store';
@@ -68,6 +69,31 @@ export function StaffApp() {
 
   // Real-time listener for BroadcastChannel & Storage events
   useEffect(() => {
+    if (!supabaseReady) {
+      console.warn("Supabase client is not ready; skipping realtime subscriptions.");
+      return;
+    }
+
+    const channel = supabase
+      .channel('staff-orders')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'orders',
+        },
+        (payload) => {
+          console.log("Yeni Supabase sifarişi:", payload.new);
+
+          triggerNotification("⚡ Yeni sifariş gəldi!");
+
+          if (useAppStore.persist && typeof useAppStore.persist.rehydrate === 'function') {
+            useAppStore.persist.rehydrate();
+          }
+        }
+      )
+      .subscribe();
 
     const handleRealtimeMessage = (eventData) => {
       if (!eventData) return;
@@ -121,8 +147,8 @@ export function StaffApp() {
     return () => {
       if (bc) bc.close();
       window.removeEventListener('storage', handleStorageChange);
+      supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -141,7 +167,6 @@ export function StaffApp() {
       const latestAlert = alerts[alerts.length - 1];
       const tableName = latestAlert?.table ? getTableName(latestAlert.table) : '';
       if (latestAlert?.type === 'bill') {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- notification reflects the new external event.
         triggerNotification(`💳 HESAB İSTƏNİLDİ! ${tableName ? `(${tableName})` : ''}`);
       } else {
         triggerNotification(`🔔 OFİSİANT ÇAĞIRILDI! ${tableName ? `(${tableName})` : ''}`);
@@ -150,7 +175,6 @@ export function StaffApp() {
 
     prevOrdersLen.current = orders.length;
     prevAlertsLen.current = alerts.length;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders.length, alerts.length]);
 
   const pendingOrders = orders.filter(o => o.status === ORDER_STATUS.PENDING);

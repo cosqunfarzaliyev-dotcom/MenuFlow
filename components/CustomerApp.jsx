@@ -1,5 +1,6 @@
 "use client";
 
+import { supabase, supabaseReady } from "@/lib/supabase";
 import React, { useState, useEffect, useMemo } from "react";
 import Image from 'next/image';
 import Link from "next/link";
@@ -28,18 +29,39 @@ export function CustomerApp() {
   
   const [tableId, setTableId] = useState("1"); 
   const [isMounted, setIsMounted] = useState(false);
+  const [supabaseTable, setSupabaseTable] = useState(null);
   
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMounted(true);
-    const searchParams = new URLSearchParams(window.location.search);
-    const pathTableId = window.location.pathname.match(/^\/menu\/([^/]+)$/)?.[1];
-    const tableParam = pathTableId || searchParams.get('table');
-    if (tableParam) {
-      setTableId(tableParam);
-    }
-  }, []);
 
+    if (!supabaseReady) {
+      console.warn("Supabase client is not ready; skipping table lookup.");
+      return;
+    }
+
+    const loadTable = async () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tableNumber = searchParams.get("table") || "1";
+
+      setTableId(tableNumber);
+
+      // Supabase masa tap
+      const { data, error } = await supabase
+        .from("restaurant_tables")
+        .select("*")
+        .eq("table_number", Number(tableNumber))
+        .single();
+
+      if (error) {
+        console.log(error);
+        return;
+      }
+
+      setSupabaseTable(data);
+    };
+
+    loadTable();
+  }, []);
   const currentTable = tables.find(t => t.id === tableId) || { id: "1", name: "Masa 1" };
 
   const activeOrders = orders.filter(o => o.table === tableId);

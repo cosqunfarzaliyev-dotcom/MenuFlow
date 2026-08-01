@@ -1,5 +1,6 @@
 "use client";
 
+import { supabase, supabaseReady } from "@/lib/supabase";
 import React, { useState } from "react";
 import Image from 'next/image';
 import { 
@@ -52,24 +53,76 @@ export const CartDrawer = ({
     0
   );
 
-  const handleSendOrder = () => {
-  addOrder({
-  table: tableNumber,
-  tableName: currentTable.name,
-  items,
-  total: totalPrice,
-  note: kitchenNote,
-  status: ORDER_STATUS.PENDING,
-});
-    setOrderSubmitted(true);
-  };
-
   const handleResetOrder = () => {
-    onClearCart();
     setOrderSubmitted(false);
-    onClose();
+    setKitchenNote("");
+    if (typeof onClearCart === 'function') {
+      onClearCart();
+    }
+    if (typeof onClose === 'function') {
+      onClose();
+    }
   };
 
+const handleSendOrder = async () => {
+  if (!supabaseReady) {
+    console.warn("Supabase client is not ready, cannot send order.");
+    return;
+  }
+
+  try {
+
+    // Masa UUID-ni tap
+    const { data: table, error: tableError } = await supabase
+      .from("restaurant_tables")
+      .select("id")
+      .eq("table_number", Number(tableNumber))
+      .single();
+
+    if (tableError) {
+      console.error(tableError);
+      return;
+    }
+
+    // Orders cədvəlinə yaz
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .insert({
+        table_id: table.id,
+        status: "pending",
+        total: totalPrice,
+      })
+      .select()
+      .single();
+
+    if (orderError) {
+      console.error(orderError);
+      return;
+    }
+
+    // Order Items hazırla
+    const orderItems = items.map((item) => ({
+      order_id: order.id,
+      product_id: item.product.id,
+      quantity: item.quantity,
+      price: item.product.price,
+    }));
+
+    const { error: itemError } = await supabase
+      .from("order_items")
+      .insert(orderItems);
+
+    if (itemError) {
+      console.error(itemError);
+      return;
+    }
+
+    setOrderSubmitted(true);
+
+  } catch (err) {
+    console.error(err);
+  }
+};
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/80 backdrop-blur-md animate-fadeIn">
       <div className="absolute inset-0" onClick={onClose} />
