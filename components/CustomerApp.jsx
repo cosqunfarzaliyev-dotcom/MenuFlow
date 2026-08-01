@@ -408,12 +408,14 @@ export function CustomerApp() {
             
             <div className="flex gap-3">
               <button 
+                type="button"
                 onClick={() => handleRequestBill('cash')}
                 className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-colors border border-slate-700 hover:border-slate-600"
               >
                 {getLocalizedText("cash", lang)}
               </button>
               <button 
+                type="button"
                 onClick={() => handleRequestBill('card')}
                 className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-colors shadow-lg shadow-blue-500/20"
               >
