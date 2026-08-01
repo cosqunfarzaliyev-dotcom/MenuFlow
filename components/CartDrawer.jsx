@@ -91,6 +91,8 @@ const handleSendOrder = async () => {
       return;
     }
 
+    // clear cart in parent and show success state
+    if (typeof onClearCart === 'function') onClearCart();
     setOrderSubmitted(true);
   } catch (err) {
     console.error(err);

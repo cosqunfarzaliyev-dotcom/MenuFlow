@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import Image from 'next/image';
 import Link from "next/link";
 import { ORDER_STATUS, useAppStore } from "@/lib/store";
+import { subscribeOrders } from '@/lib/services/realtime';
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { CartDrawer } from "@/components/CartDrawer";
@@ -54,6 +55,35 @@ export function CustomerApp() {
 
     loadAppData();
   }, [loadMenuData, loadOrders, loadAlerts, loadTables]);
+
+  useEffect(() => {
+    let sub;
+    if (!tableId) return undefined;
+
+    const startSub = async () => {
+      try {
+        sub = await subscribeOrders(({ event, table, record }) => {
+          const recTable = record?.table_id ?? record?.table;
+          if (recTable && recTable.toString() === tableId.toString()) {
+            // refresh orders from Supabase via store
+            loadOrders();
+          }
+        });
+      } catch (err) {
+        // ignore subscription errors
+        // eslint-disable-next-line no-console
+        console.warn('Failed to subscribe to orders realtime:', err);
+      }
+    };
+
+    startSub();
+
+    return () => {
+      if (sub && typeof sub.unsubscribe === 'function') {
+        sub.unsubscribe();
+      }
+    };
+  }, [tableId, loadOrders]);
 
   const currentTable = tables.find(t => t.id === tableId) || { id: "1", name: "Masa 1" };
 
