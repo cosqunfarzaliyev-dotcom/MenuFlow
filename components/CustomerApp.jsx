@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import { useParams, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from "next/link";
 import { ORDER_STATUS, useAppStore } from "@/lib/store";
 import { subscribeOrders, subscribeProducts } from '@/lib/services/realtime';
+import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
+import { LoadingState, ErrorState, EmptyState } from '@/components/ui';
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { CartDrawer } from "@/components/CartDrawer";
@@ -33,28 +36,40 @@ export function CustomerApp() {
     tagline: 'Rəqəmsal QR Menyu və İdarəetmə Sistemi'
   };
 
+  const params = useParams();
+  const searchParams = useSearchParams();
+
   const [lang, setLang] = useState("az");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [cartItems, setCartItems] = useState([]);
   
-  const [tableId, setTableId] = useState("1"); 
-  const [isMounted, setIsMounted] = useState(false);
+  const [tableId, setTableId] = useState(() => params?.table || searchParams?.get('table') || "1");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
-    setIsMounted(true);
-
     const loadAppData = async () => {
-      const searchParams = new URLSearchParams(window.location.search);
-      const tableNumber = searchParams.get("table") || "1";
-      setTableId(tableNumber);
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const routeTable = params?.table;
+        const queryTable = searchParams?.get('table');
+        const tableNumber = routeTable || queryTable || "1";
+        setTableId(tableNumber);
 
-      await Promise.all([loadMenuData(), loadOrders(), loadAlerts(), loadTables()]);
+        await Promise.all([loadMenuData(), loadOrders(), loadAlerts(), loadTables()]);
+      } catch (err) {
+        console.error('CustomerApp load error', err);
+        setLoadError(err?.message || String(err));
+      } finally {
+        setLoading(false);
+      }
     };
 
     loadAppData();
-  }, [loadMenuData, loadOrders, loadAlerts, loadTables]);
+  }, [params, searchParams, loadMenuData, loadOrders, loadAlerts, loadTables]);
 
   useEffect(() => {
     let sub;
@@ -71,7 +86,6 @@ export function CustomerApp() {
         });
       } catch (err) {
         // ignore subscription errors
-        // eslint-disable-next-line no-console
         console.warn('Failed to subscribe to orders realtime:', err);
       }
     };
@@ -104,7 +118,9 @@ export function CustomerApp() {
 
   const currentTable = tables.find(t => t.id === tableId) || { id: "1", name: "Masa 1" };
 
-  const activeOrders = orders.filter(o => o.table === tableId);
+  const activeOrders = orders.filter(
+    (o) => o.table === tableId && ![ORDER_STATUS.SERVED, ORDER_STATUS.CANCELLED].includes(o.status),
+  );
 
   // Cart Handlers
   const handleAddToCart = (product, quantity = 1, options = {}, note = "") => {
@@ -172,7 +188,13 @@ export function CustomerApp() {
     [ORDER_STATUS.CANCELLED]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-4 h-4 text-rose-400" /> }
   };
 
-  if (!isMounted) return null;
+  if (loading) {
+    return <LoadingState title="Menyu yüklənir…" subtitle="Menyu və masa məlumatları hazırlanır" />;
+  }
+
+  if (loadError) {
+    return <ErrorState title="Yükləmə xətası" description={loadError} onRetry={() => window.location.reload()} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-white pb-32">
@@ -276,6 +298,9 @@ export function CustomerApp() {
               <span>{getLocalizedText("requestBill", lang)}</span>
             </button>
           </div>
+          <div className="ml-3 hidden md:flex items-center">
+            <RealtimeStatusBadge />
+          </div>
 
         </div>
       </header>
@@ -314,7 +339,7 @@ export function CustomerApp() {
 
         {/* Products */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {filteredProducts.map(product => (
+          {filteredProducts.length > 0 ? filteredProducts.map(product => (
             <ProductCard
               key={product.id}
               product={product}
@@ -324,11 +349,21 @@ export function CustomerApp() {
               onToggleFavorite={() => {}}
               lang={lang}
             />
-          ))}
+          )) : (
+            <div className="col-span-full">
+              <EmptyState
+                icon={<ShoppingCart className="w-8 h-8 text-blue-400" />}
+                title="Məhsul tapılmadı"
+                description="Seçilmiş kateqoriyaya uyğun məhsul yoxdur. Daha geniş kateqoriya üçün bütün məhsullara qayıdın."
+                actionLabel="Hamısına qayıt"
+                onAction={() => setSelectedCategory('all')}
+              />
+            </div>
+          )}
         </section>
 
         {/* Active Orders */}
-        {activeOrders.length > 0 && (
+        {activeOrders.length > 0 ? (
           <section className="pt-8 border-t border-slate-800">
             <h2 className="font-serif-title font-bold text-xl mb-4 text-white">{getLocalizedText("activeOrders", lang)}</h2>
             <div className="space-y-4">
@@ -366,6 +401,14 @@ export function CustomerApp() {
               ))}
             </div>
           </section>
+        ) : (
+          <div className="pt-8">
+            <EmptyState
+              icon={<CheckCircle2 className="w-8 h-8 text-emerald-400" />}
+              title="Aktiv sifariş yoxdur"
+              description="Masanız üçün heç bir açıq sifariş yoxdur. Yeni sifariş verdikdə burada görünəcək."
+            />
+          </div>
         )}
 
       </main>
@@ -421,16 +464,18 @@ export function CustomerApp() {
 
       {/* Product Detail Modal */}
       <ProductDetailModal
+        key={selectedProduct?.id || 'product-modal'}
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
         onAddToCartWithOptions={handleAddToCart}
         isFavorite={false}
-        onToggleFavorite={() => {}}
+        onToggleFavorite={() => {} }
         lang={lang}
       />
 
       {/* Cart Drawer */}
       <CartDrawer
+        key={isCartOpen ? 'open' : 'closed'}
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         items={cartItems}
@@ -439,7 +484,6 @@ export function CustomerApp() {
         onRemoveItem={(id) => setCartItems(prev => prev.filter(i => i.id !== id))}
         onClearCart={() => setCartItems([])}
         tableNumber={tableId}
-        setTableNumber={() => {}}
         lang={lang}
       />
 

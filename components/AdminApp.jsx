@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { ORDER_STATUS, useAppStore } from '@/lib/store';
 import { subscribeProducts, subscribeCategories, subscribeTables, subscribeOrders } from '@/lib/services/realtime';
 import { Settings, Plus, Edit2, Trash2, Shield, QrCode, Lock, BarChart3, Users, Download, Printer, TrendingUp, Clock, Activity, CheckCircle2 } from 'lucide-react';
+import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
+import { LoadingState, ErrorState, EmptyState, PageSkeleton } from '@/components/ui';
 import { QRCodeSVG } from 'qrcode.react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { SettingsTab } from '@/components/SettingsTab';
@@ -35,6 +37,8 @@ export function AdminApp() {
   const [editingTableName, setEditingTableName] = useState('');
   const [origin, setOrigin] = useState('');
   const [isMounted, setIsMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   // Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -239,13 +243,17 @@ export function AdminApp() {
   }, []);
 
   useEffect(() => {
-    // load supabase-backed data for admin views
+    // load supabase-backed data for admin views with loading state
     const load = async () => {
+      setLoading(true);
+      setLoadError(null);
       try {
         await Promise.all([loadMenuData(), loadTables(), loadOrders(), loadAlerts()]);
       } catch (err) {
-        // ignore load errors in admin
         console.error('Admin data load error:', err);
+        setLoadError(err?.message || String(err));
+      } finally {
+        setLoading(false);
       }
     };
     load();
@@ -286,6 +294,14 @@ export function AdminApp() {
   }, [loadMenuData, loadTables, loadOrders]);
 
   if (!isMounted) return null;
+
+  if (isAdminAuthenticated && loading) {
+    return <PageSkeleton />;
+  }
+
+  if (isAdminAuthenticated && loadError) {
+    return <ErrorState title="Yükləmə xətası" description={loadError} onRetry={() => window.location.reload()} />;
+  }
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -371,13 +387,21 @@ export function AdminApp() {
               'Restoran Tənzimləmələri (Branding)'
             }</h3>
             {(activeTab === 'products' || activeTab === 'categories') && (
-              <button 
-                onClick={() => activeTab === 'categories' ? handleOpenCategoryModal() : handleOpenProductModal()}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                {activeTab === 'products' ? 'Yeni Məhsul' : 'Yeni Kateqoriya'}
-              </button>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => activeTab === 'categories' ? handleOpenCategoryModal() : handleOpenProductModal()}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  {activeTab === 'products' ? 'Yeni Məhsul' : 'Yeni Kateqoriya'}
+                </button>
+                <RealtimeStatusBadge />
+              </div>
+            )}
+            {!(activeTab === 'products' || activeTab === 'categories') && (
+              <div className="ml-3">
+                <RealtimeStatusBadge />
+              </div>
             )}
           </div>
 
@@ -396,7 +420,7 @@ export function AdminApp() {
             {/* Products CRUD Demo */}
             {activeTab === 'products' && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {products.map(product => (
+                {products.length > 0 ? products.map(product => (
                   <div key={product.id} className="flex items-center gap-4 p-4 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-colors">
                     <div className="w-16 h-16 rounded-xl overflow-hidden bg-slate-800 shrink-0">
                       <Image
@@ -431,14 +455,19 @@ export function AdminApp() {
                       </button>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <EmptyState
+                    title="Məhsul tapılmadı"
+                    description="Hal-hazırda heç bir məhsul mövcud deyil. Yeni məhsul əlavə etmək üçün yuxarıdakı düymədən istifadə edin."
+                  />
+                )}
               </div>
             )}
 
             {/* Categories Demo */}
             {activeTab === 'categories' && (
               <div className="space-y-3">
-                {categories.map(category => (
+                {categories.length > 0 ? categories.map(category => (
                   <div key={category.id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-900/50 border border-slate-800">
                     <div className="flex items-center gap-4">
                       <span className="text-3xl bg-slate-800 p-3 rounded-xl">{category.icon}</span>
@@ -459,7 +488,7 @@ export function AdminApp() {
                       </button>
                     </div>
                   </div>
-                ))}
+                )) : null}
               </div>
             )}
 
@@ -486,90 +515,97 @@ export function AdminApp() {
                   }
                 `}} />
 
-                <div id="print-qr-area" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {tables.map(table => {
-                    const tableUrl = `${origin}/menu/${encodeURIComponent(table.id)}`;
-                    return (
-                      <div key={table.id} id={`qr-card-${table.id}`} className="qr-code-card bg-white flex flex-col items-center justify-center gap-3 relative group p-4 border border-slate-200 rounded-2xl">
-                        
-                        <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs uppercase tracking-wider">
-                          {settings.restaurantLogo ? (
-                            <Image
-                              src={settings.restaurantLogo}
-                              alt="Logo"
-                              className="w-4 h-4 object-contain rounded"
-                              width={16}
-                              height={16}
-                              unoptimized
-                            />
-                          ) : (
-                            <QrCode className="w-4 h-4 text-blue-600" />
-                          )}
-                          <span>{settings.restaurantName || "MenuFlow"}</span>
-                        </div>
+                <div className="min-h-[360px]">
+                  {tables.length > 0 ? (
+                    <div id="print-qr-area" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {tables.map(table => {
+                        const tableUrl = `${origin}/menu/${encodeURIComponent(table.id)}`;
+                        return (
+                          <div key={table.id} id={`qr-card-${table.id}`} className="qr-code-card bg-white flex flex-col items-center justify-center gap-3 relative group p-4 border border-slate-200 rounded-2xl">
+                            <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs uppercase tracking-wider">
+                              {settings.restaurantLogo ? (
+                                <Image
+                                  src={settings.restaurantLogo}
+                                  alt="Logo"
+                                  className="w-4 h-4 object-contain rounded"
+                                  width={16}
+                                  height={16}
+                                  unoptimized
+                                />
+                              ) : (
+                                <QrCode className="w-4 h-4 text-blue-600" />
+                              )}
+                              <span>{settings.restaurantName || "MenuFlow"}</span>
+                            </div>
 
-                        <div id={`qr-${table.id}`} className="bg-white p-2 border-2 border-slate-100 rounded-xl">
-                          <QRCodeSVG 
-                            value={tableUrl}
-                            size={120}
-                            bgColor={"#ffffff"}
-                            fgColor={"#0f172a"}
-                            level={"Q"}
-                          />
-                        </div>
-                        
-                        {editingTableId === table.id ? (
-                          <div className="flex flex-col gap-2 w-full print:hidden">
-                            <input 
-                              type="text" 
-                              value={editingTableName}
-                              onChange={(e) => setEditingTableName(e.target.value)}
-                              className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1 text-slate-900 text-center font-bold text-sm"
-                              autoFocus
-                            />
-                            <div className="flex gap-2">
-                              <button 
-                                onClick={() => {
-                                  updateTableName(table.id, editingTableName);
-                                  setEditingTableId(null);
-                                }}
-                                className="flex-1 bg-blue-600 text-white text-xs font-bold py-1.5 rounded-lg"
-                              >Yadda saxla</button>
-                              <button 
-                                onClick={() => setEditingTableId(null)}
-                                className="flex-1 bg-slate-300 text-slate-700 text-xs font-bold py-1.5 rounded-lg"
-                              >Ləğv et</button>
+                            <div id={`qr-${table.id}`} className="bg-white p-2 border-2 border-slate-100 rounded-xl">
+                              <QRCodeSVG 
+                                value={tableUrl}
+                                size={120}
+                                bgColor={"#ffffff"}
+                                fgColor={"#0f172a"}
+                                level={"Q"}
+                              />
                             </div>
+
+                            {editingTableId === table.id ? (
+                              <div className="flex flex-col gap-2 w-full print:hidden">
+                                <input 
+                                  type="text" 
+                                  value={editingTableName}
+                                  onChange={(e) => setEditingTableName(e.target.value)}
+                                  className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1 text-slate-900 text-center font-bold text-sm"
+                                  autoFocus
+                                />
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={() => {
+                                      updateTableName(table.id, editingTableName);
+                                      setEditingTableId(null);
+                                    }}
+                                    className="flex-1 bg-blue-600 text-white text-xs font-bold py-1.5 rounded-lg"
+                                  >Yadda saxla</button>
+                                  <button 
+                                    onClick={() => setEditingTableId(null)}
+                                    className="flex-1 bg-slate-300 text-slate-700 text-xs font-bold py-1.5 rounded-lg"
+                                  >Ləğv et</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center gap-1 w-full">
+                                <span className="font-bold text-slate-900 font-serif-title text-lg text-center break-words w-full">{table.name}</span>
+                                <div className="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
+                                  <button 
+                                    onClick={() => {
+                                      setEditingTableId(table.id);
+                                      setEditingTableName(table.name);
+                                    }}
+                                    className="p-2 bg-slate-100 text-slate-600 hover:text-blue-600 rounded-lg transition-colors"
+                                    title="Adı Dəyiş"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDownloadQR(table)}
+                                    className="p-2 bg-slate-100 text-slate-600 hover:text-emerald-600 rounded-lg transition-colors"
+                                    title="PNG Yüklə"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        ) : (
-                          <div className="flex flex-col items-center gap-1 w-full">
-                            <span className="font-bold text-slate-900 font-serif-title text-lg text-center break-words w-full">{table.name}</span>
-                            
-                            <div className="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
-                              <button 
-                                onClick={() => {
-                                  setEditingTableId(table.id);
-                                  setEditingTableName(table.name);
-                                }}
-                                className="p-2 bg-slate-100 text-slate-600 hover:text-blue-600 rounded-lg transition-colors"
-                                title="Adı Dəyiş"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              
-                              <button 
-                                onClick={() => handleDownloadQR(table)}
-                                className="p-2 bg-slate-100 text-slate-600 hover:text-emerald-600 rounded-lg transition-colors"
-                                title="PNG Yüklə"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={<QrCode className="w-8 h-8 text-blue-400" />}
+                      title="QR kod tapılmadı"
+                      description="Masa qeydləri tapılmadı. Masalar yaratdıqdan sonra QR kodlar burada görünəcək."
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -1084,7 +1120,11 @@ function AnalyticsDashboard({ orders, tables }) {
                 </div>
               </div>
             )) : (
-               <div className="text-slate-500 text-sm text-center py-8">Sifariş yoxdur</div>
+              <EmptyState
+                icon={<TrendingUp className="w-8 h-8 text-emerald-400" />}
+                title="Satış hələ yoxdur"
+                description="Uğurlu sifarişlər hələ olmadığı üçün ən çox satılan məhsullar görünmür."
+              />
             )}
           </div>
         </div>
@@ -1117,7 +1157,11 @@ function AnalyticsDashboard({ orders, tables }) {
                 </div>
               </div>
             )) : (
-              <div className="h-full flex items-center justify-center text-slate-500 text-sm">Aktiv sifariş yoxdur</div>
+              <EmptyState
+                icon={<Clock className="w-8 h-8 text-purple-400" />}
+                title="Son sifariş yoxdur"
+                description="Heç bir son sifariş tapılmadı. Sifarişlər qəbul edildikcə burada canlı feed görünəcək."
+              />
             )}
           </div>
         </div>

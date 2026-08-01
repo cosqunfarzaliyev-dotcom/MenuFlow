@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useAppStore, ORDER_STATUS } from '@/lib/store';
 import { subscribeOrders, subscribeAlerts } from '@/lib/services/realtime';
 import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode } from 'lucide-react';
 import { OrderCard } from '@/components/staff/OrderCard';
+import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
+import { LoadingState, ErrorState, EmptyState } from '@/components/ui';
 
 export function StaffApp() {
   const {
@@ -22,18 +24,17 @@ export function StaffApp() {
   const settings = rawSettings || { restaurantName: 'MenuFlow' };
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'alerts'
   const [notification, setNotification] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
-  const initializedRef = useRef(false);
-  const prevOrdersLen = useRef(0);
-  const prevAlertsLen = useRef(0);
   const notificationTimeoutRef = useRef(null);
 
-  const getTableName = (id) => {
+  const getTableName = useCallback((id) => {
     const t = tables.find(t => t.id === id);
     return t ? t.name : `Masa ${id}`;
-  };
+  }, [tables]);
 
-  const playChimeSound = () => {
+  const playChimeSound = useCallback(() => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
@@ -66,41 +67,55 @@ export function StaffApp() {
     } catch (e) {
       console.log("Audio play error:", e);
     }
-  };
+  }, []);
 
-  const triggerNotification = (msg) => {
+  const triggerNotification = useCallback((msg) => {
     setNotification(msg);
     playChimeSound();
     if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
     notificationTimeoutRef.current = setTimeout(() => {
       setNotification(null);
     }, 5000);
-  };
+  }, [playChimeSound]);
 
   useEffect(() => {
     const setupRealtime = async () => {
-      await Promise.all([loadOrders(), loadAlerts(), loadTables()]);
+      setLoading(true);
+      setLoadError(null);
+      try {
+        await Promise.all([loadOrders(), loadAlerts(), loadTables()]);
+      } catch (err) {
+        console.error('StaffApp load error', err);
+        setLoadError(err?.message || String(err));
+      }
 
-      const orderSub = await subscribeOrders(({ event, table, record }) => {
-        // Refresh orders from Supabase; realtime ensures low-latency updates
-        loadOrders();
-        if (event === 'INSERT') triggerNotification('⚡ Yeni sifariş gəldi!');
-      });
+      try {
+        const orderSub = await subscribeOrders(({ event, table, record }) => {
+          // Refresh orders from Supabase; realtime ensures low-latency updates
+          loadOrders();
+          if (event === 'INSERT') triggerNotification('⚡ Yeni sifariş gəldi!');
+        });
 
-      const alertSub = await subscribeAlerts(({ event, table, record }) => {
-        loadAlerts();
-        const alertType = record?.type || record?.alert_type;
-        if (alertType === 'bill') {
-          triggerNotification('💳 HESAB İSTƏNİLDİ!');
-        } else {
-          triggerNotification('🔔 OFİSİANT ÇAĞIRILDI!');
-        }
-      });
+        const alertSub = await subscribeAlerts(({ event, table, record }) => {
+          loadAlerts();
+          const alertType = record?.type || record?.alert_type;
+          if (alertType === 'bill') {
+            triggerNotification('💳 HESAB İSTƏNİLDİ!');
+          } else {
+            triggerNotification('🔔 OFİSİANT ÇAĞIRILDI!');
+          }
+        });
 
-      return () => {
-        if (orderSub && typeof orderSub.unsubscribe === 'function') orderSub.unsubscribe();
-        if (alertSub && typeof alertSub.unsubscribe === 'function') alertSub.unsubscribe();
-      };
+        setLoading(false);
+
+        return () => {
+          if (orderSub && typeof orderSub.unsubscribe === 'function') orderSub.unsubscribe();
+          if (alertSub && typeof alertSub.unsubscribe === 'function') alertSub.unsubscribe();
+        };
+      } catch (err) {
+        console.error('Realtime subscribe error:', err);
+        setLoading(false);
+      }
     };
 
     let cleanup = null;
@@ -115,39 +130,11 @@ export function StaffApp() {
         cleanup();
       }
     };
-  }, [loadOrders, loadAlerts, loadTables]);
+  }, [loadOrders, loadAlerts, loadTables, triggerNotification]);
 
-  useEffect(() => {
-    if (!initializedRef.current) {
-      prevOrdersLen.current = orders.length;
-      prevAlertsLen.current = alerts.length;
-      initializedRef.current = true;
-      return;
-    }
-
-    if (orders.length > prevOrdersLen.current) {
-      const latestOrder = orders[orders.length - 1];
-      const tableName = latestOrder?.table ? getTableName(latestOrder.table) : '';
-      triggerNotification(`⚡ YENİ SİFARİŞ GƏLDİ! ${tableName ? `(${tableName})` : ''}`);
-    } else if (alerts.length > prevAlertsLen.current) {
-      const latestAlert = alerts[alerts.length - 1];
-      const tableName = latestAlert?.table ? getTableName(latestAlert.table) : '';
-      if (latestAlert?.type === 'bill') {
-        triggerNotification(`💳 HESAB İSTƏNİLDİ! ${tableName ? `(${tableName})` : ''}`);
-      } else {
-        triggerNotification(`🔔 OFİSİANT ÇAĞIRILDI! ${tableName ? `(${tableName})` : ''}`);
-      }
-    }
-
-    prevOrdersLen.current = orders.length;
-    prevAlertsLen.current = alerts.length;
-  }, [orders.length, alerts.length]);
 
   const pendingOrders = orders.filter(o => o.status === ORDER_STATUS.PENDING);
-  const acceptedOrders = orders.filter(o => o.status === ORDER_STATUS.ACCEPTED);
   const preparingOrders = orders.filter(o => [ORDER_STATUS.ACCEPTED, ORDER_STATUS.PREPARING].includes(o.status));
-  const readyOrders = orders.filter(o => o.status === ORDER_STATUS.READY);
-  const servedOrders = orders.filter(o => o.status === ORDER_STATUS.SERVED);
   const finishedOrders = orders.filter(o => [ORDER_STATUS.READY, ORDER_STATUS.SERVED].includes(o.status));
 
   const activeAlerts = alerts.filter(a => a.status === 'active');
@@ -164,6 +151,14 @@ export function StaffApp() {
 
     if (nextStatus) updateOrderStatus(id, nextStatus);
   };
+
+  if (loading) {
+    return <LoadingState title="Panel yüklənir…" subtitle="Sifariş və çağırış məlumatları yüklənir" />;
+  }
+
+  if (loadError) {
+    return <ErrorState title="Yükləmə xətası" description={loadError} onRetry={() => window.location.reload()} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-white p-4 sm:p-8 font-sans">
@@ -218,6 +213,9 @@ export function StaffApp() {
                 )}
               </button>
             </div>
+            <div className="ml-3 hidden md:flex items-center">
+              <RealtimeStatusBadge />
+            </div>
           </div>
         </div>
 
@@ -238,10 +236,14 @@ export function StaffApp() {
                   <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.ACCEPTED} nextLabel="Qəbul et" nextColor="bg-blue-600 hover:bg-blue-500" />
                 ))}
                 {pendingOrders.length === 0 && (
-                  <div className="p-8 text-center bg-slate-900/50 rounded-2xl border border-slate-800 text-slate-500">
-                    Yeni sifariş yoxdur
-                  </div>
-                )}
+                <div className="col-span-full">
+                  <EmptyState
+                    icon={<Clock className="w-8 h-8 text-amber-400" />}
+                    title="Yeni sifariş yoxdur"
+                    description="Hazırda gözləyən sifarişlər yoxdur. Yeni sifariş gəldikdə burada görünəcək."
+                  />
+                </div>
+              )}
               </div>
             </div>
 
@@ -325,10 +327,12 @@ export function StaffApp() {
               );
             })}
             {activeAlerts.length === 0 && (
-              <div className="col-span-full p-12 text-center bg-slate-900/50 rounded-2xl border border-slate-800">
-                <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-white">Gözləyən çağırış yoxdur</h3>
-                <p className="text-slate-400 mt-2">Bütün masalara xidmət edilib.</p>
+              <div className="col-span-full">
+                <EmptyState
+                  icon={<Bell className="w-8 h-8 text-emerald-400" />}
+                  title="Gözləyən çağırış yoxdur"
+                  description="Hazırda heç bir aktiv çağırış yoxdur. Yeni çağırış olduqda bu sahə yenilənəcək."
+                />
               </div>
             )}
           </div>

@@ -30,25 +30,17 @@ export const ProductDetailModal = ({
   const currencySymbol = useAppStore(state => state.settings?.currencySymbol) || '₼';
   const [quantity, setQuantity] = useState(1);
   const [note, setNote] = useState("");
-  const [selectedOptions, setSelectedOptions] = useState({});
-
-  const [prevProductId, setPrevProductId] = useState(null);
-
-  // Sync state if product changes during render
-  if (rawProduct && rawProduct.id !== prevProductId) {
-    setPrevProductId(rawProduct.id);
-    setQuantity(1);
-    setNote("");
+  const [selectedOptions, setSelectedOptions] = useState(() => {
     const initial = {};
-    if (rawProduct.options) {
+    if (rawProduct?.options) {
       rawProduct.options.forEach((opt) => {
-        if (opt.choices.length > 0) {
+        if (opt?.choices?.length > 0) {
           initial[opt.title] = opt.choices[0];
         }
       });
     }
-    setSelectedOptions(initial);
-  }
+    return initial;
+  });
 
   if (!rawProduct) return null;
 
@@ -56,9 +48,9 @@ export const ProductDetailModal = ({
 
   // Calculate total price based on options & quantity
   const calculateTotal = () => {
-    let base = product.price;
+    let base = product.price || 0;
     Object.values(selectedOptions).forEach((opt) => {
-      base += opt.extraPrice;
+      base += Number(opt?.extraPrice || 0);
     });
     return (base * quantity).toFixed(2);
   };

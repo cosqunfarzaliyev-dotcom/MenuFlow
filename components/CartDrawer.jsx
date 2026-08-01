@@ -16,6 +16,7 @@ import {
 import { useAppStore } from '@/lib/store';
 import { fetchTableByNumber } from '@/lib/services/supabaseService';
 import { getLocalizedProduct, getLocalizedText } from '@/lib/translations';
+import { EmptyState } from '@/components/ui';
 
 export const CartDrawer = ({
   isOpen,
@@ -33,16 +34,17 @@ export const CartDrawer = ({
   const currencySymbol = useAppStore(state => state.settings?.currencySymbol) || '₼';
   const [orderSubmitted, setOrderSubmitted] = useState(false);
   const [kitchenNote, setKitchenNote] = useState("");
+  const [submitError, setSubmitError] = useState("");
 
   const currentTable = tables.find(t => t.id === tableNumber) || { name: `Masa ${tableNumber}` };
 
   if (!isOpen) return null;
 
   const calculateItemPrice = (item) => {
-    let base = item.product.price;
+    let base = Number(item.product.price || 0);
     if (item.selectedOptions) {
       Object.values(item.selectedOptions).forEach((opt) => {
-        base += opt.extraPrice;
+        base += Number(opt?.extraPrice || 0);
       });
     }
     return base * item.quantity;
@@ -65,39 +67,43 @@ export const CartDrawer = ({
   };
 
 const handleSendOrder = async () => {
-  try {
-    let table = tables.find((t) =>
-      t.table_number?.toString() === tableNumber || t.id === tableNumber,
-    );
+    setSubmitError("");
+    try {
+      let table = tables.find((t) =>
+        t.table_number?.toString() === tableNumber || t.id === tableNumber,
+      );
 
-    if (!table) {
-      table = await fetchTableByNumber(tableNumber);
+      if (!table) {
+        table = await fetchTableByNumber(tableNumber);
+      }
+
+      if (!table?.id) {
+        const message = `Table record not found for table number ${tableNumber}`;
+        console.error(message);
+        setSubmitError(message);
+        return;
+      }
+
+      const { order, error } = await createOrder({
+        tableId: table.id,
+        total: totalPrice,
+        items,
+        note: kitchenNote,
+      });
+
+      if (error) {
+        console.error('createOrder error:', error);
+        setSubmitError(error.message || 'Failed to submit order.');
+        return;
+      }
+
+      if (typeof onClearCart === 'function') onClearCart();
+      setOrderSubmitted(true);
+    } catch (err) {
+      console.error(err);
+      setSubmitError(err?.message || 'Failed to submit order.');
     }
-
-    if (!table?.id) {
-      console.error('Table record not found for table number', tableNumber);
-      return;
-    }
-
-    const { order, error } = await createOrder({
-      tableId: table.id,
-      total: totalPrice,
-      items,
-      note: kitchenNote,
-    });
-
-    if (error) {
-      console.error('createOrder error:', error);
-      return;
-    }
-
-    // clear cart in parent and show success state
-    if (typeof onClearCart === 'function') onClearCart();
-    setOrderSubmitted(true);
-  } catch (err) {
-    console.error(err);
-  }
-};
+  };
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/80 backdrop-blur-md animate-fadeIn">
       <div className="absolute inset-0" onClick={onClose} />
@@ -158,16 +164,11 @@ const handleSendOrder = async () => {
             </button>
           </div>
         ) : items.length === 0 ? (
-          /* Empty state */
-          <div className="flex-1 p-6 flex flex-col items-center justify-center text-center">
-            <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mb-4">
-              <UtensilsCrossed className="w-8 h-8" />
-            </div>
-            <p className="text-white font-bold text-base mb-1">{getLocalizedText("cartEmpty", lang)}</p>
-            <p className="text-slate-400 text-xs max-w-xs">
-              {getLocalizedText("cartEmptyDesc", lang)}
-            </p>
-          </div>
+          <EmptyState
+            icon={<UtensilsCrossed className="w-8 h-8 text-slate-300" />}
+            title={getLocalizedText("cartEmpty", lang)}
+            description={getLocalizedText("cartEmptyDesc", lang)}
+          />
         ) : (
           /* Cart items list */
           <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar">
@@ -265,6 +266,11 @@ const handleSendOrder = async () => {
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
               />
             </div>
+            {submitError && (
+              <div className="mt-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 p-3 text-rose-200 text-xs font-semibold">
+                {submitError}
+              </div>
+            )}
           </div>
         )}
 
@@ -288,7 +294,8 @@ const handleSendOrder = async () => {
 
             <button
               onClick={handleSendOrder}
-              className="w-full py-3.5 rounded-xl glass-button-blue text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-transform active:scale-95"
+              disabled={items.length === 0}
+              className={`w-full py-3.5 rounded-xl glass-button-blue text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-transform active:scale-95 ${items.length === 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
               id="cart-submit-order-btn"
             >
               <Send className="w-4 h-4" />
