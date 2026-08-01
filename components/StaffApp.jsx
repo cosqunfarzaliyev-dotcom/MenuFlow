@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useAppStore, ORDER_STATUS } from '@/lib/store';
-import { subscribeToOrders, subscribeToAlerts, unsubscribeRealtime } from '@/lib/services/supabaseService';
+import { subscribeOrders, subscribeAlerts } from '@/lib/services/realtime';
 import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode } from 'lucide-react';
 import { OrderCard } from '@/components/staff/OrderCard';
 
@@ -81,14 +81,15 @@ export function StaffApp() {
     const setupRealtime = async () => {
       await Promise.all([loadOrders(), loadAlerts(), loadTables()]);
 
-      const orderChannel = await subscribeToOrders(async (payload) => {
-        await loadOrders();
-        triggerNotification('⚡ Yeni sifariş gəldi!');
+      const orderSub = await subscribeOrders(({ event, table, record }) => {
+        // Refresh orders from Supabase; realtime ensures low-latency updates
+        loadOrders();
+        if (event === 'INSERT') triggerNotification('⚡ Yeni sifariş gəldi!');
       });
 
-      const alertChannel = await subscribeToAlerts(async (payload) => {
-        await loadAlerts();
-        const alertType = payload?.new?.type || payload?.record?.type;
+      const alertSub = await subscribeAlerts(({ event, table, record }) => {
+        loadAlerts();
+        const alertType = record?.type || record?.alert_type;
         if (alertType === 'bill') {
           triggerNotification('💳 HESAB İSTƏNİLDİ!');
         } else {
@@ -97,8 +98,8 @@ export function StaffApp() {
       });
 
       return () => {
-        if (orderChannel) unsubscribeRealtime(orderChannel);
-        if (alertChannel) unsubscribeRealtime(alertChannel);
+        if (orderSub && typeof orderSub.unsubscribe === 'function') orderSub.unsubscribe();
+        if (alertSub && typeof alertSub.unsubscribe === 'function') alertSub.unsubscribe();
       };
     };
 
