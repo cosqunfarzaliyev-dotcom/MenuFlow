@@ -73,11 +73,19 @@ const handleSendOrder = async () => {
         t.table_number?.toString() === tableNumber || t.id === tableNumber,
       );
 
-      if (!table) {
-        table = await fetchTableByNumber(tableNumber);
+      // If the found table is a local fallback table, fetch the database table instead
+      const isFallback = table && (table.id === table.table_number?.toString() || !table.table_number);
+
+      if (!table || isFallback) {
+        const dbTable = await fetchTableByNumber(tableNumber);
+        if (dbTable) {
+          table = dbTable;
+        }
       }
 
-      if (!table?.id) {
+      const isUuid = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+      if (!table?.id || !isUuid(table.id)) {
         const message = `Table record not found for table number ${tableNumber}`;
         console.error(message);
         setSubmitError(message);
