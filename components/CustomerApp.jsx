@@ -116,7 +116,7 @@ export function CustomerApp() {
     };
   }, [loadMenuData]);
 
-  const currentTable = tables.find(t => t.id === tableId) || { id: "1", name: "Masa 1" };
+  const currentTable = tables.find(t => t.table_number?.toString() === tableId?.toString() || t.id === tableId) || { id: tableId, name: `Masa ${tableId}` };
 
   const activeOrders = orders.filter(
     (o) => o.table === tableId && ![ORDER_STATUS.SERVED, ORDER_STATUS.CANCELLED].includes(o.status),

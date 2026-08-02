@@ -36,7 +36,7 @@ export const CartDrawer = ({
   const [kitchenNote, setKitchenNote] = useState("");
   const [submitError, setSubmitError] = useState("");
 
-  const currentTable = tables.find(t => t.id === tableNumber) || { name: `Masa ${tableNumber}` };
+  const currentTable = tables.find(t => t.table_number?.toString() === tableNumber?.toString() || t.id === tableNumber) || { id: tableNumber, name: `Masa ${tableNumber}` };
 
   if (!isOpen) return null;
 
