@@ -1,0 +1,483 @@
+{
+  "restaurantInfo": {
+    "name": "MenuFlow",
+    "tagline": "Əsl İtalyan Mətbəxi və Unudulmaz Dad Təcrübəsi",
+    "rating": 4.9,
+    "reviewsCount": 348,
+    "workingHours": "B.e - B. 10:00 - 23:30",
+    "isOpen": true,
+    "address": "Nizami küçəsi 84, Bakı, Azərbaycan (Tərqovı yuxarı hissə)",
+    "phone": "+994 (12) 498-88-99",
+    "whatsapp": "+994 (50) 123-45-67",
+    "email": "info@menuflow.az",
+    "coverImage": "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1600&q=80",
+    "logoImage": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=400&q=80",
+    "description": "MenuFlow — Bakının mərkəzində orijinal İtalyan kulinariya ənənələrini müasir üslubda təqdim edən premium restorandır. Odun sobasında bişirilən həqiqi Neapolitan pizzaları, təzə əl işi pastalar, təravətli dəniz məhsulları və unikal İtalyan şirniyyatları ilə fərqlənirik.",
+    "features": [
+      {
+        "title": "Odun Sobasında Pizza",
+        "desc": "450°C xüsusi odun sobasında 90 saniyədə bişən çıxıntılı pizza xəmiri"
+      },
+      {
+        "title": "Təzə Əl İşi Pasta",
+        "desc": "Hər gün səhər İtalyan unu və təbii yumurta sarısı ilə hazırlanan təzə pastalar"
+      },
+      {
+        "title": "Premium Məhsullar",
+        "desc": "Campania-dan gətirilən təzə Burrata və Parmigiano-Reggiano pendirləri"
+      },
+      {
+        "title": "Mütəxəssis Şeflər",
+        "desc": "İtaliyanın Napoli və Bolonya şəhərlərində təcrübə keçmiş peşəkar aşpaz heyəti"
+      }
+    ]
+  },
+  "categories": [
+    { "id": "all", "name": "Bütün Məhsullar", "icon": "✨" },
+    { "id": "pizza", "name": "Pizza", "icon": "🍕" },
+    { "id": "burger", "name": "Burger", "icon": "🍔" },
+    { "id": "main", "name": "Əsas Yeməklər", "icon": "🥩" },
+    { "id": "salads", "name": "Salatlar", "icon": "🥗" },
+    { "id": "pasta", "name": "Pasta", "icon": "🍝" },
+    { "id": "desserts", "name": "Desertlər", "icon": "🍰" },
+    { "id": "drinks", "name": "İçkilər", "icon": "☕" }
+  ],
+  "products": [
+    {
+      "id": "p1",
+      "name": "Margherita Speciale",
+      "category": "pizza",
+      "price": 16.5,
+      "currency": "₼",
+      "description": "San Marzano pomidor sousu, təzə Bufala Mozzarella pendiri, təzə reyhan və xüsusi sızma zeytun yağı.",
+      "image": "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "isChefChoice": true,
+      "isVegetarian": true,
+      "prepTime": "12-15 dəq",
+      "calories": "780 kkal",
+      "ingredients": ["San Marzano Pomidoru", "Bufala Mozzarella", "Təzə Reyhan", "Sızma Zeytun Yağı"],
+      "options": [
+        {
+          "title": "Xəmir Növü",
+          "choices": [
+            { "name": "Ənənəvi İncə Neapolitan", "extraPrice": 0 },
+            { "name": "Pendir Kənarlı", "extraPrice": 3.5 }
+          ]
+        },
+        {
+          "title": "Əlavələr",
+          "choices": [
+            { "name": "Təzə Burrata 100q", "extraPrice": 5.0 },
+            { "name": "Rukola və Pesto", "extraPrice": 2.0 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "name": "Quattro Formaggi Gorgonzola",
+      "category": "pizza",
+      "price": 21.0,
+      "currency": "₼",
+      "description": "Dörd növ premium İtalyan pendiri: Mozzarella, Gorgonzola DOP, Fontina və Parmigiano Reggiano.",
+      "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "isVegetarian": true,
+      "prepTime": "15 dəq",
+      "calories": "920 kkal",
+      "ingredients": ["Mozzarella", "Gorgonzola DOP", "Fontina", "Parmigiano Reggiano", "Bal toxunuşu"],
+      "options": [
+        {
+          "title": "Əlavələr",
+          "choices": [
+            { "name": "Trüfel yağı damcısı", "extraPrice": 2.5 },
+            { "name": "Qoz ləpəsi", "extraPrice": 1.5 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "name": "Diavola Spicy Pepperoni",
+      "category": "pizza",
+      "price": 19.5,
+      "currency": "₼",
+      "description": "Acılı İtalyan Pepperoni kolbasası, San Marzano pomidor sousu, Mozzarella və acı çili bibərləri.",
+      "image": "https://images.unsplash.com/photo-1628840042765-356cda07504e?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "isSpicy": true,
+      "prepTime": "12-15 dəq",
+      "calories": "850 kkal",
+      "ingredients": ["Spicy Pepperoni", "San Marzano Sous", "Mozzarella", "Çili bibəri", "Kekik"],
+      "options": [
+        {
+          "title": "Acılıq Səviyyəsi",
+          "choices": [
+            { "name": "Orta Acı", "extraPrice": 0 },
+            { "name": "Ekstra Acı Jalapeno ilə", "extraPrice": 1.5 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "p4",
+      "name": "Tartufo e Funghi Special",
+      "category": "pizza",
+      "price": 24.0,
+      "currency": "₼",
+      "description": "Qara trüfel kremi, təzə şampinyon və porçini göbələkləri, fior di latte mozzarella və kəklikotu.",
+      "image": "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?auto=format&fit=crop&w=800&q=80",
+      "isChefChoice": true,
+      "isVegetarian": true,
+      "prepTime": "15 dəq",
+      "calories": "810 kkal",
+      "ingredients": ["Qara Trüfel Kremi", "Porçini Göbələyi", "Fior di Latte", "Sarımsaq yağı", "Rukola"]
+    },
+    {
+      "id": "p5",
+      "name": "Prosciutto e Burrata",
+      "category": "pizza",
+      "price": 26.5,
+      "currency": "₼",
+      "description": "İncə dilimlənmiş Parma vetçinası, mərkəzdə bütöv təzə Burrata pendiri, rukola və çerri pomidorları.",
+      "image": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "prepTime": "15 dəq",
+      "calories": "890 kkal",
+      "ingredients": ["Prosciutto di Parma", "Burrata 125q", "Rukola", "Çerri Pomidoru", "Balsamik krem"]
+    },
+    {
+      "id": "b1",
+      "name": "MenuFlow Gourmet Burger",
+      "category": "burger",
+      "price": 18.0,
+      "currency": "₼",
+      "description": "200q Dana əti kotleti, Fontina pendiri, karamelizə olunmuş soğan, rukola və trüfelli mayonez brioche çörəyində.",
+      "image": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "isChefChoice": true,
+      "prepTime": "18-20 dəq",
+      "calories": "980 kkal",
+      "ingredients": ["Angus Ət Kotleti 200q", "Brioche Çörək", "Fontina Pendiri", "Karamelizə Soğan", "Trüfel Mayonez"],
+      "options": [
+        {
+          "title": "Qarnir Seçimi",
+          "choices": [
+            { "name": "Kartof Fri (Pulsuz)", "extraPrice": 0 },
+            { "name": "Trüfelli və Parmezanlı Fri", "extraPrice": 3.0 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "b2",
+      "name": "Truffle & Parmesan Wagyu Burger",
+      "category": "burger",
+      "price": 22.5,
+      "currency": "₼",
+      "description": "Premial Wagyu dana əti, xırtıldayan Parmigiano çipsi, trüfel pastası və xüsusi ev yapımı sous.",
+      "image": "https://images.unsplash.com/photo-1586190848861-99aa4a171e90?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "prepTime": "20 dəq",
+      "calories": "1050 kkal",
+      "ingredients": ["Wagyu Əti 200q", "Parmigiano Çipsi", "Trüfel Pastası", "Aysberq Salat", "Brioche"]
+    },
+    {
+      "id": "b3",
+      "name": "Crispy Pollo Piccante Burger",
+      "category": "burger",
+      "price": 15.5,
+      "currency": "₼",
+      "description": "Xırtıldayan acılı toyuq filyesi, Calabrian çili mayo, turşu xiyar və Mozzarella melted cheese.",
+      "image": "https://images.unsplash.com/photo-1625813506062-0aeb1d7a094b?auto=format&fit=crop&w=800&q=80",
+      "isSpicy": true,
+      "prepTime": "15 dəq",
+      "calories": "820 kkal",
+      "ingredients": ["Xırtıldayan Toyuq", "Calabrian Mayo", "Mozzarella", "Turşu Xiyar", "Kələm Salatı"]
+    },
+    {
+      "id": "b4",
+      "name": "Smokey Bacon & Cheddar Burger",
+      "category": "burger",
+      "price": 17.5,
+      "currency": "₼",
+      "description": "Tüstülənmiş xırtıldayan bekon, əridilmiş yaşlı Cheddar pendiri, BARBEKÜ İtalyan sousu və halqa soğan.",
+      "image": "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=800&q=80",
+      "prepTime": "18 dəq",
+      "calories": "960 kkal",
+      "ingredients": ["Dana Əti Kotleti", "Crispy Bekon", "Cheddar Pendir", "Barbekü Sous", "Soğan Halqaları"]
+    },
+    {
+      "id": "m1",
+      "name": "Bistecca alla Fiorentina",
+      "category": "main",
+      "price": 38.0,
+      "currency": "₼",
+      "description": "Toskana üslubunda ızgarada bişirilmiş T-bone steyk (350q), rozmarinli kartof və sarımsaqlı kərə yağı ilə.",
+      "image": "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "isChefChoice": true,
+      "prepTime": "25 dəq",
+      "calories": "1100 kkal",
+      "ingredients": ["Premium Dana Steyk 350q", "Təzə Rozmarin", "Rozmarinli Kartof", "Sarımsaq Yağı", "Dəniz Duz"],
+      "options": [
+        {
+          "title": "Bişmə Səviyyəsi",
+          "choices": [
+            { "name": "Medium Rare (Tövsiyə olunur)", "extraPrice": 0 },
+            { "name": "Medium", "extraPrice": 0 },
+            { "name": "Well Done", "extraPrice": 0 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "name": "Ossobuco alla Milanese",
+      "category": "main",
+      "price": 32.0,
+      "currency": "₼",
+      "description": "Aşağı temperaturda 6 saat bişmiş dana incik, Şafranlı Risotto Alla Milanese və Gremolata sousu ilə.",
+      "image": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
+      "prepTime": "20 dəq",
+      "calories": "890 kkal",
+      "ingredients": ["Dana İncik", "Şafranlı Risotto", "Limon Qabığı", "Sarımsaq", "Cəfəri"]
+    },
+    {
+      "id": "m3",
+      "name": "Salmon Crisp con Asparagi",
+      "category": "main",
+      "price": 28.5,
+      "currency": "₼",
+      "description": "Tava ızgarasında dərisi xırtıldayan Atlantik qızılbalığı, təzə mərci otu, kuşqonmaz (asparagus) və limonlu kərə sousu.",
+      "image": "https://images.unsplash.com/photo-1467003909585-2f8a72700288?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "prepTime": "20 dəq",
+      "calories": "680 kkal",
+      "ingredients": ["Atlantik Qızılbalıq 220q", "Kuşqonmaz", "Limonlu Kərə Sousu", "Çerri Pomidoru"]
+    },
+    {
+      "id": "m4",
+      "name": "Pollo alla Parmigiana",
+      "category": "main",
+      "price": 21.0,
+      "currency": "₼",
+      "description": "Suxarıda qızardılmış toyuq filyesi, üzərində bol Mozzarella, Parmigiano və marinara pomidor sousu.",
+      "image": "https://images.unsplash.com/photo-1632778149955-e80f8ceca2e8?auto=format&fit=crop&w=800&q=80",
+      "prepTime": "18 dəq",
+      "calories": "750 kkal",
+      "ingredients": ["Toyuq Filyesi", "Marinara Sous", "Mozzarella", "Parmigiano", "Təzə Fəsliğən"]
+    },
+    {
+      "id": "s1",
+      "name": "Insalata Caprese con Burrata",
+      "category": "salads",
+      "price": 15.0,
+      "currency": "₼",
+      "description": "Təzə kremvari Burrata pendiri, pomidor dilimləri, təzə reyhan pesto sousu və yaşlandırılmış Balsamik glaze.",
+      "image": "https://images.unsplash.com/photo-1592417817098-8f3d69179830?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "isVegetarian": true,
+      "prepTime": "10 dəq",
+      "calories": "450 kkal",
+      "ingredients": ["Təzə Burrata 125q", "Çerri Pomidorlar", "Reyhan Pesto", "Balsamik Glaze", "Sidr qozu"]
+    },
+    {
+      "id": "s2",
+      "name": "Caesar Salad con Gamberi",
+      "category": "salads",
+      "price": 18.5,
+      "currency": "₼",
+      "description": "Tava ızgarasında bişmiş krevetlər, Romaine salat yarpaqları, ev üslubunda Sezar sousu, Parmezan və xronç suxarı.",
+      "image": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "prepTime": "12 dəq",
+      "calories": "520 kkal",
+      "ingredients": ["Kral Krevetlər", "Romaine Salat", "Orijinal Sezar Sous", "Parmigiano Reggiano", "Kruton"]
+    },
+    {
+      "id": "s3",
+      "name": "Mediterranean Quinoa & Avocado",
+      "category": "salads",
+      "price": 14.0,
+      "currency": "₼",
+      "description": "Rəngli kinoa, təzə avokado, feta pendiri, xiyar, nar dənələri və limon-zeytun yağı sousu.",
+      "image": "https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=800&q=80",
+      "isVegetarian": true,
+      "prepTime": "10 dəq",
+      "calories": "380 kkal",
+      "ingredients": ["Kinoa", "Avokado", "Feta Pendiri", "Nar Dənələri", "Sızma Zeytun Yağı"]
+    },
+    {
+      "id": "s4",
+      "name": "Insalata Mista con Noci e Gorgonzola",
+      "category": "salads",
+      "price": 13.5,
+      "currency": "₼",
+      "description": "Qarışıq göyərtilər, Gorgonzola pendiri, karamelizə olunmuş armud dilimləri və qovrulmuş qoz ləpəsi.",
+      "image": "https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?auto=format&fit=crop&w=800&q=80",
+      "prepTime": "10 dəq",
+      "calories": "410 kkal",
+      "ingredients": ["Baby Rucola", "Gorgonzola", "Armud", "Qoz Ləpəsi", "Bal-xardal dresinq"]
+    },
+    {
+      "id": "pa1",
+      "name": "Tagliatelle al Tartufo Nero",
+      "category": "pasta",
+      "price": 23.0,
+      "currency": "₼",
+      "description": "Təzə hazırlanan Tagliatelle pastası, təbii qara trüfel sousu, Parmigiano Reggiano və kərə yağı emulsiyası.",
+      "image": "https://images.unsplash.com/photo-1621996346565-e3def6164fb3?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "isChefChoice": true,
+      "prepTime": "15 dəq",
+      "calories": "720 kkal",
+      "ingredients": ["Təzə Tagliatelle", "Qara Trüfel", "Parmigiano Reggiano 24 ay", "Kərə Yağı"]
+    },
+    {
+      "id": "pa2",
+      "name": "Spaghetti Carbonara Originale",
+      "category": "pasta",
+      "price": 17.5,
+      "currency": "₼",
+      "description": "Orijinal Roma resepti: Guanciale (dana yanağı), təzə yumurta sarısı, Pecorino Romano pendiri və qara istiot. Qaymaq İSTİFADƏ OLUNMUR!",
+      "image": "https://images.unsplash.com/photo-1612874742237-6526221588e3?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "prepTime": "12-15 dəq",
+      "calories": "810 kkal",
+      "ingredients": ["Spaghetti Bronze Cut", "Guanciale", "Yumurta Sarısı", "Pecorino Romano", "Qara Istiot"]
+    },
+    {
+      "id": "pa3",
+      "name": "Penne All’Arrabbiata Piccante",
+      "category": "pasta",
+      "price": 14.5,
+      "currency": "₼",
+      "description": "San Marzano pomidor sousu, sarımsaq, acı Calabrian çili bibəri və təzə cəfəri ilə Penne pastası.",
+      "image": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=800&q=80",
+      "isSpicy": true,
+      "isVegetarian": true,
+      "prepTime": "12 dəq",
+      "calories": "590 kkal",
+      "ingredients": ["Penne Pasta", "San Marzano Pomidor", "Calabrian Çili", "Sarımsaq", "Cəfəri"]
+    },
+    {
+      "id": "pa4",
+      "name": "Ravioli con Ricotta e Spinaci",
+      "category": "pasta",
+      "price": 19.0,
+      "currency": "₼",
+      "description": "Əl işi Ravioli pastası, içi Ricotta pendiri və ispanaq doldurulmuş, adaçayı (sage) və kərə yağı sousunda.",
+      "image": "https://images.unsplash.com/photo-1587740896339-96a761e0508d?auto=format&fit=crop&w=800&q=80",
+      "isVegetarian": true,
+      "prepTime": "15 dəq",
+      "calories": "640 kkal",
+      "ingredients": ["Təzə Ravioli", "Ricotta", "Təzə İspanaq", "Adaçayı (Sage)", "Kərə Yağı"]
+    },
+    {
+      "id": "d1",
+      "name": "Classic Tiramisù Veneziano",
+      "category": "desserts",
+      "price": 11.0,
+      "currency": "₼",
+      "description": "Orijinal İtalyan Tiramisusu: Espressoya batırılmış Savoiardi peçenyeləri, Mascarpone kremi və valyuta kakao tozu.",
+      "image": "https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "isChefChoice": true,
+      "isVegetarian": true,
+      "prepTime": "5 dəq",
+      "calories": "480 kkal",
+      "ingredients": ["Mascarpone Pendir", "Savoiardi", "Espresso Single Origin", "Valrhona Kakao"]
+    },
+    {
+      "id": "d2",
+      "name": "Panna Cotta con Frutti di Bosco",
+      "category": "desserts",
+      "price": 9.5,
+      "currency": "₼",
+      "description": "İpək kimi yumşaq vanilli Panna Cotta, təzə meşə giləmeyvələri coulis sousu və nanə yarpaqları ilə.",
+      "image": "https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=800&q=80",
+      "isVegetarian": true,
+      "prepTime": "5 dəq",
+      "calories": "360 kkal",
+      "ingredients": ["Təbii Qaymaq", "Madaqaskar Vanili", "Meşə Giləmeyvələri", "Təzə Nanə"]
+    },
+    {
+      "id": "d3",
+      "name": "Cannoli Siciliani con Pistacchio",
+      "category": "desserts",
+      "price": 10.0,
+      "currency": "₼",
+      "description": "Xırtıldayan Sisiya üslubu xəmir borucuğu, daxilində Ricotta kremi, şokolad qırıntıları və Bronte püstəsi.",
+      "image": "https://images.unsplash.com/photo-1551024709-8f23befc6f87?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "prepTime": "5 dəq",
+      "calories": "420 kkal",
+      "ingredients": ["Ricotta Sisiya", "Bronte Püstəsi", "Şokolad Qırıntıları", "Portağal Qabığı"]
+    },
+    {
+      "id": "d4",
+      "name": "Fondant al Cioccolato Belga",
+      "category": "desserts",
+      "price": 12.0,
+      "currency": "₼",
+      "description": "İsti axıcı Belçika şokoladlı sufle fondant, böyründə Madaqaskar vanilli Gelato dondurması.",
+      "image": "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?auto=format&fit=crop&w=800&q=80",
+      "prepTime": "12 dəq",
+      "calories": "550 kkal",
+      "ingredients": ["Belçika Qara Şokoladı 70%", "Vanilli Gelato", "Qızıl Meyvə"]
+    },
+    {
+      "id": "dr1",
+      "name": "Signature Mocktail 'Bella Tramonto'",
+      "category": "drinks",
+      "price": 10.5,
+      "currency": "₼",
+      "description": "San Pellegrino aranciata, təzə qreypfrut şirəsi, rozmarin siropu, nar dənələri və buz.",
+      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "isChefChoice": true,
+      "prepTime": "5 dəq",
+      "calories": "140 kkal",
+      "ingredients": ["San Pellegrino Aranciata", "Qreypfrut Şirəsi", "Rozmarin Siropu", "Nar"]
+    },
+    {
+      "id": "dr2",
+      "name": "House Special Italian Lemonade",
+      "category": "drinks",
+      "price": 7.0,
+      "currency": "₼",
+      "description": "Təzə sıxılmış Sisiya limonları, nanə, təbii zəncəfil və qazlı bulaq suyu.",
+      "image": "https://images.unsplash.com/photo-1621263764928-df1444c5e859?auto=format&fit=crop&w=800&q=80",
+      "isPopular": true,
+      "prepTime": "5 dəq",
+      "calories": "110 kkal",
+      "ingredients": ["Təzə Limon", "Təzə Nanə", "Zəncəfil", "Qazlı Bulaq Suyu"]
+    },
+    {
+      "id": "dr3",
+      "name": "Espresso Romano & Cappuccino",
+      "category": "drinks",
+      "price": 5.5,
+      "currency": "₼",
+      "description": "Orijinal 100% Arabica İtalyan qovrulmuş kofe dənələrindən hazırlanmış espresso, kapuçino və ya latte.",
+      "image": "https://images.unsplash.com/photo-1534778101976-62847782c213?auto=format&fit=crop&w=800&q=80",
+      "prepTime": "3-5 dəq",
+      "calories": "90 kkal",
+      "ingredients": ["100% Arabica Beans", "Bütöv İtalyan Sütü"]
+    },
+    {
+      "id": "dr4",
+      "name": "San Pellegrino & Aqua Panna (750ml)",
+      "category": "drinks",
+      "price": 6.5,
+      "currency": "₼",
+      "description": "Premium İtalyan təbii mineral suyu: qazlı San Pellegrino və ya qazsız Aqua Panna.",
+      "image": "https://images.unsplash.com/photo-1560023907-5f339617ea30?auto=format&fit=crop&w=800&q=80",
+      "prepTime": "2 dəq",
+      "calories": "0 kkal",
+      "ingredients": ["İtaliya Təbii Mineral Suyu"]
+    }
+  ]
+}
