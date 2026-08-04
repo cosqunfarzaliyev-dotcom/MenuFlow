@@ -69,15 +69,16 @@ function LoginForm() {
 
     try {
       if (mode === 'login') {
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         setSubmitting(false);
         if (signInError) {
+          console.error("Supabase signInWithPassword Error:", signInError);
           if (/email.*not.*confirmed/i.test(signInError.message || '')) {
-            setError('E-poçt hələ təsdiqlənməyib. Zəhmət olmasa gələn təsdiq linkinə klikləyin (spam qovluğunu da yoxlayın).');
+            setError('E-poçt hələ təsdiqlənməyib. Supabase Dashboard -> Authentication -> Providers -> Email-də "Confirm email"-i söndürün və ya e-poçtunuzdakı linkə klikləyin.');
           } else if (/invalid.*credentials/i.test(signInError.message || '')) {
-            setError('E-poçt və ya şifrə yanlışdır.');
+            setError('E-poçt və ya şifrə yanlışdır. Hesabınız yoxdursa "Qeydiyyat" tabına keçin.');
           } else {
-            setError(signInError.message || 'Giriş uğursuz oldu.');
+            setError(`Giriş xətası (${signInError.status || 'Error'}): ${signInError.message}`);
           }
           return;
         }
@@ -88,10 +89,11 @@ function LoginForm() {
         const { data, error: signUpError } = await supabase.auth.signUp({ email: email.trim(), password });
         setSubmitting(false);
         if (signUpError) {
+          console.error("Supabase signUp Error:", signUpError);
           if (/user.*already.*registered/i.test(signUpError.message || '')) {
-            setError('Bu e-poçt ünvanı ilə artıq hesab mövcuddur. "Daxil Ol" bölməsinə keçin.');
+            setError('Bu e-poçt ünvanı ilə artıq hesab mövcuddur. "Daxil Ol" tabına keçin.');
           } else {
-            setError(signUpError.message || 'Qeydiyyat alınmadı.');
+            setError(`Qeydiyyat xətası (${signUpError.status || 'Error'}): ${signUpError.message}`);
           }
           return;
         }
@@ -102,11 +104,12 @@ function LoginForm() {
           return;
         }
 
-        setInfo('Hesab uğurla yaradıldı! Əgər e-poçt təsdiqi aktivdirsə, e-poçtunuza gələn linki klikləyin, sonra daxil olun.');
+        setInfo('Hesab yaradıldı! Əgər e-poçt təsdiqi aktivdirsə, e-poçtunuza gələn linkə klikləyin. Və ya Supabase-də "Confirm email"-i söndürün.');
       }
     } catch (err) {
       setSubmitting(false);
-      setError('Şəbəkə və ya server xətası baş verdi: ' + (err.message || 'Supabase serverinə qoşulmaq olmadı.'));
+      console.error("Auth Exception:", err);
+      setError('Xəta baş verdi: ' + (err.message || 'Supabase serverinə qoşulmaq olmadı.'));
     }
   };
 
