@@ -18,6 +18,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get('next');
 
+  const [mode, setMode] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -46,24 +47,58 @@ function LoginForm() {
     });
   }, [routeAfterAuth]);
 
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!supabaseReady) { setError('Supabase qoşulmayıb.'); return; }
+    if (!supabaseReady) { setError('Supabase qoşulmayıb. Zəhmət olmasa .env.local faylını yoxlayın.'); return; }
+    if (!email.trim() || !password.trim()) { setError('Zəhmət olmasa e-poçt və şifrəni daxil edin.'); return; }
+    
+    if (mode === 'signup' && password.length < 6) {
+      setError('Şifrə ən azı 6 simvoldan ibarət olmalıdır.');
+      return;
+    }
+
     setSubmitting(true);
     setError('');
     setInfo('');
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    setSubmitting(false);
-    if (signInError) {
-      if (/email.*not.*confirmed/i.test(signInError.message || '')) {
-        setError('E-poçt hələ təsdiqlənməyib. Zəhmət olmasa gələn təsdiq linkinə klikləyin (spam qovluğunu da yoxlayın).');
-      } else {
-        setError('E-poçt və ya şifrə yanlışdır.');
+
+    if (mode === 'login') {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      setSubmitting(false);
+      if (signInError) {
+        if (/email.*not.*confirmed/i.test(signInError.message || '')) {
+          setError('E-poçt hələ təsdiqlənməyib. Zəhmət olmasa gələn təsdiq linkinə klikləyin (spam qovluğunu da yoxlayın).');
+        } else if (/invalid.*credentials/i.test(signInError.message || '')) {
+          setError('E-poçt və ya şifrə yanlışdır.');
+        } else {
+          setError(signInError.message || 'Giriş uğursuz oldu.');
+        }
+        return;
       }
-      return;
+      setChecking(true);
+      await routeAfterAuth();
+    } else {
+      // Sign Up mode
+      const { data, error: signUpError } = await supabase.auth.signUp({ email: email.trim(), password });
+      setSubmitting(false);
+      if (signUpError) {
+        if (/user.*already.*registered/i.test(signUpError.message || '')) {
+          setError('Bu e-poçt ünvanı ilə artıq hesab mövcuddur. Giriş bölməsinə keçin.');
+        } else {
+          setError(signUpError.message || 'Qeydiyyat alınmadı.');
+        }
+        return;
+      }
+
+      if (data?.session) {
+        // Direct session created (email confirmation is disabled in Supabase)
+        setChecking(true);
+        await routeAfterAuth();
+        return;
+      }
+
+      // If email confirmation is required by Supabase settings:
+      setInfo('Hesab uğurla yaradıldı! Əgər e-poçt təsdiqi aktivdirsə, e-poçtunuza gələn linki klikləyin. Sonra daxil ola bilərsiniz.');
     }
-    setChecking(true);
-    await routeAfterAuth();
   };
 
   const handleForgotPassword = async () => {
@@ -83,26 +118,6 @@ function LoginForm() {
     setInfo('Şifrə sıfırlama linki e-poçtunuza göndərildi (spam qovluğunu da yoxlayın).');
   };
 
-  const handleSignUp = async (e) => {
-    e.preventDefault();
-    if (!supabaseReady) { setError('Supabase qoşulmayıb.'); return; }
-    setSubmitting(true);
-    setError('');
-    setInfo('');
-    const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
-    setSubmitting(false);
-    if (signUpError) {
-      setError(signUpError.message || 'Qeydiyyat alınmadı.');
-      return;
-    }
-    if (data?.session) {
-      // Email confirmations are off — go straight to creating a restaurant.
-      router.replace('/onboarding');
-      return;
-    }
-    setInfo('Hesab yaradıldı! Təsdiq linki üçün e-poçtunuzu yoxlayın, sonra daxil olub restoranınızı yaradın.');
-  };
-
   if (checking) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
@@ -113,37 +128,85 @@ function LoginForm() {
 
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-      <form onSubmit={handleLogin} className="w-full max-w-sm bg-slate-950/60 backdrop-blur p-8 rounded-3xl border border-slate-800 text-center">
+      <div className="w-full max-w-sm bg-slate-950/60 backdrop-blur p-8 rounded-3xl border border-slate-800 text-center shadow-2xl">
         <div className="w-16 h-16 bg-slate-900 rounded-2xl mx-auto flex items-center justify-center border border-slate-800 mb-6">
           {next === '/superadmin' ? <ShieldCheck className="w-8 h-8 text-amber-500" /> : <Lock className="w-8 h-8 text-blue-500" />}
         </div>
-        <h2 className="text-2xl font-bold text-white mb-2">Giriş</h2>
-        <p className="text-slate-400 text-sm mb-6">İdarəetmə panelinə daxil olmaq üçün hesabınızla daxil olun.</p>
 
-        <input
-          type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-          placeholder="E-poçt" autoComplete="username"
-          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white mb-3 focus:outline-none focus:border-blue-500 transition-colors"
-        />
-        <input
-          type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-          placeholder="Şifrə" autoComplete="current-password"
-          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white mb-4 focus:outline-none focus:border-blue-500 transition-colors"
-        />
-        {error && <p className="text-rose-500 text-xs mb-4 text-left font-bold">{error}</p>}
-        {info && <p className="text-emerald-400 text-xs mb-4 text-left font-bold">{info}</p>}
+        {/* Tab Switcher */}
+        <div className="flex bg-slate-900 p-1 rounded-xl mb-6 border border-slate-800/80">
+          <button
+            type="button"
+            onClick={() => { setMode('login'); setError(''); setInfo(''); }}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+              mode === 'login' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Daxil Ol
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode('signup'); setError(''); setInfo(''); }}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+              mode === 'signup' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Qeydiyyat
+          </button>
+        </div>
 
-        <button type="submit" disabled={submitting} className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-xl font-bold transition-colors">
-          {submitting ? 'Yoxlanılır…' : 'Daxil ol'}
-        </button>
-        <button type="button" onClick={handleForgotPassword} disabled={submitting} className="w-full mt-2 py-2 bg-transparent hover:bg-slate-900 disabled:opacity-60 text-slate-500 hover:text-slate-300 text-xs transition-colors">
-          Şifrəni unutmusunuz?
-        </button>
-        <button type="button" onClick={handleSignUp} disabled={submitting} className="w-full mt-1 py-2.5 bg-transparent hover:bg-slate-900 disabled:opacity-60 text-slate-400 hover:text-white rounded-xl font-bold text-xs transition-colors">
-          Hesabınız yoxdur? Qeydiyyatdan keçin
-        </button>
-        <Link href="/" className="block mt-4 text-xs text-slate-500 hover:text-slate-300">Müştəri menyusuna qayıt</Link>
-      </form>
+        <h2 className="text-xl font-bold text-white mb-2">
+          {mode === 'login' ? 'İdarəetmə Paneline Giriş' : 'Yeni Hesab Yaradın'}
+        </h2>
+        <p className="text-slate-400 text-xs mb-6">
+          {mode === 'login'
+            ? 'İdarəetmə panelinə daxil olmaq üçün e-poçt və şifrənizi yazın.'
+            : 'MenuFlow-dan istifadə etmək üçün yeni hesab yaradın.'}
+        </p>
+
+        <form onSubmit={handleSubmit}>
+          <input
+            type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            placeholder="E-poçt ünvanınız" autoComplete="username" required
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm mb-3 focus:outline-none focus:border-blue-500 transition-colors"
+          />
+          <input
+            type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            placeholder="Şifrə (min. 6 simvol)" autoComplete={mode === 'login' ? "current-password" : "new-password"} required
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm mb-4 focus:outline-none focus:border-blue-500 transition-colors"
+          />
+
+          {error && <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl mb-4 text-rose-400 text-xs text-left font-medium">{error}</div>}
+          {info && <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl mb-4 text-emerald-400 text-xs text-left font-medium">{info}</div>}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-600/20"
+          >
+            {submitting
+              ? 'Gözləyin...'
+              : mode === 'login'
+              ? 'Daxil ol'
+              : 'Qeydiyyatdan keç'}
+          </button>
+        </form>
+
+        {mode === 'login' && (
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            disabled={submitting}
+            className="w-full mt-3 py-2 bg-transparent hover:bg-slate-900 disabled:opacity-60 text-slate-500 hover:text-slate-300 text-xs transition-colors"
+          >
+            Şifrəni unutmusunuz?
+          </button>
+        )}
+
+        <Link href="/" className="block mt-6 text-xs text-slate-500 hover:text-slate-300 transition-colors">
+          ← Müştəri menyusuna qayıt
+        </Link>
+      </div>
     </div>
   );
 }
