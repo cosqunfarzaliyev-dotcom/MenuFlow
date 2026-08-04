@@ -49,8 +49,14 @@ function LoginForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!supabaseReady) { setError('Supabase qoşulmayıb. Zəhmət olmasa .env.local faylını yoxlayın.'); return; }
-    if (!email.trim() || !password.trim()) { setError('Zəhmət olmasa e-poçt və şifrəni daxil edin.'); return; }
+    if (!supabaseReady) {
+      setError('Supabase qoşulmayıb. .env.local faylında real URL və Key təyin etməlisiniz.');
+      return;
+    }
+    if (!email.trim() || !password.trim()) {
+      setError('Zəhmət olmasa e-poçt və şifrəni daxil edin.');
+      return;
+    }
     
     if (mode === 'signup' && password.length < 6) {
       setError('Şifrə ən azı 6 simvoldan ibarət olmalıdır.');
@@ -61,43 +67,46 @@ function LoginForm() {
     setError('');
     setInfo('');
 
-    if (mode === 'login') {
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      setSubmitting(false);
-      if (signInError) {
-        if (/email.*not.*confirmed/i.test(signInError.message || '')) {
-          setError('E-poçt hələ təsdiqlənməyib. Zəhmət olmasa gələn təsdiq linkinə klikləyin (spam qovluğunu da yoxlayın).');
-        } else if (/invalid.*credentials/i.test(signInError.message || '')) {
-          setError('E-poçt və ya şifrə yanlışdır.');
-        } else {
-          setError(signInError.message || 'Giriş uğursuz oldu.');
+    try {
+      if (mode === 'login') {
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        setSubmitting(false);
+        if (signInError) {
+          if (/email.*not.*confirmed/i.test(signInError.message || '')) {
+            setError('E-poçt hələ təsdiqlənməyib. Zəhmət olmasa gələn təsdiq linkinə klikləyin (spam qovluğunu da yoxlayın).');
+          } else if (/invalid.*credentials/i.test(signInError.message || '')) {
+            setError('E-poçt və ya şifrə yanlışdır.');
+          } else {
+            setError(signInError.message || 'Giriş uğursuz oldu.');
+          }
+          return;
         }
-        return;
-      }
-      setChecking(true);
-      await routeAfterAuth();
-    } else {
-      // Sign Up mode
-      const { data, error: signUpError } = await supabase.auth.signUp({ email: email.trim(), password });
-      setSubmitting(false);
-      if (signUpError) {
-        if (/user.*already.*registered/i.test(signUpError.message || '')) {
-          setError('Bu e-poçt ünvanı ilə artıq hesab mövcuddur. Giriş bölməsinə keçin.');
-        } else {
-          setError(signUpError.message || 'Qeydiyyat alınmadı.');
-        }
-        return;
-      }
-
-      if (data?.session) {
-        // Direct session created (email confirmation is disabled in Supabase)
         setChecking(true);
         await routeAfterAuth();
-        return;
-      }
+      } else {
+        // Sign Up mode
+        const { data, error: signUpError } = await supabase.auth.signUp({ email: email.trim(), password });
+        setSubmitting(false);
+        if (signUpError) {
+          if (/user.*already.*registered/i.test(signUpError.message || '')) {
+            setError('Bu e-poçt ünvanı ilə artıq hesab mövcuddur. "Daxil Ol" bölməsinə keçin.');
+          } else {
+            setError(signUpError.message || 'Qeydiyyat alınmadı.');
+          }
+          return;
+        }
 
-      // If email confirmation is required by Supabase settings:
-      setInfo('Hesab uğurla yaradıldı! Əgər e-poçt təsdiqi aktivdirsə, e-poçtunuza gələn linki klikləyin. Sonra daxil ola bilərsiniz.');
+        if (data?.session) {
+          setChecking(true);
+          await routeAfterAuth();
+          return;
+        }
+
+        setInfo('Hesab uğurla yaradıldı! Əgər e-poçt təsdiqi aktivdirsə, e-poçtunuza gələn linki klikləyin, sonra daxil olun.');
+      }
+    } catch (err) {
+      setSubmitting(false);
+      setError('Şəbəkə və ya server xətası baş verdi: ' + (err.message || 'Supabase serverinə qoşulmaq olmadı.'));
     }
   };
 
@@ -163,6 +172,15 @@ function LoginForm() {
             ? 'İdarəetmə panelinə daxil olmaq üçün e-poçt və şifrənizi yazın.'
             : 'MenuFlow-dan istifadə etmək üçün yeni hesab yaradın.'}
         </p>
+
+        {!supabaseReady && (
+          <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl mb-5 text-amber-300 text-xs text-left leading-relaxed">
+            <p className="font-bold text-amber-200 mb-1">⚠️ Supabase Qoşulmayıb!</p>
+            <p className="text-[11px] text-amber-300/90">
+              Qeydiyyat və Giriş üçün <code className="bg-amber-950 px-1 py-0.5 rounded border border-amber-800 text-amber-200">.env.local</code> faylında yer alan dummy məlumatları öz real Supabase <b>URL</b> və <b>Publishable Key</b> ünvanınızla əvəz edin.
+            </p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <input
