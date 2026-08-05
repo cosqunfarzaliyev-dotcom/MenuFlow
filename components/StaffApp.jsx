@@ -137,6 +137,12 @@ export function StaffApp() {
 
         const alertSub = await subscribeAlerts(({ event, table, record }) => {
           loadAlerts();
+          // A repeat/edited call re-uses the same row (see upsert_alert),
+          // so this fires as an UPDATE, not just an INSERT — re-chime for
+          // those too. But skip the chime when the update is staff marking
+          // an alert resolved (status -> 'resolved'), which is our own
+          // action, not a new customer call.
+          if (record?.status && record.status !== 'active') return;
           const alertType = record?.type || record?.alert_type;
           if (alertType === 'bill') {
             triggerNotification('💳 HESAB İSTƏNİLDİ!');
@@ -373,7 +379,14 @@ export function StaffApp() {
                         <Bell className="w-6 h-6 animate-pulse" />
                       </div>
                       <div>
-                        <h4 className="font-bold text-lg text-white">{getTableName(alert.table)}</h4>
+                        <h4 className="font-bold text-lg text-white flex items-center gap-2">
+                          {getTableName(alert.table)}
+                          {alert.callCount > 1 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-black" title={`${alert.callCount} dəfə çağırıldı`}>
+                              ×{alert.callCount}
+                            </span>
+                          )}
+                        </h4>
                         <p className="text-amber-400 text-sm font-semibold">{alert.type === 'waiter' ? 'Ofisiant Çağırışı' : 'Hesab İstəyi'}</p>
                       </div>
                     </div>
@@ -390,7 +403,7 @@ export function StaffApp() {
                   )}
 
                   <div className="text-xs text-slate-400 mb-4">
-                    Zaman: {new Date(alert.time).toLocaleTimeString()}
+                    {alert.callCount > 1 ? 'Son çağırış: ' : 'Zaman: '}{new Date(alert.time).toLocaleTimeString()}
                   </div>
                   <button 
                     onClick={() => resolveAlert(alert.id)}

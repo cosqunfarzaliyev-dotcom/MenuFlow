@@ -188,8 +188,25 @@ export function CustomerApp() {
     setCartItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
   };
 
+  // Spam guard for the "Garson" button: once a call goes through, the
+  // button stays disabled (with a live countdown) for a short cooldown
+  // instead of letting a nervous customer fire off a dozen taps. Repeat
+  // taps after the cooldown still just bump the same staff-side
+  // notification (see upsert_alert), they don't pile up as new ones.
+  const WAITER_COOLDOWN_SECONDS = 30;
   const [waiterCalling, setWaiterCalling] = useState(false);
+  const [waiterCooldownLeft, setWaiterCooldownLeft] = useState(0);
+
+  useEffect(() => {
+    if (waiterCooldownLeft <= 0) return undefined;
+    const iv = setInterval(() => {
+      setWaiterCooldownLeft((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [waiterCooldownLeft > 0]);
+
   const handleCallWaiter = async () => {
+    if (waiterCalling || waiterCooldownLeft > 0) return;
     setWaiterCalling(true);
     const { error } = await createAlert({
       tableId: currentTable.id,
@@ -197,14 +214,18 @@ export function CustomerApp() {
       note: getLocalizedText('waiterRequestNote', lang),
     });
     setWaiterCalling(false);
+    if (!error) setWaiterCooldownLeft(WAITER_COOLDOWN_SECONDS);
     alert(error ? (error.message || getLocalizedText('genericError', lang) || 'Xəta baş verdi.') : getLocalizedText("waiterCalled", lang));
   };
 
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
   const [walletPaying, setWalletPaying] = useState(null); // 'google_pay' | 'apple_pay' | null
+  const [billRequesting, setBillRequesting] = useState(false);
   const billTotal = activeOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
   const handleRequestBill = async (methodKey) => {
+    if (billRequesting) return;
+    setBillRequesting(true);
     const paymentLabels = {
       cash: getLocalizedText('cash', lang),
       card: getLocalizedText('card', lang),
@@ -220,6 +241,7 @@ export function CustomerApp() {
       paymentMethodLabel: paymentLabel,
       note: getLocalizedText('billRequestNote', lang),
     });
+    setBillRequesting(false);
 
     alert(error ? (error.message || getLocalizedText('genericError', lang) || 'Xəta baş verdi.') : getLocalizedText("billRequested", lang));
     setIsBillModalOpen(false);
@@ -552,7 +574,13 @@ export function CustomerApp() {
         <div className="max-w-md mx-auto grid grid-cols-4 gap-1 py-2">
           <BottomNavButton icon={<Home className="w-5 h-5" />} label="Menu" active onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
           <BottomNavButton icon={<ShoppingCart className="w-5 h-5" />} label="Səbət" badge={cartTotalQty > 0 ? cartTotalQty : null} onClick={() => setIsCartOpen(true)} />
-          <BottomNavButton icon={<Bell className="w-5 h-5" />} label="Garson" loading={waiterCalling} onClick={handleCallWaiter} />
+          <BottomNavButton
+            icon={<Bell className="w-5 h-5" />}
+            label={waiterCooldownLeft > 0 ? `${waiterCooldownLeft}s` : 'Garson'}
+            loading={waiterCalling}
+            disabled={waiterCooldownLeft > 0}
+            onClick={handleCallWaiter}
+          />
           <BottomNavButton icon={<CreditCard className="w-5 h-5" />} label="Hesab" onClick={() => setIsBillModalOpen(true)} />
         </div>
       </nav>
@@ -593,18 +621,23 @@ export function CustomerApp() {
               <button
                 type="button"
                 onClick={() => handleRequestBill('cash')}
-                className="flex-1 py-3 bg-[#F7F8FA] hover:bg-[#EFEFF3] text-[#14151A] rounded-xl font-bold transition-colors border border-[#E8E8E8]"
+                disabled={billRequesting}
+                className="flex-1 py-3 bg-[#F7F8FA] hover:bg-[#EFEFF3] text-[#14151A] rounded-xl font-bold transition-colors border border-[#E8E8E8] disabled:opacity-60"
               >
                 {getLocalizedText("cash", lang)}
               </button>
               <button
                 type="button"
                 onClick={() => handleRequestBill('card')}
-                className="customer-btn-primary flex-1 h-auto py-3 text-sm"
+                disabled={billRequesting}
+                className="customer-btn-primary flex-1 h-auto py-3 text-sm disabled:opacity-60"
               >
                 {getLocalizedText("card", lang)}
               </button>
             </div>
+            {/* Changing your mind here (cash -> card etc.) after already
+                requesting the bill updates the same staff-side alert in
+                place instead of sending a second, confusing notification. */}
 
             {/* Always shown to customers — feature-detecting the wallet APIs
                 up front hid these buttons on browsers/webviews that report
@@ -644,11 +677,11 @@ export function CustomerApp() {
   );
 }
 
-function BottomNavButton({ icon, label, active, badge, loading, onClick }) {
+function BottomNavButton({ icon, label, active, badge, loading, disabled, onClick }) {
   return (
     <button
       onClick={onClick}
-      disabled={loading}
+      disabled={loading || disabled}
       className="flex flex-col items-center justify-center gap-1 py-1.5 rounded-2xl transition-all active:scale-95 disabled:opacity-60"
     >
       <div className="relative flex items-center justify-center">

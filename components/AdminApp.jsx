@@ -11,6 +11,7 @@ import {
   Settings, Plus, Edit2, Trash2, Shield, QrCode, Lock, BarChart3, Users, Download, Printer,
   TrendingUp, Clock, Activity, CheckCircle2, LayoutDashboard, Table2, ListOrdered, FileBarChart2,
   Search, Bell, ChevronRight, UserCircle2, Package, DollarSign, Megaphone, Palette, ClipboardList,
+  Wallet, CreditCard, Smartphone,
 } from 'lucide-react';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
 import { LoadingState, ErrorState, EmptyState, PageSkeleton } from '@/components/ui';
@@ -426,6 +427,7 @@ export function AdminApp() {
     { key: 'tables', label: 'Masalar', icon: <Table2 /> },
     { key: 'qrcodes', label: 'QR', icon: <QrCode /> },
     { key: 'orders', label: 'Sifarişlər', icon: <ListOrdered /> },
+    { key: 'payments', label: 'Ödənişlər', icon: <Wallet /> },
     { key: 'reports', label: 'Hesabat', icon: <FileBarChart2 /> },
     { key: 'promotions', label: 'Kampaniyalar', icon: <Megaphone /> },
     { key: 'design', label: 'Dizayn', icon: <Palette /> },
@@ -441,6 +443,7 @@ export function AdminApp() {
     tables: 'Masalar',
     qrcodes: 'QR Kod Generatoru',
     orders: 'Sifarişlər',
+    payments: 'Ödənişlər',
     reports: 'Hesabat',
     promotions: 'Kampaniyalar və Endirimlər',
     design: 'Dizayn (Theme Builder)',
@@ -576,6 +579,11 @@ export function AdminApp() {
             <OrdersManagement orders={orders} tables={tables} currencySymbol={settings.currencySymbol} />
           )}
 
+          {/* Ödənişlər — nəğd / post-terminal / Google-Apple Pay ayrı sxemalarla */}
+          {activeTab === 'payments' && (
+            <PaymentsManagement orders={orders} tables={tables} currencySymbol={settings.currencySymbol} />
+          )}
+
           {/* Hesabat */}
           {activeTab === 'reports' && (
             <AnalyticsDashboard orders={orders} tables={tables} />
@@ -637,7 +645,7 @@ export function AdminApp() {
                       </button>
                       <button 
                         onClick={() => handleDeleteProduct(product.id)}
-                        className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                        className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -670,7 +678,7 @@ export function AdminApp() {
                       </button>
                       <button 
                         onClick={() => handleDeleteCategory(category.id)}
-                        className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                        className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1121,7 +1129,7 @@ function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, isAlert }) 
           <button 
             onClick={isAlert ? onCancel : onConfirm}
             className={`flex-1 py-3 text-white rounded-xl font-bold transition-colors ${
-              isAlert ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'
+              isAlert ? 'bg-blue-600 hover:bg-blue-500' : 'bg-rose-600 hover:bg-rose-500'
             }`}
           >
             {isAlert ? 'Tamam' : 'Bəli, Sil'}
@@ -1143,18 +1151,6 @@ function SidebarBtn({ icon, label, active, onClick }) {
       <span className={active ? 'text-white' : 'text-slate-400'}>{React.cloneElement(icon, { className: 'w-[18px] h-[18px]' })}</span>
       {label}
     </button>
-  );
-}
-
-function StatCard({ label, value, change }) {
-  return (
-    <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl">
-      <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">{label}</p>
-      <div className="flex items-end justify-between">
-        <h4 className="text-2xl font-bold text-white">{value}</h4>
-        <span className="text-emerald-400 text-xs font-bold">{change}</span>
-      </div>
-    </div>
   );
 }
 
@@ -1304,10 +1300,10 @@ function AnalyticsDashboard({ orders, tables }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label={timeFilter === 'day' ? "Günlük Gəlir" : timeFilter === 'week' ? "Həftəlik Gəlir" : "Aylıq Gəlir"} value={`${stats.revenue.toFixed(2)} ₼`} icon={<TrendingUp className="text-emerald-400" />} />
-        <StatCard label={timeFilter === 'day' ? "Bugünkü Sifariş" : timeFilter === 'week' ? "Həftəlik Sifariş" : "Aylıq Sifariş"} value={stats.count} icon={<Activity className="text-blue-400" />} />
-        <StatCard label="Orta Hesab (AOV)" value={`${stats.aov.toFixed(2)} ₼`} icon={<BarChart3 className="text-purple-400" />} />
-        <StatCard label="Aktiv Masalar" value={stats.activeTables} icon={<Users className="text-amber-400" />} />
+        <KpiCard label={timeFilter === 'day' ? "Günlük Gəlir" : timeFilter === 'week' ? "Həftəlik Gəlir" : "Aylıq Gəlir"} value={`${stats.revenue.toFixed(2)} ₼`} icon={<TrendingUp className="w-5 h-5 text-emerald-400" />} tint="bg-emerald-500/10" />
+        <KpiCard label={timeFilter === 'day' ? "Bugünkü Sifariş" : timeFilter === 'week' ? "Həftəlik Sifariş" : "Aylıq Sifariş"} value={stats.count} icon={<Activity className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10" />
+        <KpiCard label="Orta Hesab (AOV)" value={`${stats.aov.toFixed(2)} ₼`} icon={<BarChart3 className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10" />
+        <KpiCard label="Aktiv Masalar" value={stats.activeTables} icon={<Users className="w-5 h-5 text-amber-400" />} tint="bg-amber-500/10" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1457,10 +1453,9 @@ function statusBadgeClasses(status) {
   return 'bg-amber-500/10 text-amber-400';
 }
 
-// Dark-glass KPI card — same card/radius/shadow language as StatCard below,
-// just with a per-metric tinted icon well. Kept as a separate component
-// (rather than merging into StatCard) because the tint prop is genuinely a
-// different visual API; StatCard's "change" badge isn't used here.
+// Dark-glass KPI card — used for every metric strip in the admin panel
+// (Dashboard, Hesabat/Analytics, Ödənişlər) so every tab shares the same
+// tinted-icon-well treatment instead of each rolling its own variant.
 function KpiCard({ label, value, icon, tint }) {
   return (
     <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 flex items-center gap-4">
@@ -1768,6 +1763,125 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// Ödənişlər — orders split into three separate payment-method "schemas"
+// (cash / POS terminal / Google & Apple Pay), each with its own summary
+// and its own table, instead of one mixed order list.
+function PaymentSchemaTable({ title, icon, tint, rows, currencySymbol, emptyLabel }) {
+  const symbol = currencySymbol || '₼';
+  const total = rows.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden">
+      <div className="px-6 pt-6 pb-4 flex items-center justify-between flex-wrap gap-3">
+        <h4 className="text-white font-bold flex items-center gap-2">
+          <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${tint}`}>{icon}</span>
+          {title}
+        </h4>
+        <div className="flex items-center gap-4 text-sm">
+          <span className="text-slate-400">Say: <span className="text-white font-bold">{rows.length}</span></span>
+          <span className="text-slate-400">Cəmi: <span className="text-white font-bold">{total.toFixed(2)} {symbol}</span></span>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-slate-500 text-xs font-bold uppercase tracking-wide">
+              <th className="px-6 py-3 font-bold">Masa</th>
+              <th className="px-6 py-3 font-bold">Tarix</th>
+              <th className="px-6 py-3 font-bold">Məhsul</th>
+              <th className="px-6 py-3 font-bold">Məbləğ</th>
+              <th className="px-6 py-3 font-bold">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length > 0 ? rows.map(order => (
+              <tr key={order.id} className="hover:bg-slate-800/40 transition-colors border-t border-slate-800/60">
+                <td className="px-6 py-3.5"><span className="rounded-xl bg-slate-800 px-3 py-1.5 font-bold text-slate-200 inline-block">{order.tableName}</span></td>
+                <td className="px-6 py-3.5 text-slate-400">{new Date(order.time).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                <td className="px-6 py-3.5 text-slate-300">{order.items.length} məhsul</td>
+                <td className="px-6 py-3.5 font-bold text-white">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</td>
+                <td className="px-6 py-3.5">
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusBadgeClasses(order.status)}`}>
+                    {ORDER_STATUS_LABELS[order.status] || 'Gözləyir'}
+                  </span>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={5} className="px-6 py-8 text-center text-slate-500 text-sm">{emptyLabel}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PaymentsManagement({ orders, tables, currencySymbol }) {
+  const symbol = currencySymbol || '₼';
+
+  const withTableName = useMemo(() => {
+    return [...orders].reverse().map(o => {
+      const table = tables.find(t => t.id === o.table);
+      return { ...o, tableName: table ? table.name : `Masa ${o.table}` };
+    });
+  }, [orders, tables]);
+
+  const cashOrders = useMemo(() => withTableName.filter(o => o.paymentMethod === 'cash'), [withTableName]);
+  const cardOrders = useMemo(() => withTableName.filter(o => o.paymentMethod === 'card'), [withTableName]);
+  const walletOrders = useMemo(() => withTableName.filter(o => ['google_pay', 'apple_pay'].includes(o.paymentMethod)), [withTableName]);
+  const unspecifiedCount = withTableName.length - cashOrders.length - cardOrders.length - walletOrders.length;
+
+  const grandTotal = cashOrders.reduce((s, o) => s + (Number(o.total) || 0), 0)
+    + cardOrders.reduce((s, o) => s + (Number(o.total) || 0), 0)
+    + walletOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard label="Nəğd" value={`${cashOrders.length}`} icon={<Wallet className="w-5 h-5 text-emerald-400" />} tint="bg-emerald-500/10" />
+        <KpiCard label="Post Terminal" value={`${cardOrders.length}`} icon={<CreditCard className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10" />
+        <KpiCard label="Google / Apple Pay" value={`${walletOrders.length}`} icon={<Smartphone className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10" />
+        <KpiCard label="Ümumi Ödəniş" value={`${grandTotal.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-amber-400" />} tint="bg-amber-500/10" />
+      </div>
+
+      <PaymentSchemaTable
+        title="Nəğd Ödənişlər"
+        icon={<Wallet className="w-4 h-4 text-emerald-400" />}
+        tint="bg-emerald-500/10"
+        rows={cashOrders}
+        currencySymbol={symbol}
+        emptyLabel="Hələ nəğd ödəniş qeydə alınmayıb"
+      />
+
+      <PaymentSchemaTable
+        title="Post Terminal Ödənişləri"
+        icon={<CreditCard className="w-4 h-4 text-blue-400" />}
+        tint="bg-blue-500/10"
+        rows={cardOrders}
+        currencySymbol={symbol}
+        emptyLabel="Hələ post terminal ödənişi qeydə alınmayıb"
+      />
+
+      <PaymentSchemaTable
+        title="Google Pay / Apple Pay Ödənişləri"
+        icon={<Smartphone className="w-4 h-4 text-purple-400" />}
+        tint="bg-purple-500/10"
+        rows={walletOrders}
+        currencySymbol={symbol}
+        emptyLabel="Hələ Google Pay / Apple Pay ödənişi qeydə alınmayıb"
+      />
+
+      {unspecifiedCount > 0 && (
+        <p className="text-xs text-slate-500 font-semibold px-1">
+          {unspecifiedCount} sifarişdə ödəniş üsulu göstərilməyib (müştəri hələ hesab istəməyib və ya köhnə qeydlərdir), buna görə yuxarıdakı üç sxemaya daxil edilməyib.
+        </p>
+      )}
     </div>
   );
 }
