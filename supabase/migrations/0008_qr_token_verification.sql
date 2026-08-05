@@ -36,7 +36,7 @@ create extension if not exists pgcrypto;
 -- ----------------------------------------------------------------------------
 create table if not exists public.app_secrets (
   id boolean primary key default true check (id),  -- enforces exactly one row
-  qr_signing_key text not null default encode(gen_random_bytes(32), 'hex')
+  qr_signing_key text not null default encode(extensions.gen_random_bytes(32), 'hex')
 );
 alter table public.app_secrets enable row level security;
 insert into public.app_secrets (id) values (true) on conflict (id) do nothing;
@@ -56,13 +56,13 @@ create or replace function public.generate_qr_token(p_restaurant_id uuid, p_tabl
 returns text
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 stable
 as $$
   select encode(
-    hmac(
-      p_restaurant_id::text || ':' || p_table_id::text,
-      (select qr_signing_key from public.app_secrets limit 1),
+    extensions.hmac(
+      (p_restaurant_id::text || ':' || p_table_id::text)::bytea,
+      (select qr_signing_key from public.app_secrets limit 1)::bytea,
       'sha256'
     ),
     'hex'
