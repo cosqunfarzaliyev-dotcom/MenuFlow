@@ -30,6 +30,7 @@ export function AdminApp() {
   const { 
     products, categories, createProduct, updateProduct, deleteProduct, createCategory, updateCategory, deleteCategory, 
     tables, loadTables, loadMenuData, loadOrders, loadAlerts, updateTableName, isAdminAuthenticated, setIsAdminAuthenticated, orders,
+    qrTokensByTableId, loadQrTokens,
     settings: rawSettings, updateSettings, profile, loadProfile, restaurant,
   } = useAppStore();
 
@@ -309,6 +310,14 @@ export function AdminApp() {
     load();
   }, [loadMenuData, loadTables, loadOrders, loadAlerts, isAdminAuthenticated, restaurantResolved, profile]);
 
+  // QR token-ləri yalnız "QR Kodlar" tabı açılanda yüklə (sütun səviyyəli
+  // qorunmadadır, adi loadTables() ilə gəlmir — bax: 0008_qr_token_verification.sql)
+  useEffect(() => {
+    if (activeTab === 'qrcodes' && isAdminAuthenticated && restaurantResolved) {
+      loadQrTokens();
+    }
+  }, [activeTab, isAdminAuthenticated, restaurantResolved, loadQrTokens]);
+
   useEffect(() => {
     let prodSub, catSub, tableSub, orderSub;
     const start = async () => {
@@ -441,16 +450,20 @@ export function AdminApp() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f3f4f8] text-slate-900 font-sans flex">
+    <div className="min-h-screen bg-[#050505] text-white font-sans flex">
 
-      {/* Sidebar */}
-      <div className="hidden md:flex md:w-[280px] shrink-0 bg-white border-r border-slate-200 flex-col h-screen sticky top-0">
-        <div className="flex items-center gap-3 px-6 h-20 border-b border-slate-100">
+      {/* Sidebar — matches the dark glass shell used by Staff/SuperAdmin panels
+          and by this same file's own auth-gate screens (see
+          SubscriptionLockedScreen/RoleRedirect/UnassignedScreen below); this
+          used to be a separate light theme, which is what created the
+          light-shell/dark-tab split fixed in this pass. */}
+      <div className="hidden md:flex md:w-[280px] shrink-0 bg-slate-950 border-r border-slate-800 flex-col h-screen sticky top-0">
+        <div className="flex items-center gap-3 px-6 h-20 border-b border-slate-800">
           <div className="p-2 bg-blue-600 text-white rounded-xl shadow-sm shadow-blue-600/30">
             <Shield className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="font-bold text-base text-slate-900 leading-tight">{settings.restaurantName || "MenuFlow"}</h2>
+            <h2 className="font-bold text-base text-white leading-tight">{settings.restaurantName || "MenuFlow"}</h2>
             <span className="text-[11px] text-slate-400 font-semibold">Admin Paneli</span>
           </div>
         </div>
@@ -467,12 +480,12 @@ export function AdminApp() {
           ))}
         </div>
 
-        <div className="p-4 border-t border-slate-100 space-y-2">
-          <Link href="/" className="w-full flex items-center justify-center gap-2 py-2.5 text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 rounded-xl font-bold transition-all text-xs">
+        <div className="p-4 border-t border-slate-800 space-y-2">
+          <Link href="/" className="w-full flex items-center justify-center gap-2 py-2.5 text-blue-400 hover:text-white bg-blue-500/10 hover:bg-blue-600 rounded-xl font-bold transition-all text-xs">
             <QrCode className="w-4 h-4" />
             <span>Müştəri Menyusuna Keç</span>
           </Link>
-          <button onClick={handleLogout} className="w-full py-2.5 text-slate-500 hover:text-white bg-slate-100 hover:bg-slate-800 rounded-xl font-bold transition-colors text-xs">
+          <button onClick={handleLogout} className="w-full py-2.5 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-xl font-bold transition-colors text-xs">
             Çıxış et
           </button>
         </div>
@@ -482,32 +495,32 @@ export function AdminApp() {
       <div className="flex-1 min-w-0 flex flex-col">
 
         {/* Topbar */}
-        <div className="h-20 shrink-0 bg-white border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between gap-4 sticky top-0 z-10">
+        <div className="h-20 shrink-0 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800 px-4 sm:px-8 flex items-center justify-between gap-4 sticky top-0 z-10">
           <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-400 min-w-0">
             <span className="truncate">Admin</span>
             <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-            <span className="text-slate-900 truncate">{PAGE_TITLES[activeTab]}</span>
+            <span className="text-white truncate">{PAGE_TITLES[activeTab]}</span>
           </div>
 
           <div className="flex items-center gap-3 sm:gap-5 shrink-0">
-            <div className="hidden lg:flex items-center gap-2 bg-slate-100 rounded-xl px-3.5 py-2.5 w-64">
-              <Search className="w-4 h-4 text-slate-400" />
+            <div className="hidden lg:flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 w-64">
+              <Search className="w-4 h-4 text-slate-500" />
               <input
                 type="text"
                 placeholder="Axtar..."
-                className="bg-transparent outline-none text-sm text-slate-700 placeholder:text-slate-400 w-full"
+                className="bg-transparent outline-none text-sm text-white placeholder:text-slate-500 w-full"
               />
             </div>
-            <button className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-slate-500">
+            <button className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 transition-colors text-slate-400">
               <Bell className="w-4.5 h-4.5" />
-              <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-rose-500 border border-white" />
+              <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-rose-500 border border-slate-950" />
             </button>
-            <div className="flex items-center gap-2.5 pl-3 sm:border-l border-slate-200">
+            <div className="flex items-center gap-2.5 pl-3 sm:border-l border-slate-800">
               <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
                 {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
               </div>
               <div className="hidden sm:block leading-tight">
-                <p className="text-sm font-bold text-slate-900">{settings.restaurantName || 'MenuFlow'}</p>
+                <p className="text-sm font-bold text-white">{settings.restaurantName || 'MenuFlow'}</p>
                 <p className="text-[11px] text-slate-400 font-semibold">Admin</p>
               </div>
             </div>
@@ -515,11 +528,11 @@ export function AdminApp() {
         </div>
 
         {showTrialBanner && (
-          <div className="mx-4 sm:mx-8 mt-4 flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3">
-            <p className="text-amber-700 text-sm font-bold">
+          <div className="mx-4 sm:mx-8 mt-4 flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl px-5 py-3">
+            <p className="text-amber-300 text-sm font-bold">
               {trialDaysLeft === 0 ? 'Pulsuz sınaq bu gün bitir.' : `Pulsuz sınaq ${trialDaysLeft} gün sonra bitir.`}
             </p>
-            <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className="whitespace-nowrap text-xs font-bold bg-amber-500 hover:bg-amber-400 text-white px-4 py-1.5 rounded-lg transition-colors">
+            <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className="whitespace-nowrap text-xs font-bold bg-amber-500 hover:bg-amber-400 text-black px-4 py-1.5 rounded-lg transition-colors">
               Abunəliyə keç
             </a>
           </div>
@@ -586,7 +599,7 @@ export function AdminApp() {
           )}
 
           {['settings', 'products', 'categories', 'qrcodes'].includes(activeTab) && (
-          <div className="bg-[#0b0f1a] border border-slate-800 rounded-[22px] p-6 shadow-sm text-white">
+          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-sm text-white">
             {/* Settings Tab */}
             {activeTab === 'settings' && (
               <SettingsTab settings={settings} updateSettings={updateSettings} />
@@ -690,11 +703,16 @@ export function AdminApp() {
                   }
                 `}} />
 
+                <div className="mb-4 text-xs text-slate-400 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5">
+                  Hər QR kodun linkində gizli, imzalı bir token var (sifariş saxtakarlığının qarşısını alır). Əgər əvvəllər çap etdiyiniz QR kodlar işləmirsə, bu səhifədən yenidən çap edin — token avtomatik yenilənib.
+                </div>
+
                 <div className="min-h-[360px]">
                   {tables.length > 0 ? (
                     <div id="print-qr-area" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                       {tables.map(table => {
-                        const tableUrl = `${origin}/menu/${encodeURIComponent(restaurant?.slug || 'default')}/${encodeURIComponent(table.table_number || table.id)}`;
+                        const tableToken = qrTokensByTableId?.[table.id];
+                        const tableUrl = `${origin}/menu/${encodeURIComponent(restaurant?.slug || 'default')}/${encodeURIComponent(table.table_number || table.id)}${tableToken ? `?t=${encodeURIComponent(tableToken)}` : ''}`;
                         return (
                           <div key={table.id} id={`qr-card-${table.id}`} className="qr-code-card bg-white flex flex-col items-center justify-center gap-3 relative group p-4 border border-slate-200 rounded-2xl">
                             <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs uppercase tracking-wider">
@@ -1119,7 +1137,7 @@ function SidebarBtn({ icon, label, active, onClick }) {
     <button
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-        active ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+        active ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25' : 'text-slate-400 hover:text-white hover:bg-slate-800/70'
       }`}
     >
       <span className={active ? 'text-white' : 'text-slate-400'}>{React.cloneElement(icon, { className: 'w-[18px] h-[18px]' })}</span>
@@ -1433,22 +1451,25 @@ const ORDER_STATUS_LABELS = {
 };
 
 function statusBadgeClasses(status) {
-  if (status === ORDER_STATUS.SERVED || status === ORDER_STATUS.READY) return 'bg-emerald-50 text-emerald-600';
-  if (status === ORDER_STATUS.PREPARING || status === ORDER_STATUS.ACCEPTED) return 'bg-blue-50 text-blue-600';
-  if (status === ORDER_STATUS.CANCELLED) return 'bg-rose-50 text-rose-600';
-  return 'bg-amber-50 text-amber-600';
+  if (status === ORDER_STATUS.SERVED || status === ORDER_STATUS.READY) return 'bg-emerald-500/10 text-emerald-400';
+  if (status === ORDER_STATUS.PREPARING || status === ORDER_STATUS.ACCEPTED) return 'bg-blue-500/10 text-blue-400';
+  if (status === ORDER_STATUS.CANCELLED) return 'bg-rose-500/10 text-rose-400';
+  return 'bg-amber-500/10 text-amber-400';
 }
 
-// Light "soft" KPI card used across the new Dashboard — 22px radius, soft shadow.
+// Dark-glass KPI card — same card/radius/shadow language as StatCard below,
+// just with a per-metric tinted icon well. Kept as a separate component
+// (rather than merging into StatCard) because the tint prop is genuinely a
+// different visual API; StatCard's "change" badge isn't used here.
 function KpiCard({ label, value, icon, tint }) {
   return (
-    <div className="bg-white rounded-[22px] p-5 shadow-[0_2px_16px_rgba(15,23,42,0.06)] border border-slate-100 flex items-center gap-4">
+    <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 flex items-center gap-4">
       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${tint}`}>
         {icon}
       </div>
       <div className="min-w-0">
         <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-1 truncate">{label}</p>
-        <h4 className="text-xl font-bold text-slate-900 truncate">{value}</h4>
+        <h4 className="text-xl font-bold text-white truncate">{value}</h4>
       </div>
     </div>
   );
@@ -1523,24 +1544,26 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
     <div className="space-y-6">
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Ümumi Sifariş" value={orders.length} icon={<ListOrdered className="w-5 h-5 text-blue-600" />} tint="bg-blue-50" />
-        <KpiCard label="Bugünkü Gəlir" value={`${stats.todayRevenue.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-emerald-600" />} tint="bg-emerald-50" />
-        <KpiCard label="Aktiv Masa" value={stats.activeTables} icon={<Table2 className="w-5 h-5 text-amber-600" />} tint="bg-amber-50" />
-        <KpiCard label="Məhsul Sayı" value={products.length} icon={<Package className="w-5 h-5 text-purple-600" />} tint="bg-purple-50" />
+        <KpiCard label="Ümumi Sifariş" value={orders.length} icon={<ListOrdered className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10" />
+        <KpiCard label="Bugünkü Gəlir" value={`${stats.todayRevenue.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-emerald-400" />} tint="bg-emerald-500/10" />
+        <KpiCard label="Aktiv Masa" value={stats.activeTables} icon={<Table2 className="w-5 h-5 text-amber-400" />} tint="bg-amber-500/10" />
+        <KpiCard label="Məhsul Sayı" value={products.length} icon={<Package className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10" />
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-[22px] p-6 shadow-[0_2px_16px_rgba(15,23,42,0.06)] border border-slate-100">
-          <h4 className="text-slate-900 font-bold mb-6 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-blue-600" /> Gəlir (son 7 gün)</h4>
+        <div className="lg:col-span-2 bg-slate-900/60 border border-slate-800 rounded-3xl p-6">
+          <h4 className="text-white font-bold mb-6 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-blue-400" /> Gəlir (son 7 gün)</h4>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={stats.revenueByDay} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef1f6" />
-                <XAxis dataKey="label" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${symbol}${v}`} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                <XAxis dataKey="label" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${symbol}${v}`} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', boxShadow: '0 4px 20px rgba(15,23,42,0.08)' }}
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '14px', boxShadow: '0 4px 20px rgba(0,0,0,0.35)' }}
+                  labelStyle={{ color: '#e2e8f0' }}
+                  itemStyle={{ color: '#93c5fd' }}
                   formatter={(value) => [`${Number(value).toFixed(2)} ${symbol}`, 'Gəlir']}
                 />
                 <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6' }} activeDot={{ r: 6 }} />
@@ -1549,8 +1572,8 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
           </div>
         </div>
 
-        <div className="bg-white rounded-[22px] p-6 shadow-[0_2px_16px_rgba(15,23,42,0.06)] border border-slate-100">
-          <h4 className="text-slate-900 font-bold mb-4 flex items-center gap-2"><PieChartIcon className="w-4 h-4 text-amber-600" /> Kateqoriyalar</h4>
+        <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6">
+          <h4 className="text-white font-bold mb-4 flex items-center gap-2"><PieChartIcon className="w-4 h-4 text-amber-400" /> Kateqoriyalar</h4>
           <div className="h-48">
             {stats.categoryData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -1560,11 +1583,11 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
                       <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px' }} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '14px' }} labelStyle={{ color: '#e2e8f0' }} itemStyle={{ color: '#e2e8f0' }} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-slate-400 text-sm">Məlumat yoxdur</div>
+              <div className="h-full flex items-center justify-center text-slate-500 text-sm">Məlumat yoxdur</div>
             )}
           </div>
           <div className="mt-3 space-y-1.5">
@@ -1572,43 +1595,43 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
               <div key={i} className="flex justify-between items-center text-xs font-bold">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-                  <span className="text-slate-600">{c.name}</span>
+                  <span className="text-slate-300">{c.name}</span>
                 </div>
-                <span className="text-slate-900">{c.value}</span>
+                <span className="text-white">{c.value}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-[22px] p-6 shadow-[0_2px_16px_rgba(15,23,42,0.06)] border border-slate-100">
-        <h4 className="text-slate-900 font-bold mb-6 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-emerald-600" /> Ən Çox Satılan</h4>
+      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6">
+        <h4 className="text-white font-bold mb-6 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-emerald-400" /> Ən Çox Satılan</h4>
         <div className="h-64">
           {stats.bestSellers.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats.bestSellers} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef1f6" />
-                <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} interval={0} tick={{ width: 100 }} />
-                <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px' }} formatter={(v) => [`${v} ədəd`, 'Satış']} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} interval={0} tick={{ width: 100 }} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '14px' }} labelStyle={{ color: '#e2e8f0' }} itemStyle={{ color: '#6ee7b7' }} formatter={(v) => [`${v} ədəd`, 'Satış']} />
                 <Bar dataKey="count" name="Satış" fill="#10b981" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-full flex items-center justify-center text-slate-400 text-sm">Hələ satış yoxdur</div>
+            <div className="h-full flex items-center justify-center text-slate-500 text-sm">Hələ satış yoxdur</div>
           )}
         </div>
       </div>
 
       {/* Premium Table — Son Sifarişlər */}
-      <div className="bg-white rounded-[22px] shadow-[0_2px_16px_rgba(15,23,42,0.06)] border border-slate-100 overflow-hidden">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden">
         <div className="px-6 pt-6 pb-2 flex items-center justify-between">
-          <h4 className="text-slate-900 font-bold flex items-center gap-2"><Clock className="w-4 h-4 text-blue-600" /> Son Sifarişlər</h4>
+          <h4 className="text-white font-bold flex items-center gap-2"><Clock className="w-4 h-4 text-blue-400" /> Son Sifarişlər</h4>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400 text-xs font-bold uppercase tracking-wide">
+              <tr className="text-left text-slate-500 text-xs font-bold uppercase tracking-wide">
                 <th className="px-6 py-3 font-bold">Masa</th>
                 <th className="px-6 py-3 font-bold">Vaxt</th>
                 <th className="px-6 py-3 font-bold">Məhsul</th>
@@ -1618,11 +1641,11 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
             </thead>
             <tbody>
               {recentOrders.length > 0 ? recentOrders.map(order => (
-                <tr key={order.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-3.5"><span className="rounded-xl bg-slate-50 px-3 py-1.5 font-bold text-slate-800 inline-block">{order.tableName}</span></td>
-                  <td className="px-6 py-3.5 text-slate-500">{new Date(order.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                  <td className="px-6 py-3.5 text-slate-600">{order.items.length} məhsul</td>
-                  <td className="px-6 py-3.5 font-bold text-slate-900">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</td>
+                <tr key={order.id} className="hover:bg-slate-800/40 transition-colors border-t border-slate-800/60">
+                  <td className="px-6 py-3.5"><span className="rounded-xl bg-slate-800 px-3 py-1.5 font-bold text-slate-200 inline-block">{order.tableName}</span></td>
+                  <td className="px-6 py-3.5 text-slate-400">{new Date(order.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="px-6 py-3.5 text-slate-300">{order.items.length} məhsul</td>
+                  <td className="px-6 py-3.5 font-bold text-white">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</td>
                   <td className="px-6 py-3.5">
                     <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusBadgeClasses(order.status)}`}>
                       {ORDER_STATUS_LABELS[order.status] || 'Gözləyir'}
@@ -1631,7 +1654,7 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={5} className="px-6 py-10 text-center text-slate-400 text-sm">Hələ sifariş yoxdur</td>
+                  <td colSpan={5} className="px-6 py-10 text-center text-slate-500 text-sm">Hələ sifariş yoxdur</td>
                 </tr>
               )}
             </tbody>
@@ -1654,12 +1677,12 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
       {tables.length > 0 ? tables.map(table => {
         const status = tableStatus(table.id);
         return (
-          <div key={table.id} className="bg-white rounded-[22px] p-5 shadow-[0_2px_16px_rgba(15,23,42,0.06)] border border-slate-100">
+          <div key={table.id} className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5">
             <div className="flex items-start justify-between mb-3">
-              <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
                 <Table2 className="w-5 h-5" />
               </div>
-              <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold ${status ? statusBadgeClasses(status) : 'bg-slate-50 text-slate-400'}`}>
+              <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold ${status ? statusBadgeClasses(status) : 'bg-slate-800 text-slate-400'}`}>
                 {status ? ORDER_STATUS_LABELS[status] : 'Boş'}
               </span>
             </div>
@@ -1669,23 +1692,23 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
                   type="text"
                   value={editingTableName}
                   onChange={(e) => setEditingTableName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 font-bold text-sm"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-white font-bold text-sm focus:outline-none focus:border-blue-500"
                   autoFocus
                 />
                 <div className="flex gap-2">
                   <button
                     onClick={() => { updateTableName(table.id, editingTableName); setEditingTableId(null); }}
-                    className="flex-1 bg-blue-600 text-white text-xs font-bold py-1.5 rounded-lg"
+                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-1.5 rounded-lg transition-colors"
                   >Yadda saxla</button>
-                  <button onClick={() => setEditingTableId(null)} className="flex-1 bg-slate-100 text-slate-600 text-xs font-bold py-1.5 rounded-lg">Ləğv et</button>
+                  <button onClick={() => setEditingTableId(null)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-1.5 rounded-lg transition-colors">Ləğv et</button>
                 </div>
               </div>
             ) : (
               <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-900">{table.name}</span>
+                <span className="font-bold text-white">{table.name}</span>
                 <button
                   onClick={() => { setEditingTableId(table.id); setEditingTableName(table.name); }}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
                   title="Adı Dəyiş"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
@@ -1712,11 +1735,11 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
   }, [orders, tables]);
 
   return (
-    <div className="bg-white rounded-[22px] shadow-[0_2px_16px_rgba(15,23,42,0.06)] border border-slate-100 overflow-hidden">
+    <div className="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-slate-400 text-xs font-bold uppercase tracking-wide">
+            <tr className="text-left text-slate-500 text-xs font-bold uppercase tracking-wide">
               <th className="px-6 py-3.5 font-bold">Masa</th>
               <th className="px-6 py-3.5 font-bold">Tarix</th>
               <th className="px-6 py-3.5 font-bold">Məhsul</th>
@@ -1726,11 +1749,11 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
           </thead>
           <tbody>
             {sorted.length > 0 ? sorted.map(order => (
-              <tr key={order.id} className="hover:bg-slate-50 transition-colors border-t border-slate-50">
-                <td className="px-6 py-3.5"><span className="rounded-xl bg-slate-50 px-3 py-1.5 font-bold text-slate-800 inline-block">{order.tableName}</span></td>
-                <td className="px-6 py-3.5 text-slate-500">{new Date(order.time).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
-                <td className="px-6 py-3.5 text-slate-600">{order.items.length} məhsul</td>
-                <td className="px-6 py-3.5 font-bold text-slate-900">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</td>
+              <tr key={order.id} className="hover:bg-slate-800/40 transition-colors border-t border-slate-800/60">
+                <td className="px-6 py-3.5"><span className="rounded-xl bg-slate-800 px-3 py-1.5 font-bold text-slate-200 inline-block">{order.tableName}</span></td>
+                <td className="px-6 py-3.5 text-slate-400">{new Date(order.time).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                <td className="px-6 py-3.5 text-slate-300">{order.items.length} məhsul</td>
+                <td className="px-6 py-3.5 font-bold text-white">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</td>
                 <td className="px-6 py-3.5">
                   <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusBadgeClasses(order.status)}`}>
                     {ORDER_STATUS_LABELS[order.status] || 'Gözləyir'}
@@ -1739,7 +1762,7 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
               </tr>
             )) : (
               <tr>
-                <td colSpan={5} className="px-6 py-10 text-center text-slate-400 text-sm">Hələ sifariş yoxdur</td>
+                <td colSpan={5} className="px-6 py-10 text-center text-slate-500 text-sm">Hələ sifariş yoxdur</td>
               </tr>
             )}
           </tbody>
@@ -1753,12 +1776,12 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
 function UsersPlaceholder({ profile, restaurant, settings }) {
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-[22px] p-5 shadow-[0_2px_16px_rgba(15,23,42,0.06)] border border-slate-100 flex items-center gap-4">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 flex items-center gap-4">
         <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold">
           {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
         </div>
         <div>
-          <p className="font-bold text-slate-900">{profile?.email || settings.restaurantName}</p>
+          <p className="font-bold text-white">{profile?.email || settings.restaurantName}</p>
           <p className="text-xs text-slate-400 font-bold uppercase tracking-wide">Restoran Admini</p>
         </div>
       </div>

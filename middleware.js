@@ -2,14 +2,9 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-const getValidKey = () => {
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  const pubKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
-  if (anonKey && anonKey.startsWith("eyJ")) return anonKey;
-  if (pubKey && pubKey.startsWith("eyJ")) return pubKey;
-  return pubKey || anonKey;
-};
-const supabaseKey = getValidKey();
+const supabaseKey = (
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)?.trim();
 
 // Where each role belongs. Used both to bounce someone away from a panel
 // that isn't theirs, and to send them to the right place after login.

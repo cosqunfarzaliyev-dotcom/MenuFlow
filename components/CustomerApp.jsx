@@ -11,7 +11,22 @@ import { CartDrawer } from "@/components/CartDrawer";
 import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, QrCode, Home, CreditCard, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { getLocalizedText, getLocalizedCategoryName, getLocalizedProduct } from "@/lib/translations";
 import { applyDiscounts } from "@/lib/services/promotionsService";
-import { isApplePayAvailable, isGooglePayAvailable, requestWalletPayment } from "@/lib/services/paymentService";
+import { requestWalletPayment } from "@/lib/services/paymentService";
+
+// Only ever render admin-supplied banner links as a real navigable <a href>
+// if they're http(s) — blocks javascript:/data: URI injection via a
+// compromised or malicious admin account (banners are admin-controlled
+// content shown to every customer of that restaurant).
+const isSafeUrl = (url) => {
+  if (!url) return false;
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'https://menuflow.local';
+    const parsed = new URL(url, base);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
 
 export function CustomerApp() {
   const {
@@ -31,6 +46,7 @@ export function CustomerApp() {
     loadBanners,
     discounts,
     loadDiscounts,
+    setQrToken,
   } = useAppStore();
 
   const settings = restaurant
@@ -71,6 +87,12 @@ export function CustomerApp() {
         const queryTable = searchParams?.get('table');
         const tableNumber = routeTable || queryTable || "1";
         setTableId(tableNumber);
+
+        // Imzalı QR token (?t=...) — sifariş/çağırış RLS insert policy-ləri
+        // bunu tələb edir (bax: supabase/migrations/0008_qr_token_verification.sql).
+        // Linkdə token yoxdursa (köhnə/əl ilə yığılmış link), sadəcə boş
+        // qalır və server tərəf sifarişi rədd edəcək — spoof qorunması budur.
+        setQrToken(searchParams?.get('t') || null);
 
         const slug = params?.restaurant;
         if (slug) {
@@ -371,7 +393,7 @@ export function CustomerApp() {
                   key={banner.id}
                   className="relative shrink-0 w-[280px] sm:w-[360px] h-32 sm:h-40 rounded-3xl overflow-hidden shadow-md border border-[#E8E8E8]"
                 >
-                  {banner.link_url ? (
+                  {isSafeUrl(banner.link_url) ? (
                     <a href={banner.link_url} target="_blank" rel="noreferrer" className="block w-full h-full">
                       {content}
                     </a>
@@ -584,30 +606,30 @@ export function CustomerApp() {
               </button>
             </div>
 
-            {(isGooglePayAvailable() || isApplePayAvailable()) && (
-              <div className="flex gap-3 mt-3">
-                {isGooglePayAvailable() && (
-                  <button
-                    type="button"
-                    disabled={walletPaying === 'google_pay'}
-                    onClick={() => handleWalletPay('google_pay')}
-                    className="flex-1 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
-                  >
-                    {walletPaying === 'google_pay' ? '...' : 'G Pay'}
-                  </button>
-                )}
-                {isApplePayAvailable() && (
-                  <button
-                    type="button"
-                    disabled={walletPaying === 'apple_pay'}
-                    onClick={() => handleWalletPay('apple_pay')}
-                    className="flex-1 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
-                  >
-                    {walletPaying === 'apple_pay' ? '...' : ' Pay'}
-                  </button>
-                )}
-              </div>
-            )}
+            {/* Always shown to customers — feature-detecting the wallet APIs
+                up front hid these buttons on browsers/webviews that report
+                PaymentRequest/ApplePaySession late or inconsistently.
+                Tapping is itself the capability check: requestWalletPayment
+                (lib/services/paymentService.js) returns a clear error if the
+                wallet genuinely isn't available on this device. */}
+            <div className="flex gap-3 mt-3">
+              <button
+                type="button"
+                disabled={walletPaying === 'google_pay'}
+                onClick={() => handleWalletPay('google_pay')}
+                className="flex-1 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
+              >
+                {walletPaying === 'google_pay' ? '...' : 'G Pay'}
+              </button>
+              <button
+                type="button"
+                disabled={walletPaying === 'apple_pay'}
+                onClick={() => handleWalletPay('apple_pay')}
+                className="flex-1 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
+              >
+                {walletPaying === 'apple_pay' ? '...' : ' Pay'}
+              </button>
+            </div>
 
             <button
               onClick={() => setIsBillModalOpen(false)}

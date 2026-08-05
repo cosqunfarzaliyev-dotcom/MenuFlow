@@ -142,6 +142,17 @@ create policy "audit_logs_tenant_insert" on public.audit_logs
 -- restaurants: a restaurant_admin may now update their OWN restaurant's row
 -- (needed so branding/theme/logo changes from the Admin Panel persist —
 -- previously only super_admin could write to this table).
+--
+-- ⚠️ RLS is ROW-level, not column-level: on its own, this policy would let a
+-- restaurant_admin PATCH *any* column on their own row — including
+-- `plan`, `subscription_status`, `trial_ends_at`, `is_active`, `slug` —
+-- straight from the browser console, e.g.
+--   supabase.from('restaurants').update({ subscription_status: 'active' })...
+-- which is a free, permanent "upgrade" that skips billing entirely (the same
+-- class of bug 0003_billing_self_service.sql already had to close on
+-- `profiles`). The trigger below closes it here too: it silently reverts
+-- billing/identity fields to their previous value unless the caller is a
+-- super_admin, no matter what the UPDATE statement sent.
 drop policy if exists "restaurants_owner_update" on public.restaurants;
 create policy "restaurants_owner_update" on public.restaurants
   for update to authenticated
@@ -152,3 +163,26 @@ create policy "restaurants_owner_update" on public.restaurants
       where id = auth.uid() and role = 'restaurant_admin' and restaurant_id = restaurants.id
     )
   );
+
+create or replace function public.protect_restaurant_privileged_fields()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_super_admin() then
+    new.slug := old.slug;
+    new.plan := old.plan;
+    new.subscription_status := old.subscription_status;
+    new.trial_ends_at := old.trial_ends_at;
+    new.is_active := old.is_active;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists restaurants_protect_privileged_fields on public.restaurants;
+create trigger restaurants_protect_privileged_fields
+  before update on public.restaurants
+  for each row execute procedure public.protect_restaurant_privileged_fields();

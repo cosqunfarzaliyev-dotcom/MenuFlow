@@ -16,6 +16,20 @@ import {
 import { useAppStore } from '@/lib/store';
 import { fetchTableByNumber } from '@/lib/services/supabaseService';
 import { getLocalizedProduct, getLocalizedText } from '@/lib/translations';
+import { requestWalletPayment } from '@/lib/services/paymentService';
+
+// Shown for every customer regardless of browser/device — feature-detecting
+// window.PaymentRequest/ApplePaySession beforehand just makes the buttons
+// invisible on browsers that report those APIs late or inconsistently
+// (common in in-app webviews). Tapping the button is itself the capability
+// check: if the wallet genuinely isn't available, requestWalletPayment()
+// below returns a clear error instead of silently charging nothing.
+const PAYMENT_METHODS = [
+  { key: 'cash', labelKey: 'cash', icon: '💵' },
+  { key: 'card', labelKey: 'card', icon: '💳' },
+  { key: 'google_pay', label: 'Google Pay', icon: '🅖' },
+  { key: 'apple_pay', label: 'Apple Pay', icon: '' },
+];
 
 export const CartDrawer = ({
   isOpen,
@@ -34,6 +48,8 @@ export const CartDrawer = ({
   const [orderSubmitted, setOrderSubmitted] = useState(false);
   const [kitchenNote, setKitchenNote] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [walletAuthorizing, setWalletAuthorizing] = useState(false);
 
   const currentTable = tables.find(t => t.table_number?.toString() === tableNumber?.toString() || t.id === tableNumber) || { id: tableNumber, name: `Masa ${tableNumber}` };
 
@@ -57,6 +73,7 @@ export const CartDrawer = ({
   const handleResetOrder = () => {
     setOrderSubmitted(false);
     setKitchenNote("");
+    setPaymentMethod('cash');
     if (typeof onClearCart === 'function') {
       onClearCart();
     }
@@ -65,8 +82,32 @@ export const CartDrawer = ({
     }
   };
 
+  const paymentLabels = {
+    cash: getLocalizedText('cash', lang),
+    card: getLocalizedText('card', lang),
+    google_pay: 'Google Pay',
+    apple_pay: 'Apple Pay',
+  };
+
   const handleSendOrder = async () => {
     setSubmitError("");
+
+    // Wallet methods need the native Payment Request sheet approved before
+    // the order is created — cash/card just tag the order and send.
+    if (paymentMethod === 'google_pay' || paymentMethod === 'apple_pay') {
+      setWalletAuthorizing(true);
+      const { token, error: walletError } = await requestWalletPayment({
+        method: paymentMethod,
+        amount: totalPrice || 0,
+        label: getLocalizedText('cartTitle', lang) || 'MenuFlow sifariş',
+      });
+      setWalletAuthorizing(false);
+      if (!token) {
+        setSubmitError(walletError?.message || 'Ödəniş ləğv edildi.');
+        return;
+      }
+    }
+
     try {
       let table = tables.find((t) =>
         t.table_number?.toString() === tableNumber || t.id === tableNumber,
@@ -95,6 +136,8 @@ export const CartDrawer = ({
         total: totalPrice,
         items,
         note: kitchenNote,
+        paymentMethod,
+        paymentMethodLabel: paymentLabels[paymentMethod] || paymentMethod,
       });
 
       if (error) {
@@ -304,14 +347,39 @@ export const CartDrawer = ({
               </div>
             </div>
 
+            {/* Payment method — cash/card just tag the order; Google/Apple
+                Pay pop the native wallet sheet on submit (see handleSendOrder). */}
+            <div>
+              <label className="text-[11px] font-semibold text-[#8A8F98] block mb-1.5">
+                {getLocalizedText("paymentType", lang)}
+              </label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m.key}
+                    type="button"
+                    onClick={() => setPaymentMethod(m.key)}
+                    className={`flex flex-col items-center justify-center gap-0.5 rounded-xl border py-2 text-[10px] font-bold transition-colors ${
+                      paymentMethod === m.key
+                        ? 'border-[var(--theme-primary)] bg-[var(--theme-primary)]/10 text-[var(--theme-primary)]'
+                        : 'border-[#E8E8E8] bg-[#F7F8FA] text-[#5A5F68] hover:bg-[#EFEFF3]'
+                    }`}
+                  >
+                    <span className="text-sm leading-none">{m.icon}</span>
+                    <span className="truncate max-w-full">{m.label || getLocalizedText(m.labelKey, lang)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
               onClick={handleSendOrder}
-              disabled={items.length === 0}
-              className={`customer-btn-primary w-full h-auto py-3.5 text-xs flex items-center justify-center gap-2 ${items.length === 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
+              disabled={items.length === 0 || walletAuthorizing}
+              className={`customer-btn-primary w-full h-auto py-3.5 text-xs flex items-center justify-center gap-2 ${(items.length === 0 || walletAuthorizing) ? 'opacity-60 cursor-not-allowed' : ''}`}
               id="cart-submit-order-btn"
             >
               <Send className="w-4 h-4" />
-              <span>{getLocalizedText("sendToWaiterAndKitchen", lang)}</span>
+              <span>{walletAuthorizing ? '...' : getLocalizedText("sendToWaiterAndKitchen", lang)}</span>
             </button>
           </div>
         )}
