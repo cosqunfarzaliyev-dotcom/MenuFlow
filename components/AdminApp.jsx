@@ -484,6 +484,10 @@ export function AdminApp() {
         </div>
 
         <div className="p-4 border-t border-slate-800 space-y-2">
+          <Link href="/staff" className="w-full flex items-center justify-center gap-2 py-2.5 text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-emerald-600 rounded-xl font-bold transition-all text-xs border border-emerald-500/20">
+            <UtensilsCrossed className="w-4 h-4" />
+            <span>Ofisiant (Staff) Paneli</span>
+          </Link>
           <Link href="/" className="w-full flex items-center justify-center gap-2 py-2.5 text-blue-400 hover:text-white bg-blue-500/10 hover:bg-blue-600 rounded-xl font-bold transition-all text-xs">
             <QrCode className="w-4 h-4" />
             <span>Müştəri Menyusuna Keç</span>
@@ -506,6 +510,14 @@ export function AdminApp() {
           </div>
 
           <div className="flex items-center gap-3 sm:gap-5 shrink-0">
+            <Link
+              href="/staff"
+              className="hidden sm:flex items-center gap-2 px-3.5 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all"
+              title="Ofisiant / Mətbəx panelinə keç"
+            >
+              <UtensilsCrossed className="w-4 h-4" />
+              <span>Ofisiant Paneli</span>
+            </Link>
             <div className="hidden lg:flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 w-64">
               <Search className="w-4 h-4 text-slate-500" />
               <input
@@ -1890,19 +1902,28 @@ function PaymentsManagement({ orders, tables, currencySymbol }) {
 function UsersPlaceholder({ profile, restaurant, settings }) {
   return (
     <div className="space-y-4">
-      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 flex items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold">
-          {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold">
+            {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="font-bold text-white">{profile?.email || settings.restaurantName}</p>
+            <p className="text-xs text-emerald-400 font-bold uppercase tracking-wide">Restoran Admini & Ofisiant Səlahiyyəti</p>
+          </div>
         </div>
-        <div>
-          <p className="font-bold text-white">{profile?.email || settings.restaurantName}</p>
-          <p className="text-xs text-slate-400 font-bold uppercase tracking-wide">Restoran Admini</p>
-        </div>
+        <Link
+          href="/staff"
+          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+        >
+          <UtensilsCrossed className="w-4 h-4" />
+          <span>Ofisiant Panelinə Keç</span>
+        </Link>
       </div>
       <EmptyState
         icon={<UserCircle2 className="w-8 h-8 text-blue-400" />}
-        title="İstifadəçi idarəetməsi tezliklə"
-        description="Hazırda panelə tək bir admin hesabı ilə giriş mümkündür. Komanda üzvləri və rollar üçün istifadəçi idarəetməsi yaxın zamanda əlavə olunacaq."
+        title="Xüsusi ofisiant qeydiyyatına ehtiyac yoxdur"
+        description="Restoran sahibi olaraq eyni email və şifrənizlə həm Admin panelinə (/admin), həm də Ofisiant / Mətbəx panelinə (/staff) daxil ola bilərsiniz."
       />
     </div>
   );

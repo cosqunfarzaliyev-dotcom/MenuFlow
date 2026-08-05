@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAppStore, ORDER_STATUS } from '@/lib/store';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { subscribeOrders, subscribeAlerts } from '@/lib/services/realtime';
-import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode, Lock } from 'lucide-react';
+import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode, Lock, Shield } from 'lucide-react';
 import { OrderCard } from '@/components/staff/OrderCard';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
 import { LoadingState, ErrorState, EmptyState, PageSkeleton } from '@/components/ui';

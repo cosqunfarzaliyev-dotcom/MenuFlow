@@ -37,8 +37,8 @@ export default function ResetPasswordPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (password.length < 6) {
-      setError('Şifrə ən azı 6 simvol olmalıdır.');
+    if (password.length < 8) {
+      setError('Şifrə ən azı 8 simvol olmalıdır.');
       return;
     }
     if (password !== confirmPassword) {
