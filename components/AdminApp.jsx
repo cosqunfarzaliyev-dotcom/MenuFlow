@@ -321,23 +321,25 @@ export function AdminApp() {
 
   useEffect(() => {
     let prodSub, catSub, tableSub, orderSub;
+    const restaurantId = profile?.restaurant_id || restaurant?.id || null;
+
     const start = async () => {
       try {
         prodSub = await subscribeProducts(() => {
           loadMenuData();
-        });
+        }, { restaurantId });
 
         catSub = await subscribeCategories(() => {
           loadMenuData();
-        });
+        }, { restaurantId });
 
         tableSub = await subscribeTables(() => {
           loadTables();
-        });
+        }, { restaurantId });
 
         orderSub = await subscribeOrders(({ event }) => {
           loadOrders();
-        });
+        }, { restaurantId });
       } catch (err) {
         console.warn('Admin realtime subscribe error', err);
       }
@@ -351,7 +353,7 @@ export function AdminApp() {
       if (tableSub && typeof tableSub.unsubscribe === 'function') tableSub.unsubscribe();
       if (orderSub && typeof orderSub.unsubscribe === 'function') orderSub.unsubscribe();
     };
-  }, [loadMenuData, loadTables, loadOrders]);
+  }, [loadMenuData, loadTables, loadOrders, profile?.restaurant_id, restaurant?.id]);
 
   if (!isMounted) return null;
 

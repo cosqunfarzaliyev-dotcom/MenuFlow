@@ -129,11 +129,13 @@ export function StaffApp() {
       }
 
       try {
+        const restaurantId = profile?.restaurant_id || restaurant?.id || null;
+
         const orderSub = await subscribeOrders(({ event, table, record }) => {
           // Refresh orders from Supabase; realtime ensures low-latency updates
           loadOrders();
           if (event === 'INSERT') triggerNotification('⚡ Yeni sifariş gəldi!');
-        });
+        }, { restaurantId });
 
         const alertSub = await subscribeAlerts(({ event, table, record }) => {
           loadAlerts();
@@ -149,7 +151,7 @@ export function StaffApp() {
           } else {
             triggerNotification('🔔 OFİSİANT ÇAĞIRILDI!');
           }
-        });
+        }, { restaurantId });
 
         setLoading(false);
 

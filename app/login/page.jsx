@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase, supabaseReady } from '@/lib/supabase';
@@ -13,7 +13,12 @@ const HOME_FOR_ROLE = {
   staff: '/staff',
 };
 
-export default function LoginPage() {
+const buildAuthOptions = (captchaToken = null, overrides = {}) => ({
+  ...(captchaToken ? { captchaToken } : {}),
+  ...overrides,
+});
+
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get('next');
@@ -65,7 +70,11 @@ export default function LoginPage() {
     setSubmitting(true);
     setError('');
     setInfo('');
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+      options: buildAuthOptions(undefined),
+    });
     setSubmitting(false);
     if (signInError) {
       if (/email.*not.*confirmed/i.test(signInError.message || '')) {
@@ -125,9 +134,9 @@ export default function LoginPage() {
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: cleanEmail,
       password,
-      options: {
+      options: buildAuthOptions(undefined, {
         emailRedirectTo: `${window.location.origin}/onboarding`,
-      },
+      }),
     });
 
     setSubmitting(false);
@@ -286,6 +295,18 @@ export default function LoginPage() {
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={(
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
+      </div>
+    )}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
 

@@ -56,6 +56,8 @@ export default function OnboardingPage() {
     if (!form.name.trim() || !form.slug.trim()) return;
     setSubmitting(true);
     setError('');
+    // CAPTCHA can be wired into the login/signup surface later; onboarding
+    // keeps the existing session flow and server-side RPC validation intact.
     const { restaurant, error: createError } = await createRestaurantSelfService({
       slug: form.slug.trim(),
       name: form.name.trim(),

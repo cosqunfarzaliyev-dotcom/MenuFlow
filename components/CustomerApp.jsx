@@ -116,18 +116,23 @@ export function CustomerApp() {
     loadAppData();
   }, [params, searchParams, loadMenuData, loadOrders, loadAlerts, loadTables, loadRestaurantBySlug, loadBanners, loadDiscounts]);
 
+  const resolvedTable = tables.find(
+    (t) => t.table_number?.toString() === tableId?.toString() || t.id === tableId,
+  );
+
   useEffect(() => {
     let sub;
     if (!tableId) return undefined;
 
     const startSub = async () => {
       try {
-        sub = await subscribeOrders(({ event, table, record }) => {
-          const recTable = record?.table_id ?? record?.table;
-          if (recTable && recTable.toString() === tableId.toString()) {
+        sub = await subscribeOrders(({ record }) => {
+          const recTableId = record?.table_id?.toString();
+          const myTableId = resolvedTable?.id?.toString();
+          if (recTableId && myTableId && recTableId === myTableId) {
             loadOrders();
           }
-        });
+        }, { restaurantId: restaurant?.id || null });
       } catch (err) {
         console.warn('Failed to subscribe to orders realtime:', err);
       }
@@ -140,7 +145,7 @@ export function CustomerApp() {
         sub.unsubscribe();
       }
     };
-  }, [tableId, loadOrders]);
+  }, [tableId, resolvedTable?.id, loadOrders, restaurant?.id]);
 
   useEffect(() => {
     let prodSub;
@@ -148,7 +153,7 @@ export function CustomerApp() {
       try {
         prodSub = await subscribeProducts(() => {
           loadMenuData();
-        });
+        }, { restaurantId: restaurant?.id || null });
       } catch (err) {
         console.warn('Failed to subscribe to products realtime:', err);
       }
@@ -157,9 +162,9 @@ export function CustomerApp() {
     return () => {
       if (prodSub && typeof prodSub.unsubscribe === 'function') prodSub.unsubscribe();
     };
-  }, [loadMenuData]);
+  }, [loadMenuData, restaurant?.id]);
 
-  const currentTable = tables.find(t => t.table_number?.toString() === tableId?.toString() || t.id === tableId) || { id: tableId, name: `Masa ${tableId}` };
+  const currentTable = resolvedTable || { id: tableId, name: `Masa ${tableId}` };
 
   const activeOrders = orders.filter(
     (o) => o.table === tableId && ![ORDER_STATUS.SERVED, ORDER_STATUS.CANCELLED].includes(o.status),
