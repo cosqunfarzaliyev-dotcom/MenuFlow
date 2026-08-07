@@ -21,7 +21,7 @@ import { SettingsTab } from '@/components/SettingsTab';
 import { PromotionsTab } from '@/components/PromotionsTab';
 import { DesignTab } from '@/components/DesignTab';
 import { AuditLogTab } from '@/components/AuditLogTab';
-import { getTrialDaysLeft, isAccessBlocked } from '@/lib/services/billingService';
+import { getTrialDaysLeft, isAccessBlocked, accessBlockReason } from '@/lib/services/billingService';
 
 // Admin access is gated behind Supabase Auth (email/password) rather than a
 // client-side password, since any NEXT_PUBLIC_* value is bundled into the
@@ -595,7 +595,7 @@ export function AdminApp() {
 
           {/* Ödənişlər — nəğd / post-terminal / Google-Apple Pay ayrı sxemalarla */}
           {activeTab === 'payments' && (
-            <PaymentsManagement orders={orders} tables={tables} currencySymbol={settings.currencySymbol} />
+            <PaymentsManagement orders={orders} tables={tables} currencySymbol={settings.currencySymbol} restaurant={restaurant} />
           )}
 
           {/* Hesabat */}
@@ -1836,8 +1836,9 @@ function PaymentSchemaTable({ title, icon, tint, rows, currencySymbol, emptyLabe
   );
 }
 
-function PaymentsManagement({ orders, tables, currencySymbol }) {
+function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
   const symbol = currencySymbol || '₼';
+  const walletEnabled = { google_pay: restaurant?.feature_flags?.google_pay !== false, apple_pay: restaurant?.feature_flags?.apple_pay !== false };
 
   const withTableName = useMemo(() => {
     return [...orders].reverse().map(o => {
@@ -1857,6 +1858,18 @@ function PaymentsManagement({ orders, tables, currencySymbol }) {
 
   return (
     <div className="space-y-6">
+      {(!walletEnabled.google_pay || !walletEnabled.apple_pay) && (
+        <div className="flex items-start gap-2.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl px-4 py-3">
+          <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 mt-1.5" />
+          <p className="text-xs font-semibold text-amber-300">
+            {!walletEnabled.google_pay && !walletEnabled.apple_pay
+              ? 'Google Pay və Apple Pay hələ aktiv deyil — platforma administratoru tərəfindən açılmalıdır.'
+              : !walletEnabled.google_pay
+                ? 'Google Pay hələ aktiv deyil — platforma administratoru tərəfindən açılmalıdır.'
+                : 'Apple Pay hələ aktiv deyil — platforma administratoru tərəfindən açılmalıdır.'}
+          </p>
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Nəğd" value={`${cashOrders.length}`} icon={<Wallet className="w-5 h-5 text-emerald-400" />} tint="bg-emerald-500/10" />
         <KpiCard label="Post Terminal" value={`${cardOrders.length}`} icon={<CreditCard className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10" />
@@ -1932,25 +1945,40 @@ function UsersPlaceholder({ profile, restaurant, settings }) {
 }
 
 function SubscriptionLockedScreen({ restaurant, onLogout }) {
-  const expired = restaurant?.subscription_status === 'trialing';
+  const reason = accessBlockReason(restaurant);
+  const copy = {
+    deactivated: {
+      title: 'Restoran deaktiv edilib',
+      body: `"${restaurant.name}" platforma administratoru tərəfindən deaktiv edilib. Yenidən aktivləşdirmək üçün platforma ilə əlaqə saxlayın.`,
+    },
+    trial_expired: {
+      title: 'Pulsuz sınaq bitib',
+      body: `"${restaurant.name}" üçün pulsuz sınaq müddəti bitib. Davam etmək üçün abunəliyə keçin.`,
+    },
+    past_due: {
+      title: 'Abunəlik dayandırılıb',
+      body: `"${restaurant.name}" üçün abunəlik ödənişi gecikib. Panelə yenidən giriş üçün ödənişi tamamlayın.`,
+    },
+    canceled: {
+      title: 'Abunəlik ləğv edilib',
+      body: `"${restaurant.name}" üçün abunəlik ləğv edilib. Davam etmək üçün abunəliyə yenidən keçin.`,
+    },
+  };
+  const { title, body } = copy[reason] || copy.canceled;
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
       <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
         <div className="w-14 h-14 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/30 mx-auto mb-4">
           <Lock className="w-7 h-7 text-amber-500" />
         </div>
-        <h2 className="text-xl font-bold text-white mb-2">
-          {expired ? 'Pulsuz sınaq bitib' : 'Abunəlik dayandırılıb'}
-        </h2>
-        <p className="text-slate-400 text-sm mb-6">
-          {expired
-            ? `"${restaurant.name}" üçün 14 günlük pulsuz sınaq müddəti bitib. Davam etmək üçün abunəliyə keçin.`
-            : `"${restaurant.name}" üçün abunəlik ödənişi gecikib. Panelə yenidən giriş üçün ödənişi tamamlayın.`}
-        </p>
+        <h2 className="text-xl font-bold text-white mb-2">{title}</h2>
+        <p className="text-slate-400 text-sm mb-6">{body}</p>
         <div className="flex flex-col gap-2">
-          <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className="py-2.5 bg-amber-500 hover:bg-amber-400 text-black rounded-xl font-bold text-sm">
-            Abunəliyə keç
-          </a>
+          {reason !== 'deactivated' && (
+            <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className="py-2.5 bg-amber-500 hover:bg-amber-400 text-black rounded-xl font-bold text-sm">
+              Abunəliyə keç
+            </a>
+          )}
           <button onClick={onLogout} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm">
             Çıxış et
           </button>

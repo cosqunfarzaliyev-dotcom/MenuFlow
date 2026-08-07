@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAppStore, ORDER_STATUS } from '@/lib/store';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { subscribeOrders, subscribeAlerts } from '@/lib/services/realtime';
+import { isAccessBlocked, accessBlockReason } from '@/lib/services/billingService';
 import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode, Lock, Shield } from 'lucide-react';
 import { OrderCard } from '@/components/staff/OrderCard';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
@@ -223,6 +224,26 @@ export function StaffApp() {
               ? 'Hesabınız hələ heç bir restorana təyin edilməyib. Platforma administratoru ilə əlaqə saxlayın.'
               : 'Bu hesabın işçi panelinə giriş səlahiyyəti yoxdur.'}
           </p>
+          <button onClick={handleLogout} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm">Çıxış et</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (restaurant && isAccessBlocked(restaurant)) {
+    const reason = accessBlockReason(restaurant);
+    const messages = {
+      deactivated: 'Restoranınız platforma administratoru tərəfindən deaktiv edilib. Ofisiant panelinə giriş bağlıdır.',
+      trial_expired: `"${restaurant.name}" üçün pulsuz sınaq müddəti bitib. Panelə yenidən giriş üçün restoran admininiz abunəliyi aktivləşdirməlidir.`,
+      past_due: `"${restaurant.name}" üçün abunəlik ödənişi gecikib. Panelə giriş üçün ödəniş tamamlanmalıdır.`,
+      canceled: `"${restaurant.name}" üçün abunəlik ləğv edilib. Panelə giriş üçün restoran admininizlə əlaqə saxlayın.`,
+    };
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+        <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
+          <Lock className="w-10 h-10 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-white mb-2">Panelə giriş bağlıdır</h2>
+          <p className="text-slate-400 text-sm mb-6">{messages[reason] || messages.canceled}</p>
           <button onClick={handleLogout} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm">Çıxış et</button>
         </div>
       </div>

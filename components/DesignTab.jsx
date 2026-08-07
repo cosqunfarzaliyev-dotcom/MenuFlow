@@ -88,6 +88,14 @@ export function DesignTab() {
         </div>
         <p className="text-sm text-slate-400 mb-4">Müştəri menyusunun yuxarısında göstərilən kampaniya bannerləri.</p>
 
+        {restaurant?.feature_flags?.banners === false && (
+          <div className="mb-4 flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3">
+            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+            <p className="text-xs font-semibold text-amber-300">Bu funksiya hələ aktiv deyil — platforma administratoru tərəfindən açılmalıdır.</p>
+          </div>
+        )}
+
+        <fieldset disabled={restaurant?.feature_flags?.banners === false} className="disabled:opacity-50">
         <form onSubmit={handleAddBanner} className="grid sm:grid-cols-2 gap-3 mb-5">
           <input type="text" value={bannerForm.title} onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })} placeholder="Başlıq (istəyə bağlı)" className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
           <input type="text" value={bannerForm.subtitle} onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })} placeholder="Alt başlıq (istəyə bağlı)" className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
@@ -97,6 +105,7 @@ export function DesignTab() {
             <Plus className="w-4 h-4" /> Banner əlavə et
           </button>
         </form>
+        </fieldset>
 
         <div className="space-y-2">
           {banners.length === 0 && <p className="text-sm text-slate-500">Hələ banner əlavə edilməyib.</p>}

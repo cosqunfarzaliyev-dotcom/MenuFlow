@@ -3,16 +3,43 @@
 import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Plus, Building2, Search, Users, Trash2, Edit2, Power, ExternalLink, Copy,
-  X, Loader2, ChevronDown,
+  Plus, Building2, Search, Users, Trash2, Edit2, ExternalLink, Copy,
+  X, Loader2,
 } from 'lucide-react';
 import {
   createRestaurant, updateRestaurant, deleteRestaurant,
-  markRestaurantActive, markRestaurantPastDue, extendRestaurantTrial, cancelRestaurantSubscription,
+  markRestaurantActive, markRestaurantPastDue, cancelRestaurantSubscription,
+  extendRestaurantTrial, setRestaurantActiveState, setRestaurantFeatureFlag, setRestaurantPlan,
   fetchProfilesForRestaurant, assignUserToRestaurant, removeUserFromRestaurant,
 } from '@/lib/services/superAdminService';
-import { PLAN_ORDER, planMeta, subscriptionMeta, formatDate, daysUntil } from './constants';
+import { TRIAL_LENGTH_DAYS } from '@/lib/services/billingService';
+import { PLAN_ORDER, planMeta, subscriptionMeta, formatDate, daysUntil, FEATURE_FLAG_META, featureFlags } from './constants';
 import { useToast } from './Toast';
+
+// Small labeled on/off switch used throughout the restaurant controls panel.
+// `pending` disables it mid-request so a slow network can't produce a
+// double-toggle, and `onChange` is expected to return a promise that
+// resolves to a truthy/falsy success so the caller can show a real error
+// toast instead of always claiming success (the bug the switches replace).
+function Switch({ label, description, checked, pending, onChange }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <div className="min-w-0">
+        <p className="text-white text-sm font-semibold">{label}</p>
+        {description && <p className="sa-caption text-slate-500">{description}</p>}
+      </div>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => onChange(!checked)}
+        aria-pressed={checked}
+        className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${checked ? 'bg-emerald-500' : 'bg-slate-700'}`}
+      >
+        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
+      </button>
+    </div>
+  );
+}
 
 export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestaurantId, onConsumeOpenId }) {
   const notify = useToast();
@@ -20,7 +47,6 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingRestaurant, setEditingRestaurant] = useState(null);
   const [adminsModalRestaurant, setAdminsModalRestaurant] = useState(null);
-  const [billingMenuId, setBillingMenuId] = useState(null);
 
   React.useEffect(() => {
     if (!openRestaurantId) return;
@@ -38,16 +64,6 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
       r.owner_email?.toLowerCase().includes(q)
     );
   }, [restaurants, query]);
-
-  const handleBillingAction = async (r, action) => {
-    setBillingMenuId(null);
-    if (action === 'active') await markRestaurantActive(r.id);
-    else if (action === 'past_due') await markRestaurantPastDue(r.id);
-    else if (action === 'cancel') await cancelRestaurantSubscription(r.id);
-    else if (action === 'extend') await extendRestaurantTrial(r.id, 14);
-    notify('Abunəlik statusu yeniləndi.');
-    refresh();
-  };
 
   return (
     <div className="space-y-4">
@@ -119,40 +135,17 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
                         <span className="font-bold whitespace-nowrap" style={{ color: plan.color }}>{plan.label}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="relative inline-block">
-                          <button
-                            onClick={() => setBillingMenuId(billingMenuId === r.id ? null : r.id)}
-                            className={`sa-caption font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 whitespace-nowrap ${status.bg} ${status.text} ${status.border}`}
-                          >
-                            {status.label} <ChevronDown className="w-3 h-3" />
-                          </button>
-                          <AnimatePresence>
-                            {billingMenuId === r.id && (
-                              <motion.div
-                                initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                                transition={{ duration: 0.15 }}
-                                className="absolute z-20 top-full left-0 mt-1.5 w-44 bg-slate-900 border border-slate-700 rounded-2xl p-1.5 shadow-2xl"
-                              >
-                                {[
-                                  { id: 'active', label: 'Aktiv et' },
-                                  { id: 'past_due', label: 'Ödəniş gecikib et' },
-                                  { id: 'extend', label: 'Trial uzat (+14 gün)' },
-                                  { id: 'cancel', label: 'Ləğv et' },
-                                ].map((opt) => (
-                                  <button
-                                    key={opt.id}
-                                    onClick={() => handleBillingAction(r, opt.id)}
-                                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white"
-                                  >
-                                    {opt.label}
-                                  </button>
-                                ))}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`sa-caption font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${status.bg} ${status.text} ${status.border}`}>
+                            {status.label}
+                          </span>
+                          {r.is_active === false && (
+                            <span className="sa-caption font-bold px-2.5 py-1 rounded-full border bg-slate-800 text-slate-400 border-slate-700 whitespace-nowrap">
+                              Deaktiv
+                            </span>
+                          )}
                         </div>
+                        <p className="sa-caption text-slate-600 mt-1">Redaktədən dəyiş →</p>
                       </td>
                       <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
                         {r.subscription_status === 'trialing' && trialDays !== null
@@ -192,16 +185,10 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={async () => { await updateRestaurant({ id: r.id, is_active: !r.is_active }); notify(r.is_active ? 'Restoran deaktiv edildi.' : 'Restoran aktivləşdirildi.'); refresh(); }}
-                            title={r.is_active ? 'Deaktiv et' : 'Aktivləşdir'}
-                            className={`p-2 rounded-lg hover:bg-slate-800 ${r.is_active ? 'text-emerald-400' : 'text-slate-500'}`}
-                          >
-                            <Power className="w-3.5 h-3.5" />
-                          </button>
-                          <button
                             onClick={async () => {
                               if (!window.confirm(`"${r.name}" restoranını silmək istədiyinizə əminsiniz? Bütün menyu, sifariş və masa məlumatları silinəcək.`)) return;
-                              await deleteRestaurant(r.id);
+                              const { error } = await deleteRestaurant(r.id);
+                              if (error) { notify(error.message || 'Silinmədi, yenidən cəhd edin.', 'error'); return; }
                               notify('Restoran silindi.');
                               refresh();
                             }}
@@ -227,7 +214,8 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
             title="Yeni restoran"
             onClose={() => setIsCreateOpen(false)}
             onSave={async (form) => {
-              await createRestaurant(form);
+              const { error } = await createRestaurant(form);
+              if (error) { notify(error.message || 'Yaradılmadı, yenidən cəhd edin.', 'error'); return; }
               setIsCreateOpen(false);
               notify('Yeni restoran yaradıldı.');
               refresh();
@@ -240,8 +228,19 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
             initial={editingRestaurant}
             isEdit
             onClose={() => setEditingRestaurant(null)}
+            onRefresh={refresh}
             onSave={async (form) => {
-              await updateRestaurant({ id: editingRestaurant.id, name: form.name, tagline: form.tagline, currencySymbol: form.currencySymbol, plan: form.plan });
+              const planChanged = form.plan !== editingRestaurant.plan;
+              const { error } = planChanged
+                ? await setRestaurantPlan(editingRestaurant.id, form.plan)
+                : { error: null };
+              const { error: err2 } = await updateRestaurant({
+                id: editingRestaurant.id, name: form.name, tagline: form.tagline, currencySymbol: form.currencySymbol,
+              });
+              if (error || err2) {
+                notify((error || err2).message || 'Yadda saxlanmadı, yenidən cəhd edin.', 'error');
+                return;
+              }
               setEditingRestaurant(null);
               notify('Restoran yeniləndi.');
               refresh();
@@ -266,14 +265,14 @@ const modalMotion = {
   },
 };
 
-function RestaurantModal({ title, initial, isEdit, onClose, onSave }) {
+function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh }) {
   const [form, setForm] = useState({
     name: initial?.name || '',
     slug: initial?.slug || '',
     tagline: initial?.tagline || '',
     currencySymbol: initial?.currency_symbol || '₼',
     tableCount: initial?.table_count || 20,
-    plan: initial?.plan && PLAN_ORDER.includes(initial.plan) ? initial.plan : 'free',
+    plan: initial?.plan && PLAN_ORDER.includes(initial.plan) ? initial.plan : 'basic',
   });
   const [saving, setSaving] = useState(false);
 
@@ -338,12 +337,100 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave }) {
             </div>
           )}
         </div>
+        {isEdit && <p className="text-[10px] text-slate-500 -mt-2">Paket dəyişəndə Apple/Google Pay və Banner switch-ləri həmin paketin default vəziyyətinə sıfırlanır (aşağıda əl ilə yenidən dəyişə bilərsiniz).</p>}
 
         <button type="submit" disabled={saving} className="sa-btn w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-bold flex items-center justify-center gap-2">
           {saving && <Loader2 className="w-4 h-4 animate-spin" />} Yadda saxla
         </button>
+
+        {isEdit && initial && <RestaurantControlsPanel restaurant={initial} onRefresh={onRefresh} />}
       </motion.form>
     </motion.div>
+  );
+}
+
+// Instant-apply switches for a restaurant's access/billing/feature state.
+// Each switch calls its service function immediately (not tied to the
+// surrounding form's "Yadda saxla" button) and shows a real success/error
+// toast — the earlier version of this panel always said "uğurlu" even when
+// the underlying update failed, which is why the Aktiv/Deaktiv control used
+// to look broken.
+function RestaurantControlsPanel({ restaurant, onRefresh }) {
+  const notify = useToast();
+  const [local, setLocal] = useState(restaurant);
+  const [pendingKey, setPendingKey] = useState(null);
+
+  React.useEffect(() => { setLocal(restaurant); }, [restaurant]);
+
+  const run = async (key, action, optimisticPatch) => {
+    setPendingKey(key);
+    setLocal((prev) => ({ ...prev, ...optimisticPatch }));
+    const { error } = await action();
+    setPendingKey(null);
+    if (error) {
+      setLocal(restaurant); // roll back the optimistic change
+      notify(error.message || 'Yenilənmədi, yenidən cəhd edin.', 'error');
+      return;
+    }
+    notify('Yeniləndi.');
+    onRefresh?.();
+  };
+
+  const flags = featureFlags(local);
+
+  return (
+    <div className="border-t border-slate-800 pt-3 mt-1 space-y-1">
+      <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-1">Nəzarət</p>
+
+      <Switch
+        label="Restoran Aktiv"
+        description={local.is_active === false ? 'Müştəri menyusu və admin/işçi paneli bağlıdır' : 'Müştəri menyusu və admin/işçi paneli açıqdır'}
+        checked={local.is_active !== false}
+        pending={pendingKey === 'is_active'}
+        onChange={(val) => run('is_active', () => setRestaurantActiveState(local.id, val), { is_active: val })}
+      />
+      <Switch
+        label={`Sınaq Müddəti (${TRIAL_LENGTH_DAYS} gün)`}
+        description={local.subscription_status === 'trialing' ? `${daysUntil(local.trial_ends_at) ?? 0} gün qalıb` : 'Sınaqda deyil'}
+        checked={local.subscription_status === 'trialing'}
+        pending={pendingKey === 'trialing'}
+        onChange={(val) => {
+          if (val) {
+            const trial_ends_at = new Date(Date.now() + TRIAL_LENGTH_DAYS * 24 * 60 * 60 * 1000).toISOString();
+            run('trialing', () => extendRestaurantTrial(local.id, TRIAL_LENGTH_DAYS), { subscription_status: 'trialing', trial_ends_at });
+          } else {
+            run('trialing', () => cancelRestaurantSubscription(local.id), { subscription_status: 'canceled' });
+          }
+        }}
+      />
+      <Switch
+        label="Abunəlik Aktiv"
+        description={local.subscription_status === 'active' ? 'Sınaqdan asılı olmayaraq tam giriş' : 'Abunəlik aktiv deyil'}
+        checked={local.subscription_status === 'active'}
+        pending={pendingKey === 'active'}
+        onChange={(val) => run('active', () => (val ? markRestaurantActive(local.id) : cancelRestaurantSubscription(local.id)), { subscription_status: val ? 'active' : 'canceled' })}
+      />
+      <Switch
+        label="Ödəniş gecikib (Past Due)"
+        description="Manual olaraq ödəniş problemi işarələ"
+        checked={local.subscription_status === 'past_due'}
+        pending={pendingKey === 'past_due'}
+        onChange={(val) => run('past_due', () => (val ? markRestaurantPastDue(local.id) : cancelRestaurantSubscription(local.id)), { subscription_status: val ? 'past_due' : 'canceled' })}
+      />
+
+      <div className="h-px bg-slate-800 my-2" />
+      <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-1">Funksiyalar</p>
+      {Object.entries(FEATURE_FLAG_META).map(([key, meta]) => (
+        <Switch
+          key={key}
+          label={meta.label}
+          description={meta.description}
+          checked={Boolean(flags[key])}
+          pending={pendingKey === key}
+          onChange={(val) => run(key, () => setRestaurantFeatureFlag(local, key, val), { feature_flags: { ...flags, [key]: val } })}
+        />
+      ))}
+    </div>
   );
 }
 

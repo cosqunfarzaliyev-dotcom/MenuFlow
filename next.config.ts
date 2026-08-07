@@ -35,9 +35,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Disable Next.js dev indicators (debug overlay) during local development
   devIndicators: false,
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  turbopack: {},
   typescript: {
     ignoreBuildErrors: false,
   },

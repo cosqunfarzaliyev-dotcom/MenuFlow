@@ -342,26 +342,18 @@ export function CustomerApp() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
 
           {/* Brand */}
-          <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2.5 sm:gap-4">
-            <div
-              className="flex items-center gap-2.5 text-white px-4 py-2 rounded-2xl font-extrabold text-sm sm:text-base tracking-tight shrink-0"
-              style={{ background: 'linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%)', boxShadow: '0 8px 20px -6px rgba(108,76,255,.45)' }}
-            >
-              {settings.restaurantLogo ? (
+            <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2.5 sm:gap-4">
+              {/* Logo only */}
+              <div className="flex items-center shrink-0">
                 <Image
-                  src={settings.restaurantLogo}
-                  alt="Logo"
-                  className="w-5 h-5 object-contain rounded-lg bg-white/15 p-0.5"
-                  width={20}
-                  height={20}
+                  src="/brand/menuflow-logo-light-bg-h48.png"
+                  alt="MenuFlow"
+                  width={96}
+                  height={16}
+                  className="h-4 w-auto object-contain"
                   unoptimized
                 />
-              ) : (
-                <QrCode className="w-5 h-5 text-white" />
-              )}
-              <span className="truncate max-w-[140px] sm:max-w-none">{settings.restaurantName || "MenuFlow"}</span>
-            </div>
-
+              </div>
             {/* Language Switcher */}
             <div className="flex items-center bg-[#F7F8FA] border border-[#E8E8E8] rounded-2xl p-1 gap-1 shrink-0">
               {['az', 'en', 'ru'].map((code) => (
@@ -403,8 +395,8 @@ export function CustomerApp() {
 
       <main className="max-w-7xl mx-auto px-4 pt-6 space-y-8">
 
-        {/* Banners (Banner sistemi) */}
-        {banners.filter((b) => b.is_active).length > 0 && (
+        {/* Banners (Banner sistemi) — SuperAdmin restoranın banner funksiyasını söndürsə (feature_flags.banners) heç göstərilmir, plan-dan asılı olmayaraq */}
+        {restaurant?.feature_flags?.banners !== false && banners.filter((b) => b.is_active).length > 0 && (
           <section className="flex gap-4 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
             {banners.filter((b) => b.is_active).map((banner) => {
               const content = (
@@ -553,20 +545,32 @@ export function CustomerApp() {
         <div className="max-w-7xl mx-auto flex flex-col items-center justify-center gap-2">
           <div className="flex items-center gap-2 text-[#8A8F98]">
             {settings.restaurantLogo ? (
-              <Image
-                src={settings.restaurantLogo}
-                alt="Logo"
-                className="w-4 h-4 object-contain rounded"
-                width={16}
-                height={16}
-                unoptimized
-              />
+              <>
+                <Image
+                  src={settings.restaurantLogo}
+                  alt="Logo"
+                  className="w-4 h-4 object-contain rounded"
+                  width={16}
+                  height={16}
+                  unoptimized
+                />
+                <span className="text-xs font-semibold tracking-wide">
+                  {getLocalizedText("poweredBy", lang)} <strong className="text-[#14151A] font-bold">{settings.restaurantName}</strong>
+                </span>
+              </>
             ) : (
-              <QrCode className="w-4 h-4 text-[var(--theme-primary)]" />
+              <span className="text-xs font-semibold tracking-wide inline-flex items-center gap-1.5">
+                {getLocalizedText("poweredBy", lang)}
+                <Image
+                  src="/brand/menuflow-logo-light-bg-h48.png"
+                  alt="MenuFlow"
+                  width={72}
+                  height={12}
+                  className="h-3 w-auto object-contain"
+                  unoptimized
+                />
+              </span>
             )}
-            <span className="text-xs font-semibold tracking-wide">
-              {getLocalizedText("poweredBy", lang)} <strong className="text-[#14151A] font-bold">{settings.restaurantName || "MenuFlow"}</strong>
-            </span>
           </div>
           <p className="text-[11px] text-[#B4B8C0] font-medium">
             {settings.tagline || getLocalizedText("tagline", lang)}
@@ -650,24 +654,30 @@ export function CustomerApp() {
                 Tapping is itself the capability check: requestWalletPayment
                 (lib/services/paymentService.js) returns a clear error if the
                 wallet genuinely isn't available on this device. */}
-            <div className="flex gap-3 mt-3">
-              <button
-                type="button"
-                disabled={walletPaying === 'google_pay'}
-                onClick={() => handleWalletPay('google_pay')}
-                className="flex-1 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
-              >
-                {walletPaying === 'google_pay' ? '...' : 'G Pay'}
-              </button>
-              <button
-                type="button"
-                disabled={walletPaying === 'apple_pay'}
-                onClick={() => handleWalletPay('apple_pay')}
-                className="flex-1 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
-              >
-                {walletPaying === 'apple_pay' ? '...' : ' Pay'}
-              </button>
-            </div>
+            {(restaurant?.feature_flags?.google_pay !== false || restaurant?.feature_flags?.apple_pay !== false) && (
+              <div className="flex gap-3 mt-3">
+                {restaurant?.feature_flags?.google_pay !== false && (
+                  <button
+                    type="button"
+                    disabled={walletPaying === 'google_pay'}
+                    onClick={() => handleWalletPay('google_pay')}
+                    className="flex-1 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
+                  >
+                    {walletPaying === 'google_pay' ? '...' : 'G Pay'}
+                  </button>
+                )}
+                {restaurant?.feature_flags?.apple_pay !== false && (
+                  <button
+                    type="button"
+                    disabled={walletPaying === 'apple_pay'}
+                    onClick={() => handleWalletPay('apple_pay')}
+                    className="flex-1 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
+                  >
+                    {walletPaying === 'apple_pay' ? '...' : ' Pay'}
+                  </button>
+                )}
+              </div>
+            )}
 
             <button
               onClick={() => setIsBillModalOpen(false)}

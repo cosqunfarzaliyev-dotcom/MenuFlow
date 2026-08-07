@@ -2,19 +2,31 @@
 // Keeping labels/colors here means every tab (Dashboard, Restaurants,
 // Subscriptions, Analytics, Users) renders plans/statuses identically.
 
-import { Sparkles, Rocket, Crown, Building2 } from 'lucide-react';
+import { Sparkles, Rocket, Crown } from 'lucide-react';
 
+// Only Basic/Pro are offered going forward. 'free'/'trial'/'enterprise' stay
+// mapped here (not in PLAN_ORDER) purely so any legacy row still renders a
+// sensible label instead of falling back silently — the create/edit UI never
+// offers them as a choice.
 export const PLAN_META = {
-  free: { label: 'Free', price: 0, color: '#94a3b8', icon: Sparkles },
-  trial: { label: 'Free', price: 0, color: '#94a3b8', icon: Sparkles },
+  free: { label: 'Free (legacy)', price: 0, color: '#94a3b8', icon: Sparkles },
+  trial: { label: 'Free (legacy)', price: 0, color: '#94a3b8', icon: Sparkles },
   basic: { label: 'Basic', price: 29, color: '#38bdf8', icon: Rocket },
   pro: { label: 'Pro', price: 79, color: '#a78bfa', icon: Crown },
-  enterprise: { label: 'Enterprise', price: 199, color: '#fbbf24', icon: Building2 },
+  enterprise: { label: 'Enterprise (legacy)', price: 199, color: '#fbbf24', icon: Crown },
 };
 
-export const PLAN_ORDER = ['free', 'basic', 'pro', 'enterprise'];
+// Selectable plans shown in create/edit dropdowns and the Subscriptions tab.
+export const PLAN_ORDER = ['basic', 'pro'];
 
-export const planMeta = (plan) => PLAN_META[plan] || PLAN_META.free;
+export const planMeta = (plan) => PLAN_META[plan] || PLAN_META.basic;
+
+// Feature flags each plan grants by default when a restaurant's plan changes.
+// SuperAdmin can still override any individual restaurant's flags afterwards.
+export const PLAN_DEFAULT_FLAGS = {
+  basic: { apple_pay: false, google_pay: false, banners: false },
+  pro: { apple_pay: true, google_pay: true, banners: true },
+};
 
 export const SUBSCRIPTION_STATUS_META = {
   trialing: { label: 'Trial', color: '#fbbf24', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20' },
@@ -25,6 +37,16 @@ export const SUBSCRIPTION_STATUS_META = {
 };
 
 export const subscriptionMeta = (status) => SUBSCRIPTION_STATUS_META[status] || SUBSCRIPTION_STATUS_META.trialing;
+
+export const DEFAULT_FEATURE_FLAGS = { apple_pay: true, google_pay: true, banners: true };
+
+export const FEATURE_FLAG_META = {
+  apple_pay: { label: 'Apple Pay', description: 'Müştəri panelində Apple Pay seçimi' },
+  google_pay: { label: 'Google Pay', description: 'Müştəri panelində Google Pay seçimi' },
+  banners: { label: 'Banner reklamları', description: 'Müştəri menyusunda banner bölməsi' },
+};
+
+export const featureFlags = (restaurant) => ({ ...DEFAULT_FEATURE_FLAGS, ...(restaurant?.feature_flags || {}) });
 
 export const ROLE_LABELS = {
   super_admin: 'Owner',
