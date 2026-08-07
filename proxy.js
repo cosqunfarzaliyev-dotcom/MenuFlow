@@ -26,7 +26,7 @@ const matchProtectedPrefix = (pathname) => {
   return Object.keys(PROTECTED_ROLES).find((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 };
 
-export async function middleware(request) {
+export async function proxy(request) {
   const { pathname } = request.nextUrl;
   const prefix = matchProtectedPrefix(pathname);
   if (!prefix) return NextResponse.next();
