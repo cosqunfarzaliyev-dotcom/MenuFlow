@@ -20,6 +20,14 @@ export function OrderCard({ order, tableName, onStatusChange, nextStatus, nextLa
           </div>
         ))}
       </div>
+      {/* Order-level note ("Ümumi masa qeydi") — distinct from the per-item
+          kitchen requests rendered above, so it gets its own block. */}
+      {order.note && (
+        <div className="mb-4 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2">
+          <span className="block text-[10px] font-bold uppercase tracking-wide text-amber-400/80">Masa qeydi</span>
+          <span className="text-xs italic text-amber-200">{order.note}</span>
+        </div>
+      )}
       {!isCompleted && (
         <button onClick={() => onStatusChange(order.id, nextStatus)} className={`w-full py-2.5 rounded-xl text-white font-bold text-sm transition-colors ${nextColor}`}>
           {nextLabel}
@@ -30,7 +38,7 @@ export function OrderCard({ order, tableName, onStatusChange, nextStatus, nextLa
 }
 
 OrderCard.propTypes = {
-  order: PropTypes.shape({ id: PropTypes.string.isRequired, time: PropTypes.string.isRequired, items: PropTypes.array.isRequired }).isRequired,
+  order: PropTypes.shape({ id: PropTypes.string.isRequired, time: PropTypes.string.isRequired, items: PropTypes.array.isRequired, note: PropTypes.string }).isRequired,
   tableName: PropTypes.string.isRequired,
   onStatusChange: PropTypes.func.isRequired,
   nextStatus: PropTypes.string,

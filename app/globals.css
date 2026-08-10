@@ -1,5 +1,8 @@
+/* The font @import must come before `@import "tailwindcss"`: Turbopack inlines
+   Tailwind's ~2.6k lines in place, after which a later @import no longer
+   "precedes all rules" and CSS parsing fails outright (500 on every route). */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
 
 @layer base {
   body {
@@ -118,4 +121,135 @@
   visibility: hidden !important;
   pointer-events: none !important;
 }
+
+/* ============================================================================
+   Customer panel theme — white/light, scoped to `.customer-theme` so the
+   admin/staff/super-admin panels keep their dark glass theme untouched.
+   ============================================================================ */
+.customer-theme {
+  --mf-bg: #FFFFFF;
+  --mf-bg-secondary: #F7F8FA;
+  --mf-border: #E8E8E8;
+  --mf-primary: #6C4CFF;
+  --mf-primary-strong: #5B3DF5;
+  --mf-success: #34C759;
+  --mf-warning: #FFB020;
+  --mf-text: #14151A;
+  --mf-text-muted: #8A8F98;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Plus Jakarta Sans', sans-serif;
+  color: var(--mf-text);
+}
+
+.customer-theme h1,
+.customer-theme h2,
+.customer-theme h3 {
+  font-family: inherit;
+}
+
+/* Card: white, not pure-flat — soft border + ambient shadow, lifts on hover */
+.customer-card {
+  background: #FFFFFF;
+  border-radius: 20px;
+  border: 1px solid #ECECEC;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.customer-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.10);
+}
+
+/* Primary button: violet gradient, 56px tall, 16px radius, presses down slightly */
+.customer-btn-primary {
+  background: linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%);
+  border-radius: 16px;
+  min-height: 56px;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 10px 24px -6px rgba(108, 76, 255, 0.45);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+.customer-btn-primary:hover {
+  box-shadow: 0 14px 30px -6px rgba(108, 76, 255, 0.55);
+}
+.customer-btn-primary:active {
+  transform: scale(0.98);
+}
+.customer-btn-primary:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+/* Bottom navigation: frosted glass over the page content */
+.customer-bottom-nav {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-top: 1px solid var(--mf-border);
+}
+
+.customer-theme ::-webkit-scrollbar-track {
+  background: var(--mf-bg-secondary);
+}
+.customer-theme ::-webkit-scrollbar-thumb {
+  background: #D9DBE3;
+}
+.customer-theme ::-webkit-scrollbar-thumb:hover {
+  background: var(--mf-primary);
+}
+
+/* ============================================================================
+   Super Admin design system — radius/spacing/type scale tokens used across
+   the Dashboard, Restaurants, Subscriptions, Analytics and Users tabs.
+   ============================================================================ */
+.superadmin-theme {
+  --sa-radius-button: 16px;
+  --sa-radius-card: 20px;
+  --sa-radius-modal: 28px;
+  --sa-radius-input: 14px;
+}
+
+.sa-radius-button { border-radius: var(--sa-radius-button); }
+.sa-radius-card { border-radius: var(--sa-radius-card); }
+.sa-radius-modal { border-radius: var(--sa-radius-modal); }
+.sa-radius-input { border-radius: var(--sa-radius-input); }
+
+.sa-heading-1 { font-size: 32px; line-height: 1.2; font-weight: 700; }
+.sa-heading-2 { font-size: 28px; line-height: 1.25; font-weight: 700; }
+.sa-heading-3 { font-size: 24px; line-height: 1.3; font-weight: 700; }
+.sa-heading-4 { font-size: 20px; line-height: 1.35; font-weight: 600; }
+.sa-body { font-size: 16px; line-height: 1.5; }
+.sa-caption { font-size: 14px; line-height: 1.4; }
+
+.sa-card {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--sa-radius-card);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
+}
+.sa-card:hover {
+  transform: translateY(-5px);
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 16px 34px -12px rgba(0, 0, 0, 0.45);
+}
+
+.sa-btn {
+  border-radius: var(--sa-radius-button);
+  transition: transform 0.12s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+.sa-btn:active { transform: scale(0.98); }
+
+@keyframes sa-toast-in {
+  from { opacity: 0; transform: translate(16px, -12px) scale(0.95); }
+  to { opacity: 1; transform: translate(0, 0) scale(1); }
+}
+.sa-toast { animation: sa-toast-in 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+
+@keyframes sa-sidebar-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.sa-sidebar-item { animation: sa-sidebar-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
 

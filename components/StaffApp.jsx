@@ -1,13 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAppStore, ORDER_STATUS } from '@/lib/store';
+import { supabase, supabaseReady } from '@/lib/supabase';
 import { subscribeOrders, subscribeAlerts } from '@/lib/services/realtime';
-import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode } from 'lucide-react';
+import { isAccessBlocked, accessBlockReason } from '@/lib/services/billingService';
+import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode, Lock, Shield } from 'lucide-react';
 import { OrderCard } from '@/components/staff/OrderCard';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
-import { LoadingState, ErrorState, EmptyState } from '@/components/ui';
+import { LoadingState, ErrorState, EmptyState, PageSkeleton } from '@/components/ui';
 
 export function StaffApp() {
   const {
@@ -20,14 +24,48 @@ export function StaffApp() {
     loadAlerts,
     loadTables,
     settings: rawSettings,
+    restaurant,
+    profile,
+    loadProfile,
+    isAdminAuthenticated,
+    setIsAdminAuthenticated,
   } = useAppStore();
-  const settings = rawSettings || { restaurantName: 'MenuFlow' };
+  const settings = restaurant ? { restaurantName: restaurant.name } : (rawSettings || { restaurantName: 'MenuFlow' });
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'alerts'
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
+  const [isMounted, setIsMounted] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+  const router = useRouter();
+
   const notificationTimeoutRef = useRef(null);
+
+  useEffect(() => { setIsMounted(true); }, []);
+
+  useEffect(() => {
+    if (!supabaseReady) { setAuthChecking(false); return undefined; }
+    let active = true;
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!active) return;
+      const authed = Boolean(data?.session);
+      setIsAdminAuthenticated(authed);
+      if (authed) await loadProfile();
+      setAuthChecking(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setIsAdminAuthenticated(Boolean(session));
+      if (session) await loadProfile();
+    });
+    return () => { active = false; listener?.subscription?.unsubscribe(); };
+  }, [setIsAdminAuthenticated, loadProfile]);
+
+  const handleLogout = async () => {
+    if (supabaseReady) await supabase.auth.signOut();
+    setIsAdminAuthenticated(false);
+    router.replace('/login');
+  };
 
   const getTableName = useCallback((id) => {
     const t = tables.find(t => t.id === id);
@@ -78,7 +116,10 @@ export function StaffApp() {
     }, 5000);
   }, [playChimeSound]);
 
+  const isAuthorizedStaff = Boolean(profile && ['staff', 'restaurant_admin'].includes(profile.role));
+
   useEffect(() => {
+    if (!isAdminAuthenticated || !isAuthorizedStaff) return undefined;
     const setupRealtime = async () => {
       setLoading(true);
       setLoadError(null);
@@ -90,21 +131,29 @@ export function StaffApp() {
       }
 
       try {
+        const restaurantId = profile?.restaurant_id || restaurant?.id || null;
+
         const orderSub = await subscribeOrders(({ event, table, record }) => {
           // Refresh orders from Supabase; realtime ensures low-latency updates
           loadOrders();
           if (event === 'INSERT') triggerNotification('⚡ Yeni sifariş gəldi!');
-        });
+        }, { restaurantId });
 
         const alertSub = await subscribeAlerts(({ event, table, record }) => {
           loadAlerts();
+          // A repeat/edited call re-uses the same row (see upsert_alert),
+          // so this fires as an UPDATE, not just an INSERT — re-chime for
+          // those too. But skip the chime when the update is staff marking
+          // an alert resolved (status -> 'resolved'), which is our own
+          // action, not a new customer call.
+          if (record?.status && record.status !== 'active') return;
           const alertType = record?.type || record?.alert_type;
           if (alertType === 'bill') {
             triggerNotification('💳 HESAB İSTƏNİLDİ!');
           } else {
             triggerNotification('🔔 OFİSİANT ÇAĞIRILDI!');
           }
-        });
+        }, { restaurantId });
 
         setLoading(false);
 
@@ -130,7 +179,7 @@ export function StaffApp() {
         cleanup();
       }
     };
-  }, [loadOrders, loadAlerts, loadTables, triggerNotification]);
+  }, [loadOrders, loadAlerts, loadTables, triggerNotification, isAdminAuthenticated, isAuthorizedStaff]);
 
 
   const pendingOrders = orders.filter(o => o.status === ORDER_STATUS.PENDING);
@@ -151,6 +200,56 @@ export function StaffApp() {
 
     if (nextStatus) updateOrderStatus(id, nextStatus);
   };
+
+  if (!isMounted || authChecking) return <PageSkeleton />;
+
+  if (!isAdminAuthenticated) {
+    // middleware.js already redirects unauthenticated requests to /staff
+    // over to /login before this component mounts; this is a fallback.
+    return <RoleRedirectStaff message="Sessiya bitib — giriş səhifəsinə yönləndirilir." href="/login?next=/staff" />;
+  }
+
+  if (profile && profile.role === 'super_admin') {
+    router.replace('/superadmin');
+    return <PageSkeleton />;
+  }
+
+  if (profile && !isAuthorizedStaff) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+        <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
+          <Lock className="w-10 h-10 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-white mb-2">Giriş yoxdur</h2>
+          <p className="text-slate-400 text-sm mb-6">
+            {profile.role === 'unassigned'
+              ? 'Hesabınız hələ heç bir restorana təyin edilməyib. Platforma administratoru ilə əlaqə saxlayın.'
+              : 'Bu hesabın işçi panelinə giriş səlahiyyəti yoxdur.'}
+          </p>
+          <button onClick={handleLogout} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm">Çıxış et</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (restaurant && isAccessBlocked(restaurant)) {
+    const reason = accessBlockReason(restaurant);
+    const messages = {
+      deactivated: 'Restoranınız platforma administratoru tərəfindən deaktiv edilib. Ofisiant panelinə giriş bağlıdır.',
+      trial_expired: `"${restaurant.name}" üçün pulsuz sınaq müddəti bitib. Panelə yenidən giriş üçün restoran admininiz abunəliyi aktivləşdirməlidir.`,
+      past_due: `"${restaurant.name}" üçün abunəlik ödənişi gecikib. Panelə giriş üçün ödəniş tamamlanmalıdır.`,
+      canceled: `"${restaurant.name}" üçün abunəlik ləğv edilib. Panelə giriş üçün restoran admininizlə əlaqə saxlayın.`,
+    };
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+        <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
+          <Lock className="w-10 h-10 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-white mb-2">Panelə giriş bağlıdır</h2>
+          <p className="text-slate-400 text-sm mb-6">{messages[reason] || messages.canceled}</p>
+          <button onClick={handleLogout} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm">Çıxış et</button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return <LoadingState title="Panel yüklənir…" subtitle="Sifariş və çağırış məlumatları yüklənir" />;
@@ -193,6 +292,13 @@ export function StaffApp() {
               <QrCode className="w-4 h-4" />
               <span>Müştəri Menyusu</span>
             </Link>
+
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-all"
+            >
+              Çıxış
+            </button>
 
             <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-800">
               <button 
@@ -297,7 +403,14 @@ export function StaffApp() {
                         <Bell className="w-6 h-6 animate-pulse" />
                       </div>
                       <div>
-                        <h4 className="font-bold text-lg text-white">{getTableName(alert.table)}</h4>
+                        <h4 className="font-bold text-lg text-white flex items-center gap-2">
+                          {getTableName(alert.table)}
+                          {alert.callCount > 1 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-black" title={`${alert.callCount} dəfə çağırıldı`}>
+                              ×{alert.callCount}
+                            </span>
+                          )}
+                        </h4>
                         <p className="text-amber-400 text-sm font-semibold">{alert.type === 'waiter' ? 'Ofisiant Çağırışı' : 'Hesab İstəyi'}</p>
                       </div>
                     </div>
@@ -314,7 +427,7 @@ export function StaffApp() {
                   )}
 
                   <div className="text-xs text-slate-400 mb-4">
-                    Zaman: {new Date(alert.time).toLocaleTimeString()}
+                    {alert.callCount > 1 ? 'Son çağırış: ' : 'Zaman: '}{new Date(alert.time).toLocaleTimeString()}
                   </div>
                   <button 
                     onClick={() => resolveAlert(alert.id)}
@@ -338,6 +451,29 @@ export function StaffApp() {
           </div>
         )}
 
+        <div className="flex items-center justify-center pt-4 pb-2">
+          <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={90} height={14} className="h-3.5 w-auto object-contain opacity-70" unoptimized />
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+function RoleRedirectStaff({ message, href }) {
+  const router = useRouter();
+  useEffect(() => {
+    const t = setTimeout(() => router.replace(href), 400);
+    return () => clearTimeout(t);
+  }, [router, href]);
+
+  return (
+    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+      <div className="max-w-sm text-center">
+        <p className="text-slate-400 text-sm mb-4">{message}</p>
+        <Link href={href} className="text-blue-400 hover:text-blue-300 text-sm font-bold underline">
+          Avtomatik yönləndirilmirsə buraya klikləyin
+        </Link>
       </div>
     </div>
   );

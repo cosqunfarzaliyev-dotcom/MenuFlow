@@ -3,36 +3,57 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ORDER_STATUS, useAppStore } from '@/lib/store';
+import { supabase, supabaseReady } from '@/lib/supabase';
 import { subscribeProducts, subscribeCategories, subscribeTables, subscribeOrders } from '@/lib/services/realtime';
-import { Settings, Plus, Edit2, Trash2, Shield, QrCode, Lock, BarChart3, Users, Download, Printer, TrendingUp, Clock, Activity, CheckCircle2 } from 'lucide-react';
+import {
+  Settings, Plus, Edit2, Trash2, QrCode, Lock, BarChart3, Users, Download, Printer,
+  TrendingUp, Clock, Activity, CheckCircle2, LayoutDashboard, Table2, ListOrdered, FileBarChart2,
+  Search, Bell, ChevronRight, UserCircle2, Package, DollarSign, Megaphone, Palette, ClipboardList,
+  Wallet, CreditCard, Smartphone,
+} from 'lucide-react';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
 import { LoadingState, ErrorState, EmptyState, PageSkeleton } from '@/components/ui';
 import { QRCodeSVG } from 'qrcode.react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { SettingsTab } from '@/components/SettingsTab';
+import { PromotionsTab } from '@/components/PromotionsTab';
+import { DesignTab } from '@/components/DesignTab';
+import { AuditLogTab } from '@/components/AuditLogTab';
+import { getTrialDaysLeft, isAccessBlocked, accessBlockReason } from '@/lib/services/billingService';
 
-// TODO: Set NEXT_PUBLIC_ADMIN_PASSWORD in .env.local before deploying.
-const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
-
+// Admin access is gated behind Supabase Auth (email/password) rather than a
+// client-side password, since any NEXT_PUBLIC_* value is bundled into the
+// browser JS and visible to anyone via devtools. Create the admin user in
+// your Supabase project's Authentication tab.
 export function AdminApp() {
   const { 
     products, categories, createProduct, updateProduct, deleteProduct, createCategory, updateCategory, deleteCategory, 
     tables, loadTables, loadMenuData, loadOrders, loadAlerts, updateTableName, isAdminAuthenticated, setIsAdminAuthenticated, orders,
-    settings: rawSettings, updateSettings 
+    qrTokensByTableId, loadQrTokens,
+    settings: rawSettings, updateSettings, profile, loadProfile, restaurant,
   } = useAppStore();
 
-  const settings = rawSettings || {
-    restaurantName: 'MenuFlow',
-    restaurantLogo: '',
-    currencySymbol: '₼',
-    tableCount: 50,
-    tagline: 'Rəqəmsal QR Menyu və İdarəetmə Sistemi'
-  };
+  const settings = restaurant
+    ? {
+        restaurantName: restaurant.name,
+        restaurantLogo: restaurant.logo || '',
+        currencySymbol: restaurant.currency_symbol || '₼',
+        tableCount: restaurant.table_count || 50,
+        tagline: restaurant.tagline || '',
+      }
+    : rawSettings || {
+        restaurantName: 'MenuFlow',
+        restaurantLogo: '',
+        currencySymbol: '₼',
+        tableCount: 50,
+        tagline: 'Rəqəmsal QR Menyu və İdarəetmə Sistemi'
+      };
   
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('products');
+  const router = useRouter();
+  const [authChecking, setAuthChecking] = useState(true);
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [editingTableId, setEditingTableId] = useState(null);
   const [editingTableName, setEditingTableName] = useState('');
   const [origin, setOrigin] = useState('');
@@ -95,7 +116,7 @@ export function AdminApp() {
   // Product Modal State
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState(null);
-  const [productForm, setProductForm] = useState({ name: '', category: '', price: '', description: '', image: '', isPopular: false, isChefChoice: false, isSpicy: false, isVegetarian: false });
+  const [productForm, setProductForm] = useState({ name: '', category: '', price: '', description: '', image: '', prepTimeMinutes: '', isPopular: false, isChefChoice: false, isSpicy: false, isVegetarian: false, options: [] });
 
   // Confirmation Modal State
   const [confirmState, setConfirmState] = useState({
@@ -115,14 +136,18 @@ export function AdminApp() {
         price: product.price, 
         description: product.description, 
         image: product.image || '',
+        // prepTimeMinutes is the raw integer; product.prepTime is the
+        // formatted display string and must never be fed back into the form.
+        prepTimeMinutes: product.prepTimeMinutes ?? '',
         isPopular: !!product.isPopular,
         isChefChoice: !!product.isChefChoice,
         isSpicy: !!product.isSpicy,
-        isVegetarian: !!product.isVegetarian
+        isVegetarian: !!product.isVegetarian,
+        options: Array.isArray(product.options) ? product.options : []
       });
     } else {
       setEditingProductId(null);
-      setProductForm({ name: '', category: categories[0]?.id || '', price: '', description: '', image: '', isPopular: false, isChefChoice: false, isSpicy: false, isVegetarian: false });
+      setProductForm({ name: '', category: categories[0]?.id || '', price: '', description: '', image: '', prepTimeMinutes: '', isPopular: false, isChefChoice: false, isSpicy: false, isVegetarian: false, options: [] });
     }
     setIsProductModalOpen(true);
   };
@@ -136,7 +161,9 @@ export function AdminApp() {
     if (editingProductId) {
       await updateProduct({ id: editingProductId, ...productForm, price: parsedPrice });
     } else {
-      await createProduct({ currency: "₼", ...productForm, price: parsedPrice });
+      // No `currency` here: products.currency does not exist and must not —
+      // the symbol comes from restaurants.currency_symbol via the store.
+      await createProduct({ ...productForm, price: parsedPrice });
     }
     setIsProductModalOpen(false);
   };
@@ -243,7 +270,37 @@ export function AdminApp() {
   }, []);
 
   useEffect(() => {
-    // load supabase-backed data for admin views with loading state
+    if (!supabaseReady) {
+      setAuthChecking(false);
+      return undefined;
+    }
+
+    let active = true;
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!active) return;
+      const authed = Boolean(data?.session);
+      setIsAdminAuthenticated(authed);
+      if (authed) await loadProfile();
+      setAuthChecking(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setIsAdminAuthenticated(Boolean(session));
+      if (session) await loadProfile();
+    });
+
+    return () => {
+      active = false;
+      listener?.subscription?.unsubscribe();
+    };
+  }, [setIsAdminAuthenticated, loadProfile]);
+
+  // Once we know which restaurant this admin belongs to, load that
+  // restaurant's data (skip while we're still resolving the profile).
+  const restaurantResolved = !isAdminAuthenticated || Boolean(profile);
+  useEffect(() => {
+    if (!isAdminAuthenticated || !restaurantResolved) return;
+    if (!profile || profile.role !== 'restaurant_admin') return;
     const load = async () => {
       setLoading(true);
       setLoadError(null);
@@ -257,27 +314,37 @@ export function AdminApp() {
       }
     };
     load();
-  }, [loadMenuData, loadTables, loadOrders, loadAlerts]);
+  }, [loadMenuData, loadTables, loadOrders, loadAlerts, isAdminAuthenticated, restaurantResolved, profile]);
+
+  // QR token-ləri yalnız "QR Kodlar" tabı açılanda yüklə (sütun səviyyəli
+  // qorunmadadır, adi loadTables() ilə gəlmir — bax: 0008_qr_token_verification.sql)
+  useEffect(() => {
+    if (activeTab === 'qrcodes' && isAdminAuthenticated && restaurantResolved) {
+      loadQrTokens();
+    }
+  }, [activeTab, isAdminAuthenticated, restaurantResolved, loadQrTokens]);
 
   useEffect(() => {
     let prodSub, catSub, tableSub, orderSub;
+    const restaurantId = profile?.restaurant_id || restaurant?.id || null;
+
     const start = async () => {
       try {
         prodSub = await subscribeProducts(() => {
           loadMenuData();
-        });
+        }, { restaurantId });
 
         catSub = await subscribeCategories(() => {
           loadMenuData();
-        });
+        }, { restaurantId });
 
         tableSub = await subscribeTables(() => {
           loadTables();
-        });
+        }, { restaurantId });
 
         orderSub = await subscribeOrders(({ event }) => {
           loadOrders();
-        });
+        }, { restaurantId });
       } catch (err) {
         console.warn('Admin realtime subscribe error', err);
       }
@@ -291,9 +358,44 @@ export function AdminApp() {
       if (tableSub && typeof tableSub.unsubscribe === 'function') tableSub.unsubscribe();
       if (orderSub && typeof orderSub.unsubscribe === 'function') orderSub.unsubscribe();
     };
-  }, [loadMenuData, loadTables, loadOrders]);
+  }, [loadMenuData, loadTables, loadOrders, profile?.restaurant_id, restaurant?.id]);
 
   if (!isMounted) return null;
+
+  if (authChecking) {
+    return <PageSkeleton />;
+  }
+
+  // Role-based routing: this screen is only for restaurant_admin. Other
+  // roles get sent to (or told about) where they actually belong.
+  if (isAdminAuthenticated && profile) {
+    if (profile.role === 'super_admin') {
+      return (
+        <RoleRedirect
+          message="Bu hesab super admin hesabıdır — restoran admin panelinə deyil, platforma panelinə yönləndirilir."
+          href="/superadmin"
+        />
+      );
+    }
+    if (profile.role === 'staff') {
+      return (
+        <RoleRedirect
+          message="Bu hesab işçi (staff) hesabıdır — sifariş idarəetmə panelinə yönləndirilir."
+          href="/staff"
+        />
+      );
+    }
+    if (profile.role === 'unassigned') {
+      return (
+        <UnassignedScreen
+          onLogout={async () => {
+            if (supabaseReady) await supabase.auth.signOut();
+            setIsAdminAuthenticated(false);
+          }}
+        />
+      );
+    }
+  }
 
   if (isAdminAuthenticated && loading) {
     return <PageSkeleton />;
@@ -303,118 +405,241 @@ export function AdminApp() {
     return <ErrorState title="Yükləmə xətası" description={loadError} onRetry={() => window.location.reload()} />;
   }
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (ADMIN_PASSWORD && password === ADMIN_PASSWORD) {
-      setIsAdminAuthenticated(true);
-      setError('');
-    } else {
-      setError('Şifrə yanlışdır.');
+  const handleLogout = async () => {
+    if (supabaseReady) {
+      await supabase.auth.signOut();
     }
+    setIsAdminAuthenticated(false);
+    router.replace('/login');
   };
 
   if (!isAdminAuthenticated) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-        <form onSubmit={handleLogin} className="w-full max-w-sm glass-panel p-8 rounded-3xl border border-slate-800 text-center">
-          <div className="w-16 h-16 bg-slate-900 rounded-2xl mx-auto flex items-center justify-center border border-slate-800 mb-6">
-            <Lock className="w-8 h-8 text-blue-500" />
-          </div>
-          <h2 className="text-2xl font-serif-title font-bold text-white mb-2">Admin Girişi</h2>
-          <p className="text-slate-400 text-sm mb-6">İdarəetmə panelinə daxil olmaq üçün şifrəni daxil edin.</p>
-          
-          <input 
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-              placeholder="Admin şifrəsi"
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white mb-4 focus:outline-none focus:border-blue-500 transition-colors"
-          />
-          {error && <p className="text-rose-500 text-xs mb-4 text-left font-bold">{error}</p>}
-          
-          <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-colors">
-            Daxil ol
-          </button>
-        </form>
-      </div>
-    );
+    // Server-side middleware (middleware.js) already redirects unauthenticated
+    // requests to /admin over to /login before this component ever mounts.
+    // This is just a safety net (e.g. session expired mid-session).
+    return <RoleRedirect message="Sessiya bitib — giriş səhifəsinə yönləndirilir." href="/login?next=/admin" />;
   }
 
+  if (restaurant && isAccessBlocked(restaurant)) {
+    return <SubscriptionLockedScreen restaurant={restaurant} onLogout={handleLogout} />;
+  }
+
+  const trialDaysLeft = restaurant ? getTrialDaysLeft(restaurant) : null;
+  const showTrialBanner = restaurant?.subscription_status === 'trialing' && trialDaysLeft !== null && trialDaysLeft <= 5 && trialDaysLeft >= 0;
+
+  const NAV_ITEMS = [
+    { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard /> },
+    { key: 'products', label: 'Menyu', icon: <UtensilsCrossed /> },
+    { key: 'categories', label: 'Kateqoriya', icon: <Grid /> },
+    { key: 'tables', label: 'Masalar', icon: <Table2 /> },
+    { key: 'qrcodes', label: 'QR', icon: <QrCode /> },
+    { key: 'orders', label: 'Sifarişlər', icon: <ListOrdered /> },
+    { key: 'payments', label: 'Ödənişlər', icon: <Wallet /> },
+    { key: 'reports', label: 'Hesabat', icon: <FileBarChart2 /> },
+    { key: 'promotions', label: 'Kampaniyalar', icon: <Megaphone /> },
+    { key: 'design', label: 'Dizayn', icon: <Palette /> },
+    { key: 'audit', label: 'Audit Log', icon: <ClipboardList /> },
+    { key: 'users', label: 'İstifadəçilər', icon: <Users /> },
+    { key: 'settings', label: 'Parametrlər', icon: <Settings /> },
+  ];
+
+  const PAGE_TITLES = {
+    dashboard: 'Dashboard',
+    products: 'Menyu İdarəetməsi',
+    categories: 'Kateqoriya İdarəetməsi',
+    tables: 'Masalar',
+    qrcodes: 'QR Kod Generatoru',
+    orders: 'Sifarişlər',
+    payments: 'Ödənişlər',
+    reports: 'Hesabat',
+    promotions: 'Kampaniyalar və Endirimlər',
+    design: 'Dizayn (Theme Builder)',
+    audit: 'Audit Log',
+    users: 'İstifadəçilər',
+    settings: 'Restoran Tənzimləmələri (Branding)',
+  };
+
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 sm:p-8 font-sans">
-      <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-6 h-[90vh]">
-        
-        {/* Sidebar */}
-        <div className="w-full md:w-64 glass-panel border border-slate-800 rounded-3xl p-4 flex flex-col">
-          <div className="flex items-center gap-3 mb-8 px-2">
-            <div className="p-2 bg-blue-500/20 text-blue-400 rounded-xl">
-              <Shield className="w-6 h-6" />
-            </div>
+    <div className="min-h-screen bg-[#050505] text-white font-sans flex">
+
+      {/* Sidebar — matches the dark glass shell used by Staff/SuperAdmin panels
+          and by this same file's own auth-gate screens (see
+          SubscriptionLockedScreen/RoleRedirect/UnassignedScreen below); this
+          used to be a separate light theme, which is what created the
+          light-shell/dark-tab split fixed in this pass. */}
+      <div className="hidden md:flex md:w-[280px] shrink-0 bg-slate-950 border-r border-slate-800 flex-col h-screen sticky top-0">
+        <div className="flex items-center gap-3 px-6 h-20 border-b border-slate-800">
+          {settings.restaurantLogo ? (
+            <>
+              <Image src={settings.restaurantLogo} alt="Logo" width={36} height={36} className="w-9 h-9 rounded-xl object-cover shrink-0" unoptimized />
+              <div className="min-w-0">
+                <h2 className="font-bold text-base text-white leading-tight truncate">{settings.restaurantName}</h2>
+                <span className="text-[11px] text-slate-400 font-semibold">Admin Paneli</span>
+              </div>
+            </>
+          ) : (
             <div>
-              <h2 className="font-bold text-lg text-white leading-tight">{settings.restaurantName || "MenuFlow"}</h2>
-              <span className="text-xs text-slate-500 font-bold">Admin Paneli</span>
+              <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={110} height={17} className="h-4 w-auto object-contain mb-1" unoptimized />
+              <span className="text-[11px] text-slate-400 font-semibold">{settings.restaurantName ? `${settings.restaurantName} — ` : ''}Admin Paneli</span>
             </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
+          {NAV_ITEMS.map(item => (
+            <SidebarBtn
+              key={item.key}
+              icon={item.icon}
+              label={item.label}
+              active={activeTab === item.key}
+              onClick={() => setActiveTab(item.key)}
+            />
+          ))}
+        </div>
+
+        <div className="p-4 border-t border-slate-800 space-y-2">
+          <Link href="/staff" className="w-full flex items-center justify-center gap-2 py-2.5 text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-emerald-600 rounded-xl font-bold transition-all text-xs border border-emerald-500/20">
+            <UtensilsCrossed className="w-4 h-4" />
+            <span>Ofisiant (Staff) Paneli</span>
+          </Link>
+          <Link href="/" className="w-full flex items-center justify-center gap-2 py-2.5 text-blue-400 hover:text-white bg-blue-500/10 hover:bg-blue-600 rounded-xl font-bold transition-all text-xs">
+            <QrCode className="w-4 h-4" />
+            <span>Müştəri Menyusuna Keç</span>
+          </Link>
+          <button onClick={handleLogout} className="w-full py-2.5 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-xl font-bold transition-colors text-xs">
+            Çıxış et
+          </button>
+          <div className="flex items-center justify-center pt-2">
+            <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={90} height={14} className="h-3.5 w-auto object-contain opacity-70" unoptimized />
           </div>
-          
-          <div className="space-y-2 flex-1">
-            <SidebarBtn icon={<BarChart3 />} label="Analitika" active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} />
-            <SidebarBtn icon={<UtensilsCrossed />} label="Məhsullar" active={activeTab === 'products'} onClick={() => setActiveTab('products')} />
-            <SidebarBtn icon={<Grid />} label="Kateqoriyalar" active={activeTab === 'categories'} onClick={() => setActiveTab('categories')} />
-            <SidebarBtn icon={<QrCode />} label="QR Kodlar" active={activeTab === 'qrcodes'} onClick={() => setActiveTab('qrcodes')} />
-            <SidebarBtn icon={<Settings />} label="Tənzimləmələr" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+        </div>
+      </div>
+
+      {/* Main Area */}
+      <div className="flex-1 min-w-0 flex flex-col">
+
+        {/* Topbar */}
+        <div className="h-20 shrink-0 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800 px-4 sm:px-8 flex items-center justify-between gap-4 sticky top-0 z-10">
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-400 min-w-0">
+            <span className="truncate">Admin</span>
+            <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+            <span className="text-white truncate">{PAGE_TITLES[activeTab]}</span>
           </div>
 
-          <div className="pt-4 border-t border-slate-800 space-y-2">
-            <Link href="/" className="w-full flex items-center justify-center gap-2 py-2.5 text-blue-400 hover:text-white bg-blue-500/10 hover:bg-blue-600 rounded-xl font-bold transition-all text-xs">
-              <QrCode className="w-4 h-4" />
-              <span>Müştəri Menyusuna Keç</span>
+          <div className="flex items-center gap-3 sm:gap-5 shrink-0">
+            <Link
+              href="/staff"
+              className="hidden sm:flex items-center gap-2 px-3.5 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all"
+              title="Ofisiant / Mətbəx panelinə keç"
+            >
+              <UtensilsCrossed className="w-4 h-4" />
+              <span>Ofisiant Paneli</span>
             </Link>
-            <button onClick={() => setIsAdminAuthenticated(false)} className="w-full py-2.5 text-slate-500 hover:text-white bg-slate-900 rounded-xl font-bold transition-colors text-xs">
-              Çıxış et
+            <div className="hidden lg:flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 w-64">
+              <Search className="w-4 h-4 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Axtar..."
+                className="bg-transparent outline-none text-sm text-white placeholder:text-slate-500 w-full"
+              />
+            </div>
+            <button className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 transition-colors text-slate-400">
+              <Bell className="w-4.5 h-4.5" />
+              <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-rose-500 border border-slate-950" />
             </button>
+            <div className="flex items-center gap-2.5 pl-3 sm:border-l border-slate-800">
+              <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
+                {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
+              </div>
+              <div className="hidden sm:block leading-tight">
+                <p className="text-sm font-bold text-white">{settings.restaurantName || 'MenuFlow'}</p>
+                <p className="text-[11px] text-slate-400 font-semibold">Admin</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Main Area */}
-        <div className="flex-1 glass-panel border border-slate-800 rounded-3xl overflow-hidden flex flex-col">
-          
-          <div className="p-6 border-b border-slate-800/60 bg-slate-900/40 flex items-center justify-between">
-            <h3 className="text-xl font-bold text-white capitalize">{
-              activeTab === 'analytics' ? 'Satış və Sifariş Analitikası' :
-              activeTab === 'products' ? 'Menyu İdarəetməsi' :
-              activeTab === 'categories' ? 'Kateqoriya İdarəetməsi' :
-              activeTab === 'qrcodes' ? 'QR Kod Generatoru' :
-              'Restoran Tənzimləmələri (Branding)'
-            }</h3>
-            {(activeTab === 'products' || activeTab === 'categories') && (
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => activeTab === 'categories' ? handleOpenCategoryModal() : handleOpenProductModal()}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  {activeTab === 'products' ? 'Yeni Məhsul' : 'Yeni Kateqoriya'}
-                </button>
-                <RealtimeStatusBadge />
-              </div>
-            )}
-            {!(activeTab === 'products' || activeTab === 'categories') && (
-              <div className="ml-3">
-                <RealtimeStatusBadge />
-              </div>
-            )}
+        {showTrialBanner && (
+          <div className="mx-4 sm:mx-8 mt-4 flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl px-5 py-3">
+            <p className="text-amber-300 text-sm font-bold">
+              {trialDaysLeft === 0 ? 'Pulsuz sınaq bu gün bitir.' : `Pulsuz sınaq ${trialDaysLeft} gün sonra bitir.`}
+            </p>
+            <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className="whitespace-nowrap text-xs font-bold bg-amber-500 hover:bg-amber-400 text-black px-4 py-1.5 rounded-lg transition-colors">
+              Abunəliyə keç
+            </a>
           </div>
+        )}
 
-          <div className="flex-1 overflow-y-auto p-6">
-            
+        {(activeTab === 'products' || activeTab === 'categories') && (
+          <div className="px-4 sm:px-8 pt-6 flex items-center justify-end gap-3">
+            <button
+              onClick={() => activeTab === 'categories' ? handleOpenCategoryModal() : handleOpenProductModal()}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-blue-600/20"
+            >
+              <Plus className="w-4 h-4" />
+              {activeTab === 'products' ? 'Yeni Məhsul' : 'Yeni Kateqoriya'}
+            </button>
+            <RealtimeStatusBadge />
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+
+          {/* Dashboard */}
+          {activeTab === 'dashboard' && (
+            <DashboardHome orders={orders} tables={tables} products={products} categories={categories} currencySymbol={settings.currencySymbol} />
+          )}
+
+          {/* Masalar */}
+          {activeTab === 'tables' && (
+            <TablesManagement
+              tables={tables}
+              orders={orders}
+              editingTableId={editingTableId}
+              editingTableName={editingTableName}
+              setEditingTableId={setEditingTableId}
+              setEditingTableName={setEditingTableName}
+              updateTableName={updateTableName}
+            />
+          )}
+
+          {/* Sifarişlər */}
+          {activeTab === 'orders' && (
+            <OrdersManagement orders={orders} tables={tables} currencySymbol={settings.currencySymbol} />
+          )}
+
+          {/* Ödənişlər — nəğd / post-terminal / Google-Apple Pay ayrı sxemalarla */}
+          {activeTab === 'payments' && (
+            <PaymentsManagement orders={orders} tables={tables} currencySymbol={settings.currencySymbol} restaurant={restaurant} />
+          )}
+
+          {/* Hesabat */}
+          {activeTab === 'reports' && (
+            <AnalyticsDashboard orders={orders} tables={tables} />
+          )}
+
+          {activeTab === 'promotions' && (
+            <PromotionsTab />
+          )}
+
+          {activeTab === 'design' && (
+            <DesignTab />
+          )}
+
+          {activeTab === 'audit' && (
+            <AuditLogTab />
+          )}
+
+          {/* İstifadəçilər */}
+          {activeTab === 'users' && (
+            <UsersPlaceholder profile={profile} restaurant={restaurant} settings={settings} />
+          )}
+
+          {['settings', 'products', 'categories', 'qrcodes'].includes(activeTab) && (
+          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-sm text-white">
             {/* Settings Tab */}
             {activeTab === 'settings' && (
               <SettingsTab settings={settings} updateSettings={updateSettings} />
-            )}
-            
-            {/* Analytics Demo */}
-            {activeTab === 'analytics' && (
-              <AnalyticsDashboard orders={orders} tables={tables} />
             )}
 
             {/* Products CRUD Demo */}
@@ -449,7 +674,7 @@ export function AdminApp() {
                       </button>
                       <button 
                         onClick={() => handleDeleteProduct(product.id)}
-                        className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                        className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -482,7 +707,7 @@ export function AdminApp() {
                       </button>
                       <button 
                         onClick={() => handleDeleteCategory(category.id)}
-                        className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                        className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -515,11 +740,16 @@ export function AdminApp() {
                   }
                 `}} />
 
+                <div className="mb-4 text-xs text-slate-400 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5">
+                  Hər QR kodun linkində gizli, imzalı bir token var (sifariş saxtakarlığının qarşısını alır). Əgər əvvəllər çap etdiyiniz QR kodlar işləmirsə, bu səhifədən yenidən çap edin — token avtomatik yenilənib.
+                </div>
+
                 <div className="min-h-[360px]">
                   {tables.length > 0 ? (
                     <div id="print-qr-area" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                       {tables.map(table => {
-                        const tableUrl = `${origin}/menu/${encodeURIComponent(table.id)}`;
+                        const tableToken = qrTokensByTableId?.[table.id];
+                        const tableUrl = `${origin}/menu/${encodeURIComponent(restaurant?.slug || 'default')}/${encodeURIComponent(table.table_number || table.id)}${tableToken ? `?t=${encodeURIComponent(tableToken)}` : ''}`;
                         return (
                           <div key={table.id} id={`qr-card-${table.id}`} className="qr-code-card bg-white flex flex-col items-center justify-center gap-3 relative group p-4 border border-slate-200 rounded-2xl">
                             <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs uppercase tracking-wider">
@@ -609,10 +839,11 @@ export function AdminApp() {
                 </div>
               </div>
             )}
+          </div>
+          )}
 
           </div>
         </div>
-      </div>
 
       <CategoryModal 
         isOpen={isCategoryModalOpen}
@@ -641,6 +872,76 @@ export function AdminApp() {
         onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
         isAlert={confirmState.isAlert}
       />
+    </div>
+  );
+}
+
+// Variantlar (məs. Ölçü: Kiçik/Orta/Böyük) və Əlavələr (məs. Göbələk, Pendir,
+// Zeytun) qrupları. Hər seçimin əlavə qiyməti var — səbətdə/checkout-da
+// qiymət avtomatik hesablanır (bax: ProductDetailModal.jsx).
+function ProductOptionsEditor({ options, onChange }) {
+  const addGroup = () => onChange([...options, { title: '', choices: [{ name: '', extraPrice: 0 }] }]);
+  const removeGroup = (gi) => onChange(options.filter((_, i) => i !== gi));
+  const updateGroupTitle = (gi, title) => onChange(options.map((g, i) => (i === gi ? { ...g, title } : g)));
+  const addChoice = (gi) => onChange(options.map((g, i) => (i === gi ? { ...g, choices: [...g.choices, { name: '', extraPrice: 0 }] } : g)));
+  const removeChoice = (gi, ci) => onChange(options.map((g, i) => (i === gi ? { ...g, choices: g.choices.filter((_, j) => j !== ci) } : g)));
+  const updateChoice = (gi, ci, field, value) =>
+    onChange(
+      options.map((g, i) =>
+        i === gi
+          ? { ...g, choices: g.choices.map((c, j) => (j === ci ? { ...c, [field]: field === 'extraPrice' ? Number(value) || 0 : value } : c)) }
+          : g
+      )
+    );
+
+  return (
+    <div className="border-t border-slate-800 pt-4">
+      <div className="flex items-center justify-between mb-2">
+        <label className="block text-sm font-bold text-slate-400">Variantlar / Əlavələr (Ölçü, Toppinqlər...)</label>
+        <button type="button" onClick={addGroup} className="text-xs font-bold text-blue-400 hover:text-blue-300">+ Qrup əlavə et</button>
+      </div>
+      {options.length === 0 && (
+        <p className="text-xs text-slate-500 mb-2">Məs: &quot;Ölçü&quot; qrupu → Kiçik / Orta / Böyük. Hər seçimin əlavə qiyməti checkout-da avtomatik cəmlənir.</p>
+      )}
+      <div className="space-y-3">
+        {options.map((group, gi) => (
+          <div key={gi} className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={group.title}
+                onChange={(e) => updateGroupTitle(gi, e.target.value)}
+                placeholder="Qrup adı (məs: Ölçü, Əlavələr)"
+                className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+              />
+              <button type="button" onClick={() => removeGroup(gi)} className="text-rose-400 hover:text-rose-300 p-1"><Trash2 className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-1.5">
+              {group.choices.map((choice, ci) => (
+                <div key={ci} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={choice.name}
+                    onChange={(e) => updateChoice(gi, ci, 'name', e.target.value)}
+                    placeholder="Seçim (məs: Böyük, Göbələk)"
+                    className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={choice.extraPrice}
+                    onChange={(e) => updateChoice(gi, ci, 'extraPrice', e.target.value)}
+                    placeholder="+₼"
+                    className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-2 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                  />
+                  <button type="button" onClick={() => removeChoice(gi, ci)} className="text-slate-500 hover:text-rose-400 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
+              ))}
+              <button type="button" onClick={() => addChoice(gi)} className="text-xs font-bold text-slate-400 hover:text-white">+ Seçim əlavə et</button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -695,9 +996,22 @@ function ProductModal({ isOpen, onClose, onSave, productForm, setProductForm, is
             </div>
           </div>
           <div>
+            <label className="block text-sm font-bold text-slate-400 mb-1">Hazırlanma vaxtı (dəq, istəyə bağlı)</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={productForm.prepTimeMinutes}
+              onChange={(e) => setProductForm({ ...productForm, prepTimeMinutes: e.target.value })}
+              placeholder="Məsələn: 15"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            <p className="mt-1 text-xs text-slate-500">Boş buraxsanız, müştəri menyusunda göstərilmir.</p>
+          </div>
+          <div>
             <label className="block text-sm font-bold text-slate-400 mb-1">Şəkil URL (İstəyə bağlı)</label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={productForm.image}
               onChange={(e) => setProductForm({ ...productForm, image: e.target.value })}
               placeholder="https://... şəkil linki"
@@ -715,6 +1029,12 @@ function ProductModal({ isOpen, onClose, onSave, productForm, setProductForm, is
             />
           </div>
           
+          {/* Variantlar (Ölçü, Əlavələr və s.) — qiymət avtomatik hesablanır */}
+          <ProductOptionsEditor
+            options={productForm.options || []}
+            onChange={(options) => setProductForm({ ...productForm, options })}
+          />
+
           {/* Tags / Badges */}
           <div className="grid grid-cols-2 gap-3 pt-2">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -851,7 +1171,7 @@ function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, isAlert }) 
           <button 
             onClick={isAlert ? onCancel : onConfirm}
             className={`flex-1 py-3 text-white rounded-xl font-bold transition-colors ${
-              isAlert ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'
+              isAlert ? 'bg-blue-600 hover:bg-blue-500' : 'bg-rose-600 hover:bg-rose-500'
             }`}
           >
             {isAlert ? 'Tamam' : 'Bəli, Sil'}
@@ -866,25 +1186,13 @@ function SidebarBtn({ icon, label, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-all ${
-        active ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:text-white hover:bg-slate-900/80'
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+        active ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25' : 'text-slate-400 hover:text-white hover:bg-slate-800/70'
       }`}
     >
-      <span className={active ? 'text-white' : 'text-slate-500'}>{React.cloneElement(icon, { className: 'w-5 h-5' })}</span>
+      <span className={active ? 'text-white' : 'text-slate-400'}>{React.cloneElement(icon, { className: 'w-[18px] h-[18px]' })}</span>
       {label}
     </button>
-  );
-}
-
-function StatCard({ label, value, change }) {
-  return (
-    <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl">
-      <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">{label}</p>
-      <div className="flex items-end justify-between">
-        <h4 className="text-2xl font-bold text-white">{value}</h4>
-        <span className="text-emerald-400 text-xs font-bold">{change}</span>
-      </div>
-    </div>
   );
 }
 
@@ -1034,10 +1342,10 @@ function AnalyticsDashboard({ orders, tables }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label={timeFilter === 'day' ? "Günlük Gəlir" : timeFilter === 'week' ? "Həftəlik Gəlir" : "Aylıq Gəlir"} value={`${stats.revenue.toFixed(2)} ₼`} icon={<TrendingUp className="text-emerald-400" />} />
-        <StatCard label={timeFilter === 'day' ? "Bugünkü Sifariş" : timeFilter === 'week' ? "Həftəlik Sifariş" : "Aylıq Sifariş"} value={stats.count} icon={<Activity className="text-blue-400" />} />
-        <StatCard label="Orta Hesab (AOV)" value={`${stats.aov.toFixed(2)} ₼`} icon={<BarChart3 className="text-purple-400" />} />
-        <StatCard label="Aktiv Masalar" value={stats.activeTables} icon={<Users className="text-amber-400" />} />
+        <KpiCard label={timeFilter === 'day' ? "Günlük Gəlir" : timeFilter === 'week' ? "Həftəlik Gəlir" : "Aylıq Gəlir"} value={`${stats.revenue.toFixed(2)} ₼`} icon={<TrendingUp className="w-5 h-5 text-emerald-400" />} tint="bg-emerald-500/10" />
+        <KpiCard label={timeFilter === 'day' ? "Bugünkü Sifariş" : timeFilter === 'week' ? "Həftəlik Sifariş" : "Aylıq Sifariş"} value={stats.count} icon={<Activity className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10" />
+        <KpiCard label="Orta Hesab (AOV)" value={`${stats.aov.toFixed(2)} ₼`} icon={<BarChart3 className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10" />
+        <KpiCard label="Aktiv Masalar" value={stats.activeTables} icon={<Users className="w-5 h-5 text-amber-400" />} tint="bg-amber-500/10" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1170,6 +1478,585 @@ function AnalyticsDashboard({ orders, tables }) {
   );
 }
 
+// Status label / color helpers shared by the new light-themed views
+const ORDER_STATUS_LABELS = {
+  [ORDER_STATUS.PENDING]: 'Gözləyir',
+  [ORDER_STATUS.ACCEPTED]: 'Qəbul edildi',
+  [ORDER_STATUS.PREPARING]: 'Hazırlanır',
+  [ORDER_STATUS.READY]: 'Hazırdır',
+  [ORDER_STATUS.SERVED]: 'Xidmət edildi',
+  [ORDER_STATUS.CANCELLED]: 'Ləğv edildi',
+};
+
+function statusBadgeClasses(status) {
+  if (status === ORDER_STATUS.SERVED || status === ORDER_STATUS.READY) return 'bg-emerald-500/10 text-emerald-400';
+  if (status === ORDER_STATUS.PREPARING || status === ORDER_STATUS.ACCEPTED) return 'bg-blue-500/10 text-blue-400';
+  if (status === ORDER_STATUS.CANCELLED) return 'bg-rose-500/10 text-rose-400';
+  return 'bg-amber-500/10 text-amber-400';
+}
+
+// Dark-glass KPI card — used for every metric strip in the admin panel
+// (Dashboard, Hesabat/Analytics, Ödənişlər) so every tab shares the same
+// tinted-icon-well treatment instead of each rolling its own variant.
+function KpiCard({ label, value, icon, tint }) {
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 flex items-center gap-4">
+      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${tint}`}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-1 truncate">{label}</p>
+        <h4 className="text-xl font-bold text-white truncate">{value}</h4>
+      </div>
+    </div>
+  );
+}
+
+// Dashboard — the new "analytics hub" home page.
+function DashboardHome({ orders, tables, products, categories, currencySymbol }) {
+  const symbol = currencySymbol || '₼';
+
+  const stats = useMemo(() => {
+    const now = new Date();
+    const today = orders.filter(o => new Date(o.time).toDateString() === now.toDateString());
+    const todayRevenue = today.reduce((sum, o) => sum + (o.total || 0), 0);
+    const activeTables = new Set(
+      orders.filter(o => o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED).map(o => o.table)
+    ).size;
+
+    // Revenue over the last 7 days for the line chart
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - i);
+      days.push(d);
+    }
+    const revenueByDay = days.map(d => {
+      const dayOrders = orders.filter(o => new Date(o.time).toDateString() === d.toDateString());
+      return {
+        label: d.toLocaleDateString('az-AZ', { weekday: 'short' }),
+        revenue: dayOrders.reduce((sum, o) => sum + (o.total || 0), 0),
+      };
+    });
+
+    // Category split (by items sold) for the donut chart
+    const categoryCounts = {};
+    orders.forEach(o => {
+      o.items.forEach(item => {
+        const catId = item.product.category;
+        const cat = categories.find(c => c.id === catId);
+        const name = cat ? cat.name : 'Digər';
+        categoryCounts[name] = (categoryCounts[name] || 0) + item.quantity;
+      });
+    });
+    const categoryData = Object.entries(categoryCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+
+    // Best sellers for the bar chart
+    const dishCounts = {};
+    orders.forEach(o => {
+      o.items.forEach(item => {
+        const id = item.product.id;
+        if (!dishCounts[id]) dishCounts[id] = { name: item.product.name, count: 0 };
+        dishCounts[id].count += item.quantity;
+      });
+    });
+    const bestSellers = Object.values(dishCounts).sort((a, b) => b.count - a.count).slice(0, 5);
+
+    return { todayRevenue, activeTables, revenueByDay, categoryData, bestSellers };
+  }, [orders, categories]);
+
+  const recentOrders = useMemo(() => {
+    return [...orders].reverse().slice(0, 8).map(o => {
+      const table = tables.find(t => t.id === o.table);
+      return { ...o, tableName: table ? table.name : `Masa ${o.table}` };
+    });
+  }, [orders, tables]);
+
+  const DONUT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+
+  return (
+    <div className="space-y-6">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard label="Ümumi Sifariş" value={orders.length} icon={<ListOrdered className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10" />
+        <KpiCard label="Bugünkü Gəlir" value={`${stats.todayRevenue.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-emerald-400" />} tint="bg-emerald-500/10" />
+        <KpiCard label="Aktiv Masa" value={stats.activeTables} icon={<Table2 className="w-5 h-5 text-amber-400" />} tint="bg-amber-500/10" />
+        <KpiCard label="Məhsul Sayı" value={products.length} icon={<Package className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10" />
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-slate-900/60 border border-slate-800 rounded-3xl p-6">
+          <h4 className="text-white font-bold mb-6 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-blue-400" /> Gəlir (son 7 gün)</h4>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={stats.revenueByDay} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                <XAxis dataKey="label" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${symbol}${v}`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '14px', boxShadow: '0 4px 20px rgba(0,0,0,0.35)' }}
+                  labelStyle={{ color: '#e2e8f0' }}
+                  itemStyle={{ color: '#93c5fd' }}
+                  formatter={(value) => [`${Number(value).toFixed(2)} ${symbol}`, 'Gəlir']}
+                />
+                <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6' }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6">
+          <h4 className="text-white font-bold mb-4 flex items-center gap-2"><PieChartIcon className="w-4 h-4 text-amber-400" /> Kateqoriyalar</h4>
+          <div className="h-48">
+            {stats.categoryData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={stats.categoryData} cx="50%" cy="50%" innerRadius={55} outerRadius={78} paddingAngle={4} dataKey="value" stroke="none">
+                    {stats.categoryData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '14px' }} labelStyle={{ color: '#e2e8f0' }} itemStyle={{ color: '#e2e8f0' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-slate-500 text-sm">Məlumat yoxdur</div>
+            )}
+          </div>
+          <div className="mt-3 space-y-1.5">
+            {stats.categoryData.map((c, i) => (
+              <div key={i} className="flex justify-between items-center text-xs font-bold">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+                  <span className="text-slate-300">{c.name}</span>
+                </div>
+                <span className="text-white">{c.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6">
+        <h4 className="text-white font-bold mb-6 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-emerald-400" /> Ən Çox Satılan</h4>
+        <div className="h-64">
+          {stats.bestSellers.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.bestSellers} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} interval={0} tick={{ width: 100 }} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '14px' }} labelStyle={{ color: '#e2e8f0' }} itemStyle={{ color: '#6ee7b7' }} formatter={(v) => [`${v} ədəd`, 'Satış']} />
+                <Bar dataKey="count" name="Satış" fill="#10b981" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-slate-500 text-sm">Hələ satış yoxdur</div>
+          )}
+        </div>
+      </div>
+
+      {/* Premium Table — Son Sifarişlər */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden">
+        <div className="px-6 pt-6 pb-2 flex items-center justify-between">
+          <h4 className="text-white font-bold flex items-center gap-2"><Clock className="w-4 h-4 text-blue-400" /> Son Sifarişlər</h4>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500 text-xs font-bold uppercase tracking-wide">
+                <th className="px-6 py-3 font-bold">Masa</th>
+                <th className="px-6 py-3 font-bold">Vaxt</th>
+                <th className="px-6 py-3 font-bold">Məhsul</th>
+                <th className="px-6 py-3 font-bold">Məbləğ</th>
+                <th className="px-6 py-3 font-bold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentOrders.length > 0 ? recentOrders.map(order => (
+                <tr key={order.id} className="hover:bg-slate-800/40 transition-colors border-t border-slate-800/60">
+                  <td className="px-6 py-3.5"><span className="rounded-xl bg-slate-800 px-3 py-1.5 font-bold text-slate-200 inline-block">{order.tableName}</span></td>
+                  <td className="px-6 py-3.5 text-slate-400">{new Date(order.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="px-6 py-3.5 text-slate-300">{order.items.length} məhsul</td>
+                  <td className="px-6 py-3.5 font-bold text-white">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</td>
+                  <td className="px-6 py-3.5">
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusBadgeClasses(order.status)}`}>
+                      {ORDER_STATUS_LABELS[order.status] || 'Gözləyir'}
+                    </span>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={5} className="px-6 py-10 text-center text-slate-500 text-sm">Hələ sifariş yoxdur</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Masalar — table management: rename tables, see live status.
+function TablesManagement({ tables, orders, editingTableId, editingTableName, setEditingTableId, setEditingTableName, updateTableName }) {
+  const tableStatus = (tableId) => {
+    const active = orders.find(o => o.table === tableId && o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED);
+    return active ? active.status : null;
+  };
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {tables.length > 0 ? tables.map(table => {
+        const status = tableStatus(table.id);
+        return (
+          <div key={table.id} className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5">
+            <div className="flex items-start justify-between mb-3">
+              <div className="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                <Table2 className="w-5 h-5" />
+              </div>
+              <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold ${status ? statusBadgeClasses(status) : 'bg-slate-800 text-slate-400'}`}>
+                {status ? ORDER_STATUS_LABELS[status] : 'Boş'}
+              </span>
+            </div>
+            {editingTableId === table.id ? (
+              <div className="flex flex-col gap-2">
+                <input
+                  type="text"
+                  value={editingTableName}
+                  onChange={(e) => setEditingTableName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-white font-bold text-sm focus:outline-none focus:border-blue-500"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { updateTableName(table.id, editingTableName); setEditingTableId(null); }}
+                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-1.5 rounded-lg transition-colors"
+                  >Yadda saxla</button>
+                  <button onClick={() => setEditingTableId(null)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-1.5 rounded-lg transition-colors">Ləğv et</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white">{table.name}</span>
+                <button
+                  onClick={() => { setEditingTableId(table.id); setEditingTableName(table.name); }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                  title="Adı Dəyiş"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      }) : (
+        <EmptyState icon={<Table2 className="w-8 h-8 text-blue-400" />} title="Masa tapılmadı" description="Hələ heç bir masa qeydə alınmayıb." />
+      )}
+    </div>
+  );
+}
+
+// Sifarişlər — full order list.
+function OrdersManagement({ orders, tables, currencySymbol }) {
+  const symbol = currencySymbol || '₼';
+  const sorted = useMemo(() => {
+    return [...orders].reverse().map(o => {
+      const table = tables.find(t => t.id === o.table);
+      return { ...o, tableName: table ? table.name : `Masa ${o.table}` };
+    });
+  }, [orders, tables]);
+
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-slate-500 text-xs font-bold uppercase tracking-wide">
+              <th className="px-6 py-3.5 font-bold">Masa</th>
+              <th className="px-6 py-3.5 font-bold">Tarix</th>
+              <th className="px-6 py-3.5 font-bold">Məhsul</th>
+              <th className="px-6 py-3.5 font-bold">Qeyd</th>
+              <th className="px-6 py-3.5 font-bold">Məbləğ</th>
+              <th className="px-6 py-3.5 font-bold">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.length > 0 ? sorted.map(order => (
+              <tr key={order.id} className="hover:bg-slate-800/40 transition-colors border-t border-slate-800/60">
+                <td className="px-6 py-3.5"><span className="rounded-xl bg-slate-800 px-3 py-1.5 font-bold text-slate-200 inline-block">{order.tableName}</span></td>
+                <td className="px-6 py-3.5 text-slate-400">{new Date(order.time).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                <td className="px-6 py-3.5 text-slate-300">{order.items.length} məhsul</td>
+                <td className="px-6 py-3.5 max-w-[220px] truncate text-amber-300/90" title={order.note || ''}>
+                  {order.note || '—'}
+                </td>
+                <td className="px-6 py-3.5 font-bold text-white">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</td>
+                <td className="px-6 py-3.5">
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusBadgeClasses(order.status)}`}>
+                    {ORDER_STATUS_LABELS[order.status] || 'Gözləyir'}
+                  </span>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={6} className="px-6 py-10 text-center text-slate-500 text-sm">Hələ sifariş yoxdur</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Ödənişlər — orders split into three separate payment-method "schemas"
+// (cash / POS terminal / Google & Apple Pay), each with its own summary
+// and its own table, instead of one mixed order list.
+function PaymentSchemaTable({ title, icon, tint, rows, currencySymbol, emptyLabel }) {
+  const symbol = currencySymbol || '₼';
+  const total = rows.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden">
+      <div className="px-6 pt-6 pb-4 flex items-center justify-between flex-wrap gap-3">
+        <h4 className="text-white font-bold flex items-center gap-2">
+          <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${tint}`}>{icon}</span>
+          {title}
+        </h4>
+        <div className="flex items-center gap-4 text-sm">
+          <span className="text-slate-400">Say: <span className="text-white font-bold">{rows.length}</span></span>
+          <span className="text-slate-400">Cəmi: <span className="text-white font-bold">{total.toFixed(2)} {symbol}</span></span>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-slate-500 text-xs font-bold uppercase tracking-wide">
+              <th className="px-6 py-3 font-bold">Masa</th>
+              <th className="px-6 py-3 font-bold">Tarix</th>
+              <th className="px-6 py-3 font-bold">Məhsul</th>
+              <th className="px-6 py-3 font-bold">Məbləğ</th>
+              <th className="px-6 py-3 font-bold">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length > 0 ? rows.map(order => (
+              <tr key={order.id} className="hover:bg-slate-800/40 transition-colors border-t border-slate-800/60">
+                <td className="px-6 py-3.5"><span className="rounded-xl bg-slate-800 px-3 py-1.5 font-bold text-slate-200 inline-block">{order.tableName}</span></td>
+                <td className="px-6 py-3.5 text-slate-400">{new Date(order.time).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                <td className="px-6 py-3.5 text-slate-300">{order.items.length} məhsul</td>
+                <td className="px-6 py-3.5 font-bold text-white">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</td>
+                <td className="px-6 py-3.5">
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusBadgeClasses(order.status)}`}>
+                    {ORDER_STATUS_LABELS[order.status] || 'Gözləyir'}
+                  </span>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={5} className="px-6 py-8 text-center text-slate-500 text-sm">{emptyLabel}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
+  const symbol = currencySymbol || '₼';
+  const walletEnabled = { google_pay: restaurant?.feature_flags?.google_pay !== false, apple_pay: restaurant?.feature_flags?.apple_pay !== false };
+
+  const withTableName = useMemo(() => {
+    return [...orders].reverse().map(o => {
+      const table = tables.find(t => t.id === o.table);
+      return { ...o, tableName: table ? table.name : `Masa ${o.table}` };
+    });
+  }, [orders, tables]);
+
+  const cashOrders = useMemo(() => withTableName.filter(o => o.paymentMethod === 'cash'), [withTableName]);
+  const cardOrders = useMemo(() => withTableName.filter(o => o.paymentMethod === 'card'), [withTableName]);
+  const walletOrders = useMemo(() => withTableName.filter(o => ['google_pay', 'apple_pay'].includes(o.paymentMethod)), [withTableName]);
+  const unspecifiedCount = withTableName.length - cashOrders.length - cardOrders.length - walletOrders.length;
+
+  const grandTotal = cashOrders.reduce((s, o) => s + (Number(o.total) || 0), 0)
+    + cardOrders.reduce((s, o) => s + (Number(o.total) || 0), 0)
+    + walletOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      {(!walletEnabled.google_pay || !walletEnabled.apple_pay) && (
+        <div className="flex items-start gap-2.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl px-4 py-3">
+          <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 mt-1.5" />
+          <p className="text-xs font-semibold text-amber-300">
+            {!walletEnabled.google_pay && !walletEnabled.apple_pay
+              ? 'Google Pay və Apple Pay hələ aktiv deyil — platforma administratoru tərəfindən açılmalıdır.'
+              : !walletEnabled.google_pay
+                ? 'Google Pay hələ aktiv deyil — platforma administratoru tərəfindən açılmalıdır.'
+                : 'Apple Pay hələ aktiv deyil — platforma administratoru tərəfindən açılmalıdır.'}
+          </p>
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard label="Nəğd" value={`${cashOrders.length}`} icon={<Wallet className="w-5 h-5 text-emerald-400" />} tint="bg-emerald-500/10" />
+        <KpiCard label="Post Terminal" value={`${cardOrders.length}`} icon={<CreditCard className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10" />
+        <KpiCard label="Google / Apple Pay" value={`${walletOrders.length}`} icon={<Smartphone className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10" />
+        <KpiCard label="Ümumi Ödəniş" value={`${grandTotal.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-amber-400" />} tint="bg-amber-500/10" />
+      </div>
+
+      <PaymentSchemaTable
+        title="Nəğd Ödənişlər"
+        icon={<Wallet className="w-4 h-4 text-emerald-400" />}
+        tint="bg-emerald-500/10"
+        rows={cashOrders}
+        currencySymbol={symbol}
+        emptyLabel="Hələ nəğd ödəniş qeydə alınmayıb"
+      />
+
+      <PaymentSchemaTable
+        title="Post Terminal Ödənişləri"
+        icon={<CreditCard className="w-4 h-4 text-blue-400" />}
+        tint="bg-blue-500/10"
+        rows={cardOrders}
+        currencySymbol={symbol}
+        emptyLabel="Hələ post terminal ödənişi qeydə alınmayıb"
+      />
+
+      <PaymentSchemaTable
+        title="Google Pay / Apple Pay Ödənişləri"
+        icon={<Smartphone className="w-4 h-4 text-purple-400" />}
+        tint="bg-purple-500/10"
+        rows={walletOrders}
+        currencySymbol={symbol}
+        emptyLabel="Hələ Google Pay / Apple Pay ödənişi qeydə alınmayıb"
+      />
+
+      {unspecifiedCount > 0 && (
+        <p className="text-xs text-slate-500 font-semibold px-1">
+          {unspecifiedCount} sifarişdə ödəniş üsulu göstərilməyib (müştəri hələ hesab istəməyib və ya köhnə qeydlərdir), buna görə yuxarıdakı üç sxemaya daxil edilməyib.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// İstifadəçilər — placeholder until multi-user/staff-role management ships.
+function UsersPlaceholder({ profile, restaurant, settings }) {
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold">
+            {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="font-bold text-white">{profile?.email || settings.restaurantName}</p>
+            <p className="text-xs text-emerald-400 font-bold uppercase tracking-wide">Restoran Admini & Ofisiant Səlahiyyəti</p>
+          </div>
+        </div>
+        <Link
+          href="/staff"
+          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+        >
+          <UtensilsCrossed className="w-4 h-4" />
+          <span>Ofisiant Panelinə Keç</span>
+        </Link>
+      </div>
+      <EmptyState
+        icon={<UserCircle2 className="w-8 h-8 text-blue-400" />}
+        title="Xüsusi ofisiant qeydiyyatına ehtiyac yoxdur"
+        description="Restoran sahibi olaraq eyni email və şifrənizlə həm Admin panelinə (/admin), həm də Ofisiant / Mətbəx panelinə (/staff) daxil ola bilərsiniz."
+      />
+    </div>
+  );
+}
+
+function SubscriptionLockedScreen({ restaurant, onLogout }) {
+  const reason = accessBlockReason(restaurant);
+  const copy = {
+    deactivated: {
+      title: 'Restoran deaktiv edilib',
+      body: `"${restaurant.name}" platforma administratoru tərəfindən deaktiv edilib. Yenidən aktivləşdirmək üçün platforma ilə əlaqə saxlayın.`,
+    },
+    trial_expired: {
+      title: 'Pulsuz sınaq bitib',
+      body: `"${restaurant.name}" üçün pulsuz sınaq müddəti bitib. Davam etmək üçün abunəliyə keçin.`,
+    },
+    past_due: {
+      title: 'Abunəlik dayandırılıb',
+      body: `"${restaurant.name}" üçün abunəlik ödənişi gecikib. Panelə yenidən giriş üçün ödənişi tamamlayın.`,
+    },
+    canceled: {
+      title: 'Abunəlik ləğv edilib',
+      body: `"${restaurant.name}" üçün abunəlik ləğv edilib. Davam etmək üçün abunəliyə yenidən keçin.`,
+    },
+  };
+  const { title, body } = copy[reason] || copy.canceled;
+  return (
+    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+      <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
+        <div className="w-14 h-14 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/30 mx-auto mb-4">
+          <Lock className="w-7 h-7 text-amber-500" />
+        </div>
+        <h2 className="text-xl font-bold text-white mb-2">{title}</h2>
+        <p className="text-slate-400 text-sm mb-6">{body}</p>
+        <div className="flex flex-col gap-2">
+          {reason !== 'deactivated' && (
+            <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className="py-2.5 bg-amber-500 hover:bg-amber-400 text-black rounded-xl font-bold text-sm">
+              Abunəliyə keç
+            </a>
+          )}
+          <button onClick={onLogout} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm">
+            Çıxış et
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PieChartIcon({ className }) {
   return <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+}
+
+function RoleRedirect({ message, href }) {
+  const router = useRouter();
+  useEffect(() => {
+    const t = setTimeout(() => router.replace(href), 600);
+    return () => clearTimeout(t);
+  }, [router, href]);
+
+  return (
+    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+      <div className="max-w-sm text-center">
+        <p className="text-slate-400 text-sm mb-4">{message}</p>
+        <Link href={href} className="text-blue-400 hover:text-blue-300 text-sm font-bold underline">
+          Avtomatik yönləndirilmirsə buraya klikləyin
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function UnassignedScreen({ onLogout }) {
+  return (
+    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+      <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
+        <Lock className="w-10 h-10 text-amber-500 mx-auto mb-4" />
+        <h2 className="text-xl font-bold text-white mb-2">Hesab hələ təyin edilməyib</h2>
+        <p className="text-slate-400 text-sm mb-6">
+          Hesabınız yaradılıb, lakin hələ heç bir restorana admin kimi təyin edilməyib.
+          Platforma administratorundan bu hesabı bir restorana təyin etməsini xahiş edin.
+        </p>
+        <button onClick={onLogout} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm">
+          Çıxış et
+        </button>
+      </div>
+    </div>
+  );
 }

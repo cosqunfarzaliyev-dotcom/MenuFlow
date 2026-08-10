@@ -18,50 +18,44 @@ export const ProductCard = ({
   const product = getLocalizedProduct(originalProduct, lang);
 
   return (
-    <div className="group glass-panel-interactive rounded-2xl overflow-hidden flex flex-col justify-between border border-slate-800/50 shadow-sm hover:shadow-md hover:border-slate-700/80 transition-all duration-300">
-      
-      {/* Top Image Section */}
-      <div 
-        className="relative h-40 sm:h-52 w-full overflow-hidden cursor-pointer"
+    <div className="customer-card group flex flex-col overflow-hidden">
+
+      {/* Image — the largest single element in the card, food stays the hero */}
+      <div
+        className="relative h-36 sm:h-44 w-full overflow-hidden cursor-pointer shrink-0"
         onClick={() => onOpenDetail(originalProduct)}
       >
         <Image
           src={product.image?.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80"}
           alt={product.name}
-          className="object-cover transform group-hover:scale-110 transition-transform duration-500 ease-out"
+          className="object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out"
           fill
           sizes="(max-width: 640px) 100vw, 25vw"
           unoptimized
         />
-        
-        {/* Dark subtle gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
 
         {/* Top Badges */}
         <div className="absolute top-2.5 left-2.5 right-12 flex flex-wrap gap-1 z-10 max-h-16 overflow-hidden">
           {product.isPopular && (
-            <span className="bg-amber-500/90 text-slate-950 font-black text-[9px] uppercase px-2 py-0.5 rounded-full backdrop-blur-md shadow-md flex items-center gap-1 shrink-0 whitespace-nowrap">
-              <Star className="w-2.5 h-2.5 fill-slate-950" />
+            <span className="bg-[#FFB020] text-[#14151A] font-extrabold text-[9px] uppercase px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap">
+              <Star className="w-2.5 h-2.5 fill-[#14151A]" />
               {getLocalizedText("popular", lang)}
             </span>
           )}
-
           {product.isChefChoice && (
-            <span className="bg-blue-600/90 text-white font-bold text-[9px] uppercase px-2 py-0.5 rounded-full backdrop-blur-md shadow-md flex items-center gap-1 shrink-0 whitespace-nowrap">
-              <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+            <span className="bg-[var(--theme-primary)] text-white font-bold text-[9px] uppercase px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap">
+              <Sparkles className="w-2.5 h-2.5 text-white" />
               {getLocalizedText("chefChoice", lang)}
             </span>
           )}
-
           {product.isSpicy && (
-            <span className="bg-rose-600/90 text-white font-bold text-[9px] px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 whitespace-nowrap">
+            <span className="bg-rose-500 text-white font-bold text-[9px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap">
               <Flame className="w-2.5 h-2.5 fill-white" />
               {getLocalizedText("spicy", lang)}
             </span>
           )}
-
           {product.isVegetarian && (
-            <span className="bg-emerald-600/90 text-white font-bold text-[9px] px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 whitespace-nowrap">
+            <span className="bg-[#34C759] text-white font-bold text-[9px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap">
               <Leaf className="w-2.5 h-2.5 fill-white" />
               {getLocalizedText("vegetarian", lang)}
             </span>
@@ -74,64 +68,66 @@ export const ProductCard = ({
             e.stopPropagation();
             onToggleFavorite(product.id);
           }}
-          className={`absolute top-3 right-3 p-2 rounded-full backdrop-blur-md transition-all z-10 ${
+          className={`absolute top-2.5 right-2.5 p-1.5 rounded-full backdrop-blur-md transition-all z-10 ${
             isFavorite
-              ? "bg-rose-600 text-white shadow-lg"
-              : "bg-slate-950/60 text-slate-300 hover:text-rose-400 hover:bg-slate-900"
+              ? "bg-rose-500 text-white shadow-md"
+              : "bg-white/85 text-[#8A8F98] hover:text-rose-500"
           }`}
           title={getLocalizedText("details", lang)}
           id={`fav-btn-${product.id}`}
         >
-          <Heart className={`w-4 h-4 ${isFavorite ? "fill-white" : ""}`} />
+          <Heart className={`w-3.5 h-3.5 ${isFavorite ? "fill-white" : ""}`} />
         </button>
+
+        {/* Rating pill — only shown when the product actually has a rating */}
+        {product.rating != null && (
+          <div className="absolute bottom-2.5 left-2.5 bg-white/90 backdrop-blur-md text-[#14151A] text-[10px] font-bold px-2 py-1 rounded-full shadow-sm flex items-center gap-1">
+            <Star className="w-3 h-3 fill-[#FFB020] text-[#FFB020]" />
+            <span>{Number(product.rating).toFixed(1)}</span>
+          </div>
+        )}
 
         {/* Prep Time floating badge */}
         {product.prepTime && (
-          <div className="absolute bottom-3 left-3 bg-slate-950/80 backdrop-blur-md text-slate-300 text-[10px] px-2.5 py-1 rounded-full border border-slate-800 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-blue-400" />
+          <div className="absolute bottom-2.5 right-2.5 bg-white/90 backdrop-blur-md text-[#14151A] text-[10px] px-2 py-1 rounded-full shadow-sm flex items-center gap-1">
+            <Clock className="w-3 h-3 text-[var(--theme-primary)]" />
             <span>{product.prepTime}</span>
           </div>
         )}
       </div>
 
       {/* Product Information Body */}
-      <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
+      <div className="p-3.5 sm:p-4 flex-1 flex flex-col justify-between">
         <div className="cursor-pointer" onClick={() => onOpenDetail(originalProduct)}>
-          <h3 className="font-serif-title text-base sm:text-lg font-bold text-white group-hover:text-blue-400 transition-colors line-clamp-1 mb-1.5">
+          <h3 className="text-sm sm:text-base font-bold text-[#14151A] group-hover:text-[var(--theme-primary)] transition-colors line-clamp-1 mb-1">
             {product.name}
           </h3>
-          <p className="text-slate-400 text-xs line-clamp-2 leading-relaxed mb-4">
+          <p className="text-[#8A8F98] text-xs line-clamp-2 leading-relaxed mb-3">
             {product.description}
           </p>
         </div>
 
         {/* Footer Price & Add Button */}
-        <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 gap-2">
-          <div className="min-w-0">
-            <span className="text-[10px] text-slate-400 block font-medium">{getLocalizedText("price", lang)}</span>
-            <span className="text-base sm:text-lg font-extrabold text-blue-400 tracking-tight whitespace-nowrap">
+        <div className="flex items-center justify-between pt-2.5 border-t border-[#F0F0F2] gap-2">
+          <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+            {product.originalPrice ? (
+              <span className="text-[#B4B8C0] text-xs line-through">{product.originalPrice.toFixed(2)} {currencySymbol}</span>
+            ) : null}
+            <span className="text-base sm:text-lg font-extrabold text-[#14151A] tracking-tight">
               {product.price.toFixed(2)} {currencySymbol}
             </span>
-          </div>
+          </span>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              onClick={() => onOpenDetail(originalProduct)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors whitespace-nowrap"
-            >
-              {getLocalizedText("details", lang)}
-            </button>
-            <button
-              onClick={() => onAddToCart(originalProduct)}
-              className="p-2 sm:p-2.5 rounded-xl glass-button-blue text-white hover:scale-105 active:scale-95 transition-all shadow-md shadow-blue-600/30 shrink-0"
-              title={getLocalizedText("addToCart", lang)}
-              id={`add-btn-${product.id}`}
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
+          <button
+            onClick={() => onAddToCart(originalProduct)}
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-white shrink-0 transition-transform active:scale-95 hover:scale-105"
+            style={{ background: 'linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%)', boxShadow: '0 6px 16px -4px rgba(108,76,255,.5)' }}
+            title={getLocalizedText("addToCart", lang)}
+            id={`add-btn-${product.id}`}
+          >
+            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
         </div>
-
       </div>
     </div>
   );
