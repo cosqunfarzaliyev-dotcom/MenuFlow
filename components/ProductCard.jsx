@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Star, Heart, Clock, Plus, Flame, Leaf, Sparkles } from "lucide-react";
 import { getLocalizedProduct, getLocalizedText } from "@/lib/translations";
 import { useAppStore } from "@/lib/store";
+import { Badge } from "@/components/ui";
 
 export const ProductCard = ({
   product: originalProduct,
@@ -36,29 +37,33 @@ export const ProductCard = ({
 
         {/* Top Badges */}
         <div className="absolute top-2.5 left-2.5 right-12 flex flex-wrap gap-1 z-10 max-h-16 overflow-hidden">
+          {/* Badge tone is a closest-match placeholder — className fully
+              overrides colors/size to keep these brand-specific product
+              badges pixel-identical (same override technique used
+              throughout the Admin/Staff/SuperAdmin migration). */}
           {product.isPopular && (
-            <span className="bg-[#FFB020] text-[#14151A] font-extrabold text-[9px] uppercase px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap">
+            <Badge tone="warning" className="bg-[#FFB020] text-[#14151A] font-extrabold text-[9px] uppercase px-2 py-0.5 shadow-sm shrink-0 whitespace-nowrap">
               <Star className="w-2.5 h-2.5 fill-[#14151A]" />
               {getLocalizedText("popular", lang)}
-            </span>
+            </Badge>
           )}
           {product.isChefChoice && (
-            <span className="bg-[var(--theme-primary)] text-white font-bold text-[9px] uppercase px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap">
+            <Badge tone="brand" className="bg-[var(--theme-primary)] text-white text-[9px] uppercase px-2 py-0.5 shadow-sm shrink-0 whitespace-nowrap">
               <Sparkles className="w-2.5 h-2.5 text-white" />
               {getLocalizedText("chefChoice", lang)}
-            </span>
+            </Badge>
           )}
           {product.isSpicy && (
-            <span className="bg-rose-500 text-white font-bold text-[9px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap">
+            <Badge tone="danger" className="bg-rose-500 text-white text-[9px] px-2 py-0.5 shadow-sm shrink-0 whitespace-nowrap">
               <Flame className="w-2.5 h-2.5 fill-white" />
               {getLocalizedText("spicy", lang)}
-            </span>
+            </Badge>
           )}
           {product.isVegetarian && (
-            <span className="bg-[#34C759] text-white font-bold text-[9px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap">
+            <Badge tone="success" className="bg-[#34C759] text-white text-[9px] px-2 py-0.5 shadow-sm shrink-0 whitespace-nowrap">
               <Leaf className="w-2.5 h-2.5 fill-white" />
               {getLocalizedText("vegetarian", lang)}
-            </span>
+            </Badge>
           )}
         </div>
 
@@ -81,18 +86,19 @@ export const ProductCard = ({
 
         {/* Rating pill — only shown when the product actually has a rating */}
         {product.rating != null && (
-          <div className="absolute bottom-2.5 left-2.5 bg-white/90 backdrop-blur-md text-[#14151A] text-[10px] font-bold px-2 py-1 rounded-full shadow-sm flex items-center gap-1">
+          <Badge tone="neutral" className="absolute bottom-2.5 left-2.5 bg-white/90 backdrop-blur-md text-[#14151A] text-[10px] px-2 shadow-sm">
             <Star className="w-3 h-3 fill-[#FFB020] text-[#FFB020]" />
             <span>{Number(product.rating).toFixed(1)}</span>
-          </div>
+          </Badge>
         )}
 
-        {/* Prep Time floating badge */}
+        {/* Prep Time floating badge — no font-bold in the original (unlike
+            the rating pill above), so font-normal cancels Badge's default. */}
         {product.prepTime && (
-          <div className="absolute bottom-2.5 right-2.5 bg-white/90 backdrop-blur-md text-[#14151A] text-[10px] px-2 py-1 rounded-full shadow-sm flex items-center gap-1">
+          <Badge tone="neutral" className="absolute bottom-2.5 right-2.5 bg-white/90 backdrop-blur-md text-[#14151A] text-[10px] px-2 font-normal shadow-sm">
             <Clock className="w-3 h-3 text-[var(--theme-primary)]" />
             <span>{product.prepTime}</span>
-          </div>
+          </Badge>
         )}
       </div>
 

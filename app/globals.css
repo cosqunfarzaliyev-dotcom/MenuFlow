@@ -253,3 +253,60 @@
 }
 .sa-sidebar-item { animation: sa-sidebar-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* ============================================================================
+   Management (dark) context tokens for components/ui/* primitives.
+   ----------------------------------------------------------------------------
+   `.customer-theme` already defines a `--mf-*` semantic namespace (bg, border,
+   primary, text, success, warning) for the light per-restaurant customer
+   menu. Admin/Staff/SuperAdmin have no equivalent — every dark surface today
+   is a literal `bg-slate-900 border-slate-800` string repeated ~90 times.
+   `.mf-dark` gives the SAME `--mf-*` keys dark values, so a primitive that
+   only ever reads `var(--mf-*)` renders correctly in both contexts with no
+   `variant="dark"` class-string branching baked into the component itself —
+   only the cva `context` prop selects which literal Tailwind classes apply
+   (see components/ui/variants.js), and those classes are written to
+   reference these variables rather than hardcoded hex/slate values so the
+   two token systems stay the single source of truth.
+
+   This does NOT replace `.superadmin-theme` (`--sa-radius-*`, `.sa-card`,
+   `.sa-btn`, the `sa-*` type scale) — those keep governing the SuperAdmin
+   panel's existing glass surfaces untouched. `.mf-dark` is scoped to the
+   handful of new primitives (Button/Input/Field/Badge) that Admin, Staff
+   AND SuperAdmin can all equally adopt, since none of those four primitives
+   currently exist in any form.
+   ============================================================================ */
+.mf-dark {
+  --mf-bg: #050505;
+  --mf-surface: #0f172a;        /* slate-900 — the flat card/input backdrop already used everywhere */
+  --mf-border: #1e293b;         /* slate-800 */
+  --mf-primary: #2563eb;        /* blue-600 — the existing dark-shell accent, distinct from customer --theme-primary */
+  --mf-primary-strong: #1d4ed8; /* blue-700, hover state */
+  --mf-success: #10b981;        /* emerald-500 */
+  --mf-warning: #f59e0b;        /* amber-500 */
+  --mf-danger: #f43f5e;         /* rose-500 */
+  --mf-text: #ffffff;
+  --mf-text-muted: #94a3b8;     /* slate-400 */
+  --mf-focus: #60a5fa;          /* blue-400 — ring color, distinct from --mf-primary for contrast against dark bg */
+}
+
+/* prefers-reduced-motion — appended at the end of the file so it cannot
+   affect the font/@import ordering constraint documented at the top of this
+   file. Scoped to the repo's existing animation/transition classes rather
+   than a blanket `* { animation: none }`, because `motion/react` drives 8
+   files' animations through JS/WAAPI — a global !important override risks
+   breaking AnimatePresence exit transitions (elements left stuck mounted).
+   The JS-driven motion in those 8 files is unaffected by this block; giving
+   them reduced-motion awareness is a separate, later change
+   (`<MotionConfig reducedMotion="user">` at each app root). */
+@media (prefers-reduced-motion: reduce) {
+  .sa-toast, .sa-sidebar-item, .qr-code-card {
+    animation: none;
+  }
+  .glass-panel-interactive, .sa-card, .sa-btn, .customer-card, .customer-btn-primary {
+    transition: none;
+  }
+  .sa-card:hover, .customer-card:hover {
+    transform: none;
+  }
+}
+

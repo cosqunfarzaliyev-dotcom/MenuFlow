@@ -5,18 +5,32 @@ import Image from 'next/image';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutDashboard, Building2, CreditCard, LineChart, Users, ShieldCheck,
-  LogOut, ChevronLeft, ChevronRight, X,
+  LogOut, ChevronLeft, ChevronRight, X, Package,
 } from 'lucide-react';
+import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
-export const TABS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'restaurants', label: 'Restoranlar', icon: Building2 },
-  { id: 'subscriptions', label: 'Abunəliklər', icon: CreditCard },
-  { id: 'analytics', label: 'Analitika', icon: LineChart },
-  { id: 'users', label: 'İstifadəçilər', icon: Users },
+// Kept as a function (not a static array) now that labels are translated —
+// SuperAdminApp.jsx's own `activeMeta` lookup calls this with its own `t`
+// too, so the header title and this sidebar always agree.
+export const getTabs = (t) => [
+  { id: 'dashboard', label: t('tabDashboard'), icon: LayoutDashboard },
+  { id: 'restaurants', label: t('tabRestaurants'), icon: Building2 },
+  { id: 'plans', label: t('tabPlans'), icon: Package },
+  { id: 'subscriptions', label: t('tabSubscriptions'), icon: CreditCard },
+  { id: 'analytics', label: t('tabAnalytics'), icon: LineChart },
+  { id: 'users', label: t('tabUsers'), icon: Users },
 ];
 
+// Back-compat static export (AZ-only) for any import this pass didn't
+// catch — TABS.find(...) still works, just won't be reactive to language.
+export const TABS = getTabs((key) => ({
+  tabDashboard: 'Dashboard', tabRestaurants: 'Restoranlar', tabPlans: 'Planlar',
+  tabSubscriptions: 'Abunəliklər', tabAnalytics: 'Analitika', tabUsers: 'İstifadəçilər',
+}[key]));
+
 export function Sidebar({ activeTab, onTabChange, restaurantCount, collapsed, onToggleCollapse, onLogout, mobileOpen, onCloseMobile }) {
+  const { t } = useSuperAdminTranslation();
+  const tabs = getTabs(t);
   return (
     <>
       {/* Mobile scrim */}
@@ -55,8 +69,8 @@ export function Sidebar({ activeTab, onTabChange, restaurantCount, collapsed, on
                   exit={{ opacity: 0, width: 0 }}
                   className="overflow-hidden whitespace-nowrap pl-0.5 border-l border-slate-800 ml-1"
                 >
-                  <p className="text-white font-bold text-sm leading-tight pl-2">Super Admin</p>
-                  <p className="text-slate-500 text-[11px] pl-2">{restaurantCount} restoran</p>
+                  <p className="text-white font-bold text-sm leading-tight pl-2">{t('superAdminLabel')}</p>
+                  <p className="text-slate-500 text-[11px] pl-2">{restaurantCount} {t('restaurantsSuffix')}</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -67,7 +81,7 @@ export function Sidebar({ activeTab, onTabChange, restaurantCount, collapsed, on
         </div>
 
         <nav className="flex-1 space-y-1">
-          {TABS.map((tab, i) => {
+          {tabs.map((tab, i) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
             return (
@@ -98,14 +112,14 @@ export function Sidebar({ activeTab, onTabChange, restaurantCount, collapsed, on
             className="hidden lg:flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-white hover:bg-slate-800/50"
           >
             {collapsed ? <ChevronRight className="w-[18px] h-[18px]" /> : <ChevronLeft className="w-[18px] h-[18px]" />}
-            {!collapsed && <span>Yığ</span>}
+            {!collapsed && <span>{t('collapseButton')}</span>}
           </button>
           <button
             onClick={onLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-rose-400 hover:bg-rose-500/10"
           >
             <LogOut className="w-[18px] h-[18px] shrink-0" />
-            {!collapsed && <span>Çıxış</span>}
+            {!collapsed && <span>{t('logoutShort')}</span>}
           </button>
           {!collapsed && (
             <div className="flex items-center justify-center pt-3">

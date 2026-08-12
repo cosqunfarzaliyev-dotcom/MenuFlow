@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import Image from 'next/image';
 import {
-  X,
   Star,
   Clock,
   Flame,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import { getLocalizedProduct, getLocalizedText, getLocalizedCategoryName } from "@/lib/translations";
 import { useAppStore } from "@/lib/store";
+import { Modal, ModalCloseButton, Badge } from "@/components/ui";
 
 const GRADIENT = 'linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%)';
 
@@ -69,14 +69,14 @@ export const ProductDetailModal = ({
   };
 
   return (
-    <div className="customer-theme fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/40 backdrop-blur-sm">
-
-      {/* Background click listener */}
-      <div className="absolute inset-0" onClick={onClose} />
-
-      {/* Modal Container */}
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white border border-[#ECECEC] rounded-3xl z-10 no-scrollbar" style={{ boxShadow: '0 24px 70px rgba(0,0,0,.18)' }}>
-
+    <Modal
+      isOpen={Boolean(rawProduct)}
+      onClose={onClose}
+      context="customer"
+      size="xl"
+      ariaLabel={product.name}
+      panelClassName="shadow-[0_24px_70px_rgba(0,0,0,.18)]"
+    >
         {/* Close & Favorite top buttons */}
         <div className="sticky top-0 z-20 flex items-center justify-between p-4 bg-white/90 backdrop-blur-md border-b border-[#E8E8E8]">
           <div className="flex items-center gap-2">
@@ -96,13 +96,7 @@ export const ProductDetailModal = ({
             >
               <Heart className={`w-4 h-4 ${isFavorite ? "fill-white" : ""}`} />
             </button>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-full bg-white text-[#8A8F98] hover:text-[#14151A] border border-[#E8E8E8] transition-colors"
-              id="modal-close-btn"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <ModalCloseButton onClick={onClose} context="customer" id="modal-close-btn" />
           </div>
         </div>
 
@@ -119,35 +113,38 @@ export const ProductDetailModal = ({
 
           {/* Badges on image */}
           <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center gap-2">
+            {/* Same badge set as ProductCard's image overlay, at the modal's
+                slightly larger size — tone is a closest-match placeholder,
+                className fully overrides colors/size for pixel parity. */}
             {product.isPopular && (
-              <span className="bg-[#FFB020] text-[#14151A] font-black text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-md">
+              <Badge tone="warning" className="bg-[#FFB020] text-[#14151A] font-black px-3 shadow-md">
                 <Star className="w-3.5 h-3.5 fill-[#14151A]" />
                 {getLocalizedText("popular", lang)}
-              </span>
+              </Badge>
             )}
             {product.isChefChoice && (
-              <span className="bg-[var(--theme-primary)] text-white font-bold text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-md">
+              <Badge tone="brand" className="bg-[var(--theme-primary)] text-white px-3 shadow-md">
                 <Sparkles className="w-3.5 h-3.5 text-white" />
                 {getLocalizedText("chefChoice", lang)}
-              </span>
+              </Badge>
             )}
             {product.isSpicy && (
-              <span className="bg-rose-500 text-white font-bold text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-md">
+              <Badge tone="danger" className="bg-rose-500 text-white px-3 shadow-md">
                 <Flame className="w-3.5 h-3.5 fill-white" />
                 {getLocalizedText("spicy", lang)}
-              </span>
+              </Badge>
             )}
             {product.isVegetarian && (
-              <span className="bg-[#34C759] text-white font-bold text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-md">
+              <Badge tone="success" className="bg-[#34C759] text-white px-3 shadow-md">
                 <Leaf className="w-3.5 h-3.5 fill-white" />
                 {getLocalizedText("vegetarian", lang)}
-              </span>
+              </Badge>
             )}
             {product.rating != null && (
-              <span className="bg-white/90 backdrop-blur-md text-[#14151A] font-bold text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-md">
+              <Badge tone="neutral" className="bg-white/90 backdrop-blur-md text-[#14151A] px-3 shadow-md">
                 <Star className="w-3.5 h-3.5 fill-[#FFB020] text-[#FFB020]" />
                 {Number(product.rating).toFixed(1)}
-              </span>
+              </Badge>
             )}
           </div>
         </div>
@@ -213,14 +210,19 @@ export const ProductDetailModal = ({
                 {getLocalizedText("ingredients", lang)}
               </h4>
               <div className="flex flex-wrap gap-2">
+                {/* rounded-xl overrides Badge's default rounded-full — these
+                    are tag-shaped chips, not pills, in the original design.
+                    font-normal cancels Badge's default font-bold (the
+                    original ingredient tags aren't bold). */}
                 {product.ingredients.map((ing, idx) => (
-                  <span
+                  <Badge
                     key={idx}
-                    className="bg-[#F7F8FA] border border-[#E8E8E8] text-[#5A5F68] text-xs px-3 py-1.5 rounded-xl flex items-center gap-1.5"
+                    tone="neutral"
+                    className="bg-[#F7F8FA] border border-[#E8E8E8] text-[#5A5F68] px-3 py-1.5 rounded-xl font-normal gap-1.5"
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--theme-primary)]" />
                     {ing}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             </div>
@@ -334,8 +336,7 @@ export const ProductDetailModal = ({
 
         </div>
 
-      </div>
-    </div>
+    </Modal>
   );
 };
 

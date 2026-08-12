@@ -15,11 +15,17 @@ const HOME_FOR_ROLE = {
   unassigned: "/onboarding",
 };
 
+// "/onboarding" now also admits "restaurant_admin": a freshly-assigned admin
+// (assignUserToRestaurant) lands there to run the setup wizard
+// (components/onboarding/OnboardingWizard.jsx) before /admin opens up. See
+// the onboarding-completion gate below for how that's actually enforced —
+// this list alone would let a restaurant_admin sit on /onboarding forever,
+// completed or not.
 const PROTECTED_ROLES = {
   "/admin": ["restaurant_admin"],
   "/staff": ["restaurant_admin", "staff"],
   "/superadmin": ["super_admin"],
-  "/onboarding": ["unassigned"],
+  "/onboarding": ["unassigned", "restaurant_admin"],
 };
 
 const matchProtectedPrefix = (pathname) => {
@@ -62,7 +68,7 @@ export async function middleware(request) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+  const { data: profile } = await supabase.from("profiles").select("role, restaurant_id").eq("id", user.id).single();
   const role = profile?.role;
   const allowedRoles = PROTECTED_ROLES[prefix];
 
@@ -75,6 +81,30 @@ export async function middleware(request) {
       return response;
     }
     return NextResponse.redirect(new URL(destination, request.url));
+  }
+
+  // Onboarding-completion gate (migration 0024_onboarding_completion.sql).
+  // A restaurant_admin is allowed on both /admin and /onboarding by the role
+  // check above; this is what actually decides which one they get. Checked
+  // server-side (not just the client redirect in app/onboarding/page.jsx)
+  // for the same reason every other role check in this file is server-side:
+  // a client-only redirect is a UX nicety, not a real gate, and this one
+  // guards the same "only an activated admin reaches /admin" rule the task
+  // asked for. staff/super_admin never hit this — they aren't in
+  // PROTECTED_ROLES["/onboarding"] and don't own an onboarding_completed_at.
+  if (role === "restaurant_admin" && profile.restaurant_id && (prefix === "/admin" || prefix === "/onboarding")) {
+    const { data: restaurant } = await supabase
+      .from("restaurants")
+      .select("onboarding_completed_at")
+      .eq("id", profile.restaurant_id)
+      .single();
+    const onboardingDone = Boolean(restaurant?.onboarding_completed_at);
+    if (prefix === "/admin" && !onboardingDone) {
+      return NextResponse.redirect(new URL("/onboarding", request.url));
+    }
+    if (prefix === "/onboarding" && onboardingDone) {
+      return NextResponse.redirect(new URL("/admin", request.url));
+    }
   }
 
   return response;

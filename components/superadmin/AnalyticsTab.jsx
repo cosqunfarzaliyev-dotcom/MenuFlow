@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, Landmark, Percent, Activity } from 'lucide-react';
 import { formatMoney } from './constants';
+import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
 function MetricTile({ icon: Icon, label, value, delta, deltaGood, accent, index }) {
   return (
@@ -32,16 +33,17 @@ function MetricTile({ icon: Icon, label, value, delta, deltaGood, accent, index 
 }
 
 export function AnalyticsTab({ metrics }) {
+  const { t } = useSuperAdminTranslation();
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <MetricTile index={0} icon={Wallet} label="MRR (aylıq gəlir)" value={formatMoney(metrics.mrr)} accent="#38bdf8" />
-        <MetricTile index={1} icon={Landmark} label="ARR (illik gəlir)" value={formatMoney(metrics.arr)} accent="#a78bfa" />
-        <MetricTile index={2} icon={Percent} label="Churn Rate" value={`${metrics.churnRate}%`} delta={metrics.churnRate} deltaGood={metrics.churnRate === 0} accent="#f87171" />
+        <MetricTile index={0} icon={Wallet} label={t('mrrTileLabel')} value={formatMoney(metrics.mrr)} accent="#38bdf8" />
+        <MetricTile index={1} icon={Landmark} label={t('arrTileLabel')} value={formatMoney(metrics.arr)} accent="#a78bfa" />
+        <MetricTile index={2} icon={Percent} label={t('churnRateLabel')} value={`${metrics.churnRate}%`} delta={metrics.churnRate} deltaGood={metrics.churnRate === 0} accent="#f87171" />
         <MetricTile
           index={3}
           icon={Activity}
-          label="Growth (bu ay)"
+          label={t('growthThisMonthLabel')}
           value={`${metrics.growthRate > 0 ? '+' : ''}${metrics.growthRate}%`}
           delta={metrics.growthRate}
           deltaGood={metrics.growthRate >= 0}
@@ -55,7 +57,7 @@ export function AnalyticsTab({ metrics }) {
         transition={{ delay: 0.28, duration: 0.35 }}
         className="sa-card p-5"
       >
-        <h3 className="sa-heading-4 text-white mb-4">Son 6 ay — yeni restoranlar</h3>
+        <h3 className="sa-heading-4 text-white mb-4">{t('last6MonthsTitle')}</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={metrics.monthlySignups} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
@@ -76,7 +78,7 @@ export function AnalyticsTab({ metrics }) {
               <Area
                 type="monotone"
                 dataKey="count"
-                name="Yeni restoran"
+                name={t('newRestaurantSeriesLabel')}
                 stroke="#3b82f6"
                 strokeWidth={2.5}
                 fill="url(#saGrowthFill)"

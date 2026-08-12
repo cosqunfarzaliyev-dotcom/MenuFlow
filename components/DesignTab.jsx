@@ -1,22 +1,60 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Palette, Image as ImageIcon, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { Palette, Image as ImageIcon, Plus, Trash2, CheckCircle2, Edit2, X, Eye, EyeOff } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import { FEATURES } from "@/lib/services/entitlementService";
+import { useFeature } from "@/hooks/useEntitlement";
+import { CAPABILITIES } from "@/lib/services/capabilityService";
+import { useCapability } from "@/hooks/useCapability";
+import { PageHeader, Card, CardHeader, CardBody, Button, Input, Select, Field, Alert, EmptyState, ConfirmDialog, useConfirmDialog } from "@/components/ui";
+import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
+import { useCommonTranslation } from "@/lib/i18n/dictionaries/common";
+
+// Banner CTA/action system (Phase C). 'campaign' and generic 'internal'
+// destinations are deliberately not offered here — CustomerApp has no
+// campaign detail view and no multi-page routing for either to point at yet
+// (see supabase/migrations/0019_banner_actions.sql for the full reasoning).
+// Kept as a function (not a static array) now that labels are translated.
+const bannerActionTypes = (t) => [
+  { value: 'none', label: t('bannerActionNone') },
+  { value: 'product', label: t('bannerActionProduct') },
+  { value: 'category', label: t('bannerActionCategory') },
+  { value: 'external', label: t('bannerActionExternal') },
+  { value: 'phone', label: t('bannerActionPhone') },
+];
 
 // Theme Builder: restaurant picks its own primary/secondary colors
 // (persisted on restaurants.theme_primary_color / theme_secondary_color and
 // read by the customer-facing menu) + Banner sistemi (promo banners shown
 // at the top of the customer menu).
 export function DesignTab() {
-  const { restaurant, updateRestaurantDesign, banners, loadBanners, createBanner, deleteBanner } = useAppStore();
+  const { t } = useAdminTranslation();
+  const { t: tc } = useCommonTranslation();
+  const { restaurant, updateRestaurantDesign, banners, loadBanners, createBanner, updateBanner, deleteBanner, products, categories } = useAppStore();
+  const bannersEnabled = useFeature(FEATURES.BANNERS);
+  const confirmDialog = useConfirmDialog();
+
+  // Formal capability layer (Master Plan Phase 6) — role-level check,
+  // distinct from `bannersEnabled` above which is the plan/entitlement
+  // check. A restaurant on a plan that grants banners can still have a
+  // `staff` role viewing this (today no route lets that happen — DesignTab
+  // only renders inside AdminApp, /admin-only — but gating by capability
+  // rather than only by feature flag keeps the two axes independent, exactly
+  // per capabilityService.js's own header comment on why these are separate
+  // resolvers).
+  const canCreateBanners = useCapability(CAPABILITIES.BANNERS_CREATE);
+  const canEditBanners = useCapability(CAPABILITIES.BANNERS_EDIT);
+  const canDeleteBanners = useCapability(CAPABILITIES.BANNERS_DELETE);
 
   const [primary, setPrimary] = useState(restaurant?.theme_primary_color || "#6C4CFF");
   const [secondary, setSecondary] = useState(restaurant?.theme_secondary_color || "#14151A");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const [bannerForm, setBannerForm] = useState({ title: "", subtitle: "", image_url: "", link_url: "" });
+  const EMPTY_BANNER_FORM = { title: "", subtitle: "", image_url: "", link_url: "", action_type: "none", action_target_id: "" };
+  const [bannerForm, setBannerForm] = useState(EMPTY_BANNER_FORM);
+  const [editingBannerId, setEditingBannerId] = useState(null);
   const [bannerSaving, setBannerSaving] = useState(false);
 
   useEffect(() => {
@@ -36,92 +74,260 @@ export function DesignTab() {
     setTimeout(() => setSaved(false), 2500);
   };
 
-  const handleAddBanner = async (e) => {
+  // Create + edit share one form/handler, same pattern AdminApp's
+  // ProductModal already uses — `editingBannerId` set means Save calls
+  // updateBanner instead of createBanner, matching the values already
+  // populated into bannerForm by handleEditBanner below.
+  //
+  // Fields are normalized per action_type before saving so a banner never
+  // carries stale data from a type the admin switched away from (e.g.
+  // action_target_id left over after switching product -> external).
+  const handleSaveBanner = async (e) => {
     e.preventDefault();
     if (!bannerForm.image_url.trim()) return;
     setBannerSaving(true);
-    await createBanner({ ...bannerForm, sort_order: banners.length, is_active: true });
-    setBannerForm({ title: "", subtitle: "", image_url: "", link_url: "" });
+
+    const isTargetAction = bannerForm.action_type === 'product' || bannerForm.action_type === 'category';
+    let linkUrl = isTargetAction ? '' : bannerForm.link_url.trim();
+    // A phone number typed without a tel: prefix would otherwise open as a
+    // (broken) relative link instead of the device dialer.
+    if (bannerForm.action_type === 'phone' && linkUrl && !linkUrl.startsWith('tel:')) {
+      linkUrl = `tel:${linkUrl.replace(/\s+/g, '')}`;
+    }
+
+    const payload = {
+      title: bannerForm.title,
+      subtitle: bannerForm.subtitle,
+      image_url: bannerForm.image_url,
+      link_url: linkUrl,
+      action_type: bannerForm.action_type,
+      action_target_id: isTargetAction && bannerForm.action_target_id ? bannerForm.action_target_id : null,
+    };
+
+    if (editingBannerId) {
+      await updateBanner({ id: editingBannerId, ...payload });
+    } else {
+      await createBanner({ ...payload, sort_order: banners.length, is_active: true });
+    }
+    setBannerForm(EMPTY_BANNER_FORM);
+    setEditingBannerId(null);
     setBannerSaving(false);
+  };
+
+  const handleEditBanner = (b) => {
+    setEditingBannerId(b.id);
+    setBannerForm({
+      title: b.title || "",
+      subtitle: b.subtitle || "",
+      image_url: b.image_url || "",
+      link_url: b.link_url || "",
+      action_type: b.action_type || "none",
+      action_target_id: b.action_target_id || "",
+    });
+  };
+
+  const handleCancelEditBanner = () => {
+    setEditingBannerId(null);
+    setBannerForm(EMPTY_BANNER_FORM);
+  };
+
+  const handleToggleBannerActive = (b) => {
+    updateBanner({ id: b.id, is_active: !b.is_active });
+  };
+
+  const handleDeleteBanner = (b) => {
+    confirmDialog.confirm({
+      title: t('deleteBannerConfirmTitle'),
+      message: t('deleteBannerConfirmMessage')(b.title || t('untitledBannerFallback')),
+      onConfirm: () => deleteBanner(b.id),
+    });
   };
 
   return (
     <div className="space-y-6">
+      <PageHeader context="dark" title={t('titleDesign')} description={t('designSubtitle')} />
+
       {/* Theme Builder */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Palette className="w-5 h-5 text-blue-400" />
-          <h2 className="font-bold text-lg text-white">Theme Builder — Rənglər</h2>
-        </div>
-        <p className="text-sm text-slate-400 mb-4">Restoranın əsas və ikinci rəngini seçin. Bu rənglər müştəri menyusunda tətbiq olunur.</p>
-        <div className="grid grid-cols-2 gap-4 max-w-md">
-          <div>
-            <label className="block text-sm font-bold text-slate-400 mb-1">Əsas rəng</label>
-            <div className="flex items-center gap-2">
-              <input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} className="w-12 h-11 rounded-lg border border-slate-800 bg-slate-950 cursor-pointer" />
-              <input type="text" value={primary} onChange={(e) => setPrimary(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
-            </div>
+      <Card context="dark" variant="flat">
+        <CardHeader>
+          <h2 className="font-bold text-lg text-white flex items-center gap-2">
+            <Palette className="w-5 h-5 text-blue-400" />
+            {t('themeBuilderTitle')}
+          </h2>
+        </CardHeader>
+        <CardBody>
+          <p className="text-sm text-slate-400 mb-4">{t('themeBuilderDescription')}</p>
+          <div className="grid grid-cols-2 gap-4 max-w-md">
+            <Field label={t('primaryColorLabel')}>
+              {(id) => (
+                <div className="flex items-center gap-2">
+                  <input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} aria-label={t('primaryColorAriaLabel')} className="w-12 h-11 rounded-lg border border-slate-800 bg-slate-950 cursor-pointer" />
+                  <Input id={id} type="text" value={primary} onChange={(e) => setPrimary(e.target.value)} className="flex-1" />
+                </div>
+              )}
+            </Field>
+            <Field label={t('secondaryColorLabel')}>
+              {(id) => (
+                <div className="flex items-center gap-2">
+                  <input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} aria-label={t('secondaryColorAriaLabel')} className="w-12 h-11 rounded-lg border border-slate-800 bg-slate-950 cursor-pointer" />
+                  <Input id={id} type="text" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="flex-1" />
+                </div>
+              )}
+            </Field>
           </div>
-          <div>
-            <label className="block text-sm font-bold text-slate-400 mb-1">İkinci rəng</label>
-            <div className="flex items-center gap-2">
-              <input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="w-12 h-11 rounded-lg border border-slate-800 bg-slate-950 cursor-pointer" />
-              <input type="text" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
-            </div>
-          </div>
-        </div>
-        <button
-          onClick={handleSaveTheme}
-          disabled={saving}
-          className="mt-4 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2"
-        >
-          {saved ? <CheckCircle2 className="w-4 h-4" /> : null}
-          {saving ? "Yadda saxlanılır..." : saved ? "Yadda saxlanıldı" : "Rəngləri yadda saxla"}
-        </button>
-      </div>
+          <Button onClick={handleSaveTheme} disabled={saving} className="mt-4">
+            {saved ? <CheckCircle2 className="w-4 h-4" /> : null}
+            {saving ? t('savingColors') : saved ? t('colorsSaved') : t('saveColorsButton')}
+          </Button>
+        </CardBody>
+      </Card>
 
       {/* Banner system */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <ImageIcon className="w-5 h-5 text-blue-400" />
-          <h2 className="font-bold text-lg text-white">Banner Sistemi</h2>
-        </div>
-        <p className="text-sm text-slate-400 mb-4">Müştəri menyusunun yuxarısında göstərilən kampaniya bannerləri.</p>
+      <Card context="dark" variant="flat">
+        <CardHeader>
+          <h2 className="font-bold text-lg text-white flex items-center gap-2">
+            <ImageIcon className="w-5 h-5 text-blue-400" />
+            {t('bannerSystemTitle')}
+          </h2>
+        </CardHeader>
+        <CardBody>
+          <p className="text-sm text-slate-400 mb-4">{t('bannerSystemDescription')}</p>
 
-        {restaurant?.feature_flags?.banners === false && (
-          <div className="mb-4 flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3">
-            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-            <p className="text-xs font-semibold text-amber-300">Bu funksiya hələ aktiv deyil — platforma administratoru tərəfindən açılmalıdır.</p>
-          </div>
-        )}
+          {!bannersEnabled && (
+            <Alert tone="warning" icon={<span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />} className="mb-4 items-center">
+              <p className="text-xs font-semibold text-amber-300">{t('bannerFeatureDisabled')}</p>
+            </Alert>
+          )}
 
-        <fieldset disabled={restaurant?.feature_flags?.banners === false} className="disabled:opacity-50">
-        <form onSubmit={handleAddBanner} className="grid sm:grid-cols-2 gap-3 mb-5">
-          <input type="text" value={bannerForm.title} onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })} placeholder="Başlıq (istəyə bağlı)" className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
-          <input type="text" value={bannerForm.subtitle} onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })} placeholder="Alt başlıq (istəyə bağlı)" className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
-          <input type="text" value={bannerForm.image_url} onChange={(e) => setBannerForm({ ...bannerForm, image_url: e.target.value })} placeholder="Şəkil URL (məcburi)" required className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
-          <input type="text" value={bannerForm.link_url} onChange={(e) => setBannerForm({ ...bannerForm, link_url: e.target.value })} placeholder="Keçid linki (istəyə bağlı)" className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
-          <button type="submit" disabled={bannerSaving} className="sm:col-span-2 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2">
-            <Plus className="w-4 h-4" /> Banner əlavə et
-          </button>
-        </form>
-        </fieldset>
+          {/* editingBannerId set -> Save calls updateBanner (banners.edit);
+              unset -> createBanner (banners.create). Fieldset disables the
+              whole form when either the plan-level feature or the role-level
+              capability for the action currently in play is off. */}
+          <fieldset disabled={!bannersEnabled || !(editingBannerId ? canEditBanners : canCreateBanners)} className="disabled:opacity-50">
+          <form onSubmit={handleSaveBanner} className="grid sm:grid-cols-2 gap-3 mb-5">
+            <Input type="text" value={bannerForm.title} onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })} placeholder={t('bannerTitlePlaceholder')} />
+            <Input type="text" value={bannerForm.subtitle} onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })} placeholder={t('bannerSubtitlePlaceholder')} />
+            <Input type="text" value={bannerForm.image_url} onChange={(e) => setBannerForm({ ...bannerForm, image_url: e.target.value })} placeholder={t('bannerImageUrlPlaceholder')} required className="sm:col-span-2" />
 
-        <div className="space-y-2">
-          {banners.length === 0 && <p className="text-sm text-slate-500">Hələ banner əlavə edilməyib.</p>}
-          {banners.map((b) => (
-            <div key={b.id} className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl p-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={b.image_url} alt={b.title || "banner"} className="w-16 h-10 object-cover rounded-lg border border-slate-800 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-white truncate">{b.title || "(başlıqsız)"}</p>
-                {b.subtitle && <p className="text-xs text-slate-500 truncate">{b.subtitle}</p>}
-              </div>
-              <button onClick={() => deleteBanner(b.id)} className="text-slate-500 hover:text-rose-400 p-2 shrink-0"><Trash2 className="w-4 h-4" /></button>
+            <Field label={t('bannerActionFieldLabel')} className="sm:col-span-2">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={bannerForm.action_type}
+                  onChange={(e) => setBannerForm({ ...bannerForm, action_type: e.target.value, action_target_id: '', link_url: '' })}
+                >
+                  {bannerActionTypes(t).map((type) => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+
+            {bannerForm.action_type === 'product' && (
+              <Field label={t('whichProductLabel')} className="sm:col-span-2">
+                {(id) => (
+                  <Select id={id} value={bannerForm.action_target_id} onChange={(e) => setBannerForm({ ...bannerForm, action_target_id: e.target.value })} required>
+                    <option value="">{t('selectProductOption')}</option>
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
+
+            {bannerForm.action_type === 'category' && (
+              <Field label={t('whichCategoryLabel')} className="sm:col-span-2">
+                {(id) => (
+                  <Select id={id} value={bannerForm.action_target_id} onChange={(e) => setBannerForm({ ...bannerForm, action_target_id: e.target.value })} required>
+                    <option value="">{t('selectCategoryOption')}</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
+
+            {bannerForm.action_type === 'external' && (
+              <Input type="text" value={bannerForm.link_url} onChange={(e) => setBannerForm({ ...bannerForm, link_url: e.target.value })} placeholder="https://..." className="sm:col-span-2" required />
+            )}
+
+            {bannerForm.action_type === 'phone' && (
+              <Input type="tel" value={bannerForm.link_url} onChange={(e) => setBannerForm({ ...bannerForm, link_url: e.target.value })} placeholder="+994 XX XXX XX XX" className="sm:col-span-2" required />
+            )}
+
+            <div className="sm:col-span-2 flex gap-2">
+              <Button type="submit" disabled={bannerSaving} className="flex-1">
+                {editingBannerId ? <CheckCircle2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                {editingBannerId ? t('saveChangesShort') : t('addBannerButton')}
+              </Button>
+              {editingBannerId && (
+                <Button type="button" variant="secondary" onClick={handleCancelEditBanner}>
+                  <X className="w-4 h-4" /> {tc('cancel')}
+                </Button>
+              )}
             </div>
-          ))}
-        </div>
-      </div>
+          </form>
+          </fieldset>
+
+          {banners.length === 0 ? (
+            <EmptyState icon={<ImageIcon className="w-8 h-8 text-blue-400" />} title={t('noBannersYet')} description={t('bannersNotFoundDescription')} />
+          ) : (
+            <div className="space-y-2">
+              {banners.map((b) => (
+                <div key={b.id} className={`flex items-center gap-3 bg-slate-950 border rounded-xl p-3 ${editingBannerId === b.id ? 'border-blue-500/60' : 'border-slate-800'} ${b.is_active ? '' : 'opacity-60'}`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={b.image_url} alt={b.title || t('bannerAltFallback')} className="w-16 h-10 object-cover rounded-lg border border-slate-800 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white truncate">{b.title || t('untitledBannerInline')}</p>
+                    {b.subtitle && <p className="text-xs text-slate-500 truncate">{b.subtitle}</p>}
+                    {!b.is_active && <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wide mt-0.5">{t('bannerInactiveLabel')}</p>}
+                  </div>
+                  {/* Active toggle is an updateBanner() PATCH, same as edit —
+                      gated on the same capability. */}
+                  {canEditBanners && (
+                    <Button
+                      onClick={() => handleToggleBannerActive(b)}
+                      variant="ghost"
+                      size="sm"
+                      aria-label={b.is_active ? t('deactivateBannerAriaLabel')(b.title || t('untitledBannerLower')) : t('activateBannerAriaLabel')(b.title || t('untitledBannerLower'))}
+                      title={b.is_active ? t('bannerActiveTooltip') : t('bannerInactiveTooltip')}
+                      className="shrink-0 p-2 rounded-lg"
+                    >
+                      {b.is_active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                    </Button>
+                  )}
+                  {canEditBanners && (
+                    <Button
+                      onClick={() => handleEditBanner(b)}
+                      variant="ghost"
+                      size="sm"
+                      aria-label={t('editBannerAriaLabel')(b.title || t('untitledBannerLower'))}
+                      className="shrink-0 p-2 rounded-lg hover:text-blue-400"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                  )}
+                  {canDeleteBanners && (
+                    <Button
+                      onClick={() => handleDeleteBanner(b)}
+                      variant="ghost"
+                      size="sm"
+                      aria-label={t('deleteBannerAriaLabel')(b.title || t('untitledBannerLower'))}
+                      className="shrink-0 p-2 rounded-lg hover:text-rose-400"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      <ConfirmDialog {...confirmDialog.dialogProps} />
     </div>
   );
 }

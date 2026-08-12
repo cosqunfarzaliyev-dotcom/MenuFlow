@@ -3,15 +3,17 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { PLAN_ORDER, planMeta, formatMoney } from './constants';
+import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
 export function SubscriptionsTab({ metrics }) {
+  const { t } = useSuperAdminTranslation();
   const totalPaying = PLAN_ORDER.reduce((sum, p) => sum + (p === 'free' ? 0 : metrics.planCounts[p] || 0), 0);
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {PLAN_ORDER.map((planId, i) => {
-          const meta = planMeta(planId);
+          const meta = planMeta(planId, t);
           const Icon = meta.icon;
           const count = metrics.planCounts[planId] || 0;
           const revenue = metrics.planRevenue[planId] || 0;
@@ -35,13 +37,13 @@ export function SubscriptionsTab({ metrics }) {
               </div>
               <p className="sa-heading-4 text-white mb-0.5">{meta.label}</p>
               <p className="sa-caption text-slate-500 mb-4">
-                {meta.price === 0 ? 'Pulsuz' : `${formatMoney(meta.price)} / ay`}
+                {meta.price === 0 ? t('freeLabel') : `${formatMoney(meta.price)} ${t('perMonthSuffix')}`}
               </p>
 
               <div className="mt-auto space-y-2">
                 <div className="flex items-baseline justify-between">
                   <span className="text-white text-2xl font-bold tabular-nums">{count}</span>
-                  <span className="sa-caption text-slate-500">restoran</span>
+                  <span className="sa-caption text-slate-500">{t('restaurantsSuffixLower')}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
                   <motion.div
@@ -53,7 +55,7 @@ export function SubscriptionsTab({ metrics }) {
                   />
                 </div>
                 {planId !== 'free' && (
-                  <p className="sa-caption text-slate-400 pt-1">{formatMoney(revenue)} / ay gəlir</p>
+                  <p className="sa-caption text-slate-400 pt-1">{formatMoney(revenue)} {t('monthlyRevenueSuffix')}</p>
                 )}
               </div>
             </motion.div>
@@ -68,15 +70,15 @@ export function SubscriptionsTab({ metrics }) {
         className="sa-card p-5 grid grid-cols-2 sm:grid-cols-3 gap-4"
       >
         <div>
-          <p className="sa-caption text-slate-500 mb-1">Ödəniş edən restoranlar</p>
+          <p className="sa-caption text-slate-500 mb-1">{t('payingRestaurantsLabel')}</p>
           <p className="sa-heading-4 text-white">{totalPaying}</p>
         </div>
         <div>
-          <p className="sa-caption text-slate-500 mb-1">Aylıq gəlir (MRR)</p>
+          <p className="sa-caption text-slate-500 mb-1">{t('mrrLabel')}</p>
           <p className="sa-heading-4 text-white">{formatMoney(metrics.mrr)}</p>
         </div>
         <div>
-          <p className="sa-caption text-slate-500 mb-1">İllik gəlir (ARR)</p>
+          <p className="sa-caption text-slate-500 mb-1">{t('arrLabel')}</p>
           <p className="sa-heading-4 text-white">{formatMoney(metrics.arr)}</p>
         </div>
       </motion.div>

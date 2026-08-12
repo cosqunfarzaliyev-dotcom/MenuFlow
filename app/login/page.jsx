@@ -7,6 +7,8 @@ import Image from 'next/image';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { fetchMyProfile } from '@/lib/services/authService';
 import { Loader2 } from 'lucide-react';
+import { LanguageSwitcher } from '@/components/ui';
+import { useAuthTranslation } from '@/lib/i18n/dictionaries/auth';
 
 const HOME_FOR_ROLE = {
   super_admin: '/superadmin',
@@ -20,6 +22,7 @@ const buildAuthOptions = (captchaToken = null, overrides = {}) => ({
 });
 
 function LoginPageContent() {
+  const { t } = useAuthTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get('next');
@@ -64,9 +67,9 @@ function LoginPageContent() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!supabaseReady) { setError('Supabase qoşulmayıb.'); return; }
-    if (!email.trim()) { setError('Zəhmət olmasa e-poçt ünvanınızı daxil edin.'); return; }
-    if (!password) { setError('Zəhmət olmasa şifrə daxil edin.'); return; }
+    if (!supabaseReady) { setError(t('supabaseNotConnected')); return; }
+    if (!email.trim()) { setError(t('enterEmail')); return; }
+    if (!password) { setError(t('enterPassword')); return; }
 
     setSubmitting(true);
     setError('');
@@ -79,9 +82,16 @@ function LoginPageContent() {
     setSubmitting(false);
     if (signInError) {
       if (/email.*not.*confirmed/i.test(signInError.message || '')) {
-        setError('E-poçt hələ təsdiqlənməyib. Zəhmət olmasa gələn təsdiq linkinə klikləyin (spam qovluğunu da yoxlayın).');
+        setError(t('emailNotConfirmed'));
+      } else if (/rate limit|too many requests/i.test(signInError.message || '')) {
+        // Supabase's own rate limiter (repeated failed attempts) was
+        // previously indistinguishable from a genuinely wrong password —
+        // both fell into the same generic message below, which is
+        // misleading when the real cause is "wait and retry", not "check
+        // your credentials".
+        setError(t('tooManyAttempts'));
       } else {
-        setError('E-poçt və ya şifrə yanlışdır.');
+        setError(t('wrongEmailOrPassword'));
       }
       return;
     }
@@ -90,8 +100,8 @@ function LoginPageContent() {
   };
 
   const handleForgotPassword = async () => {
-    if (!supabaseReady) { setError('Supabase qoşulmayıb.'); return; }
-    if (!email.trim()) { setError('Şifrəni sıfırlamaq üçün əvvəlcə e-poçt ünvanınızı daxil edin.'); return; }
+    if (!supabaseReady) { setError(t('supabaseNotConnected')); return; }
+    if (!email.trim()) { setError(t('enterEmailToReset')); return; }
     setSubmitting(true);
     setError('');
     setInfo('');
@@ -100,31 +110,31 @@ function LoginPageContent() {
     });
     setSubmitting(false);
     if (resetError) {
-      setError(resetError.message || 'Sıfırlama linki göndərilmədi.');
+      setError(t('resetLinkNotSent')(resetError.message));
       return;
     }
-    setInfo('Şifrə sıfırlama linki e-poçtunuza göndərildi (spam qovluğunu da yoxlayın).');
+    setInfo(t('resetLinkSent'));
   };
 
   const handleSignUp = async (e) => {
     e.preventDefault();
-    if (!supabaseReady) { setError('Supabase qoşulmayıb.'); return; }
+    if (!supabaseReady) { setError(t('supabaseNotConnected')); return; }
 
     const cleanEmail = email.trim();
     if (!cleanEmail) {
-      setError('Zəhmət olmasa e-poçt ünvanınızı daxil edin.');
+      setError(t('enterEmail'));
       return;
     }
     if (!password) {
-      setError('Zəhmət olmasa şifrə daxil edin.');
+      setError(t('enterPassword'));
       return;
     }
     if (password.length < 8) {
-      setError('Şifrə ən azı 8 simvol olmalıdır.');
+      setError(t('passwordTooShort'));
       return;
     }
     if (password !== confirmPassword) {
-      setError('Daxil edilən şifrələr üst-üstə düşmür.');
+      setError(t('passwordsDontMatch'));
       return;
     }
 
@@ -144,16 +154,16 @@ function LoginPageContent() {
 
     if (signUpError) {
       if (/already registered|user_already_exists/i.test(signUpError.message || '')) {
-        setError('Bu e-poçt ünvanı ilə artıq hesab mövcuddur. Zəhmət olmasa "Daxil ol" bölməsindən daxil olun.');
+        setError(t('accountAlreadyExists'));
       } else {
-        setError(signUpError.message || 'Qeydiyyat alınmadı.');
+        setError(t('signupFailed')(signUpError.message));
       }
       return;
     }
 
     // Check for existing user (Supabase returns empty identities array for existing user when email confirmation is enabled)
     if (data?.user && data.user.identities && data.user.identities.length === 0) {
-      setError('Bu e-poçt ünvanı ilə artıq hesab mövcuddur. Zəhmət olmasa "Daxil ol" bölməsindən daxil olun.');
+      setError(t('accountAlreadyExists'));
       return;
     }
 
@@ -164,7 +174,7 @@ function LoginPageContent() {
     }
 
     // Email confirmation is ON — show verification instruction
-    setInfo('Hesab uğurla yaradıldı! Təsdiq linki e-poçt ünvanınıza göndərildi. Linkə klikləyib e-poçtunuzu təsdiqlədikdən sonra restoranınızı yarada bilərsiniz (spam qovluğunu da yoxlayın).');
+    setInfo(t('accountCreatedVerifyEmail'));
   };
 
   if (checking) {
@@ -181,6 +191,9 @@ function LoginPageContent() {
   return (
     <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-sm bg-slate-950/60 backdrop-blur p-8 rounded-3xl border border-slate-800 text-center shadow-2xl">
+        <div className="flex justify-center mb-4">
+          <LanguageSwitcher context="dark" />
+        </div>
         {/* Toggle Tabs (Only show if not logging into staff panel) */}
         {!isStaffLogin && (
           <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 mb-6">
@@ -191,7 +204,7 @@ function LoginPageContent() {
                 isLogin ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Daxil ol
+              {t('loginTab')}
             </button>
             <button
               type="button"
@@ -200,7 +213,7 @@ function LoginPageContent() {
                 !isLogin ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Qeydiyyat
+              {t('signupTab')}
             </button>
           </div>
         )}
@@ -214,14 +227,14 @@ function LoginPageContent() {
         </div>
 
         <h2 className="text-2xl font-bold text-white mb-2">
-          {isStaffLogin ? 'Ofisiant Panelinə Giriş' : isLogin ? 'Giriş' : 'Qeydiyyat'}
+          {isStaffLogin ? t('staffLoginTitle') : isLogin ? t('loginTitle') : t('signupTitle')}
         </h2>
         <p className="text-slate-400 text-sm mb-6">
           {isStaffLogin
-            ? 'Ofisiant panelinə daxil olmaq üçün restoran hesabınızın e-poçt və şifrəsini daxil edin.'
+            ? t('staffLoginSubtitle')
             : isLogin
-            ? 'İdarəetmə panelinə daxil olmaq üçün hesabınızla daxil olun.'
-            : 'Yeni hesab yaradın və restoranınızı idarə etməyə başlayın.'}
+            ? t('loginSubtitle')
+            : t('signupSubtitle')}
         </p>
 
         <form onSubmit={isLogin ? handleLogin : handleSignUp}>
@@ -229,7 +242,7 @@ function LoginPageContent() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="E-poçt"
+            placeholder={t('emailPlaceholder')}
             autoComplete="username"
             className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white mb-3 focus:outline-none focus:border-blue-500 transition-colors text-sm"
           />
@@ -237,7 +250,7 @@ function LoginPageContent() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Şifrə"
+            placeholder={t('passwordPlaceholder')}
             autoComplete={isLogin ? "current-password" : "new-password"}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white mb-3 focus:outline-none focus:border-blue-500 transition-colors text-sm"
           />
@@ -247,7 +260,7 @@ function LoginPageContent() {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Şifrənin təkrarı"
+              placeholder={t('confirmPasswordPlaceholder')}
               autoComplete="new-password"
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white mb-4 focus:outline-none focus:border-blue-500 transition-colors text-sm"
             />
@@ -261,7 +274,7 @@ function LoginPageContent() {
             disabled={submitting}
             className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-xl font-bold transition-colors text-sm shadow-lg shadow-blue-600/20"
           >
-            {submitting ? 'Yoxlanılır…' : isLogin ? 'Daxil ol' : 'Qeydiyyatdan keç'}
+            {submitting ? t('checkingButton') : isLogin ? t('loginTab') : t('signupButton')}
           </button>
         </form>
 
@@ -272,7 +285,7 @@ function LoginPageContent() {
             disabled={submitting}
             className="w-full mt-2 py-2 bg-transparent hover:bg-slate-900 disabled:opacity-60 text-slate-500 hover:text-slate-300 text-xs transition-colors"
           >
-            Şifrəni unutmusunuz?
+            {t('forgotPassword')}
           </button>
         )}
 
@@ -283,12 +296,12 @@ function LoginPageContent() {
             disabled={submitting}
             className="w-full mt-2 py-2.5 bg-transparent hover:bg-slate-900 disabled:opacity-60 text-slate-400 hover:text-white rounded-xl font-bold text-xs transition-colors"
           >
-            {isLogin ? 'Hesabınız yoxdur? Qeydiyyatdan keçin' : 'Zatən hesabınız var? Daxil olun'}
+            {isLogin ? t('noAccountSignup') : t('haveAccountLogin')}
           </button>
         )}
 
         <Link href="/" className="block mt-4 text-xs text-slate-500 hover:text-slate-300">
-          Müştəri menyusuna qayıt
+          {t('backToCustomerMenu')}
         </Link>
       </div>
     </div>

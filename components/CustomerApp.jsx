@@ -8,10 +8,13 @@ import { subscribeOrders, subscribeProducts } from '@/lib/services/realtime';
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { CartDrawer } from "@/components/CartDrawer";
-import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, QrCode, Home, CreditCard, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, QrCode, Home, CreditCard, Loader2, AlertCircle, RefreshCw, ArrowUpRight } from "lucide-react";
 import { getLocalizedText, getLocalizedCategoryName, getLocalizedProduct } from "@/lib/translations";
 import { applyDiscounts } from "@/lib/services/promotionsService";
 import { requestWalletPayment } from "@/lib/services/paymentService";
+import { FEATURES, hasFeature } from "@/lib/services/entitlementService";
+import { Modal, LanguageSwitcher, Button } from "@/components/ui";
+import { useLanguage } from "@/hooks/useLanguage";
 
 // Only ever render admin-supplied banner links as a real navigable <a href>
 // if they're http(s) — blocks javascript:/data: URI injection via a
@@ -47,6 +50,7 @@ export function CustomerApp() {
     discounts,
     loadDiscounts,
     setQrToken,
+    loadPlans,
   } = useAppStore();
 
   const settings = restaurant
@@ -68,7 +72,12 @@ export function CustomerApp() {
   const params = useParams();
   const searchParams = useSearchParams();
 
-  const [lang, setLang] = useState("az");
+  // Language now lives in a shared, persisted store (lib/i18n/languageStore.js)
+  // instead of component-local state, so the choice survives reloads and is
+  // shared with every other surface — but getLocalizedText/getLocalizedProduct/
+  // getLocalizedCategoryName below keep their exact original call signature,
+  // so this surface's translated output is unchanged (see PROJECT_CONTEXT.md).
+  const { language: lang } = useLanguage();
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -104,7 +113,12 @@ export function CustomerApp() {
           }
         }
 
-        await Promise.all([loadMenuData(), loadOrders(), loadAlerts(), loadTables(), loadBanners(), loadDiscounts()]);
+        // loadPlans() is independent of the restaurant slug (plans are
+        // platform-wide, not tenant-scoped) — hydrates entitlementService's
+        // PLAN_FEATURE_DEFAULTS from the DB so hasFeature()/getEntitlements()
+        // below reflect the live plans/plan_features tables. Safe to run in
+        // parallel with the tenant-scoped loads.
+        await Promise.all([loadMenuData(), loadOrders(), loadAlerts(), loadTables(), loadBanners(), loadDiscounts(), loadPlans()]);
       } catch (err) {
         console.error('CustomerApp load error', err);
         setLoadError(err?.message || String(err));
@@ -114,7 +128,7 @@ export function CustomerApp() {
     };
 
     loadAppData();
-  }, [params, searchParams, loadMenuData, loadOrders, loadAlerts, loadTables, loadRestaurantBySlug, loadBanners, loadDiscounts]);
+  }, [params, searchParams, loadMenuData, loadOrders, loadAlerts, loadTables, loadRestaurantBySlug, loadBanners, loadDiscounts, loadPlans]);
 
   const resolvedTable = tables.find(
     (t) => t.table_number?.toString() === tableId?.toString() || t.id === tableId,
@@ -316,13 +330,15 @@ export function CustomerApp() {
           </div>
           <h2 className="text-xl font-bold text-[#14151A] mb-2">Yükləmə xətası</h2>
           <p className="text-[#8A8F98] text-sm mb-6">{loadError}</p>
-          <button
+          <Button
             type="button"
+            context="customer"
+            variant="primary"
             onClick={() => window.location.reload()}
-            className="customer-btn-primary inline-flex items-center justify-center gap-2 px-5 h-11 text-sm"
+            className="h-11"
           >
             <RefreshCw className="w-4 h-4" /> Təkrar cəhd et
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -371,22 +387,9 @@ export function CustomerApp() {
               )}
             </div>
 
-            {/* Language Switcher */}
-            <div className="flex items-center bg-[#F7F8FA] border border-[#E8E8E8] rounded-2xl p-1 gap-1 shrink-0">
-              {['az', 'en', 'ru'].map((code) => (
-                <button
-                  key={code}
-                  onClick={() => setLang(code)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase transition-all duration-200 ${
-                    lang === code ? 'text-white' : 'text-[#8A8F98] hover:text-[#14151A]'
-                  }`}
-                  style={lang === code ? { background: 'linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%)' } : undefined}
-                  id={`lang-btn-${code}`}
-                >
-                  {code}
-                </button>
-              ))}
-            </div>
+            {/* Language Switcher — extracted to components/ui/LanguageSwitcher.jsx
+                (same markup/styling, now backed by the shared persisted store) */}
+            <LanguageSwitcher context="customer" />
 
             <div className="h-7 w-px bg-[#E8E8E8] hidden lg:block" />
 
@@ -412,8 +415,8 @@ export function CustomerApp() {
 
       <main className="max-w-7xl mx-auto px-4 pt-6 space-y-8">
 
-        {/* Banners (Banner sistemi) — SuperAdmin restoranın banner funksiyasını söndürsə (feature_flags.banners) heç göstərilmir, plan-dan asılı olmayaraq */}
-        {restaurant?.feature_flags?.banners !== false && banners.filter((b) => b.is_active).length > 0 && (
+        {/* Banners (Banner sistemi) — SuperAdmin restoranın banner funksiyasını söndürsə heç göstərilmir, plan-dan asılı olmayaraq (bax: lib/services/entitlementService.js) */}
+        {hasFeature(restaurant, FEATURES.BANNERS) && banners.filter((b) => b.is_active).length > 0 && (
           <section className="flex gap-4 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
             {banners.filter((b) => b.is_active).map((banner) => {
               const content = (
@@ -424,20 +427,71 @@ export function CustomerApp() {
                   className="w-full h-full object-cover"
                 />
               );
+
+              // Resolve the action against THIS restaurant's own
+              // already-loaded products/categories — a banner pointing at
+              // another restaurant's id (or a since-deleted one) simply
+              // won't be found here, which is exactly the graceful "target
+              // unavailable -> render as non-interactive" fallback the
+              // action system needs, with no extra tenant check required.
+              let onClickAction = null;
+              let hrefAction = null;
+              if (banner.action_type === 'product') {
+                const target = PRODUCTS.find((p) => p.id === banner.action_target_id);
+                if (target) onClickAction = () => setSelectedProduct(target);
+              } else if (banner.action_type === 'category') {
+                const target = CATEGORIES.find((c) => c.id === banner.action_target_id);
+                if (target) {
+                  onClickAction = () => {
+                    setSelectedCategory(target.id);
+                    // The category bar + filtered grid sit below the banner
+                    // strip — without this the click can read as dead
+                    // (selection changed, but nothing visibly happened).
+                    document.getElementById('menu-categories')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  };
+                }
+              } else if (banner.action_type === 'external' && isSafeUrl(banner.link_url)) {
+                hrefAction = banner.link_url;
+              } else if (banner.action_type === 'phone' && banner.link_url?.startsWith('tel:')) {
+                hrefAction = banner.link_url;
+              }
+              const isClickable = Boolean(onClickAction || hrefAction);
+              const interactiveClassName = "block w-full h-full text-left transition-transform duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)] focus-visible:ring-offset-2";
+
               return (
                 <div
                   key={banner.id}
                   className="relative shrink-0 w-[280px] sm:w-[360px] h-32 sm:h-40 rounded-3xl overflow-hidden shadow-md border border-[#E8E8E8]"
                 >
-                  {isSafeUrl(banner.link_url) ? (
-                    <a href={banner.link_url} target="_blank" rel="noreferrer" className="block w-full h-full">
+                  {hrefAction ? (
+                    <a
+                      href={hrefAction}
+                      target={banner.action_type === 'external' ? '_blank' : undefined}
+                      rel={banner.action_type === 'external' ? 'noreferrer' : undefined}
+                      className={interactiveClassName}
+                    >
                       {content}
                     </a>
+                  ) : onClickAction ? (
+                    <button type="button" onClick={onClickAction} className={interactiveClassName}>
+                      {content}
+                    </button>
                   ) : (
                     content
                   )}
+                  {/* Clickable affordance — an <a>/<button> shows a pointer
+                      cursor on hover, but that's invisible on touch devices
+                      (no hover state at all) and easy to miss even on
+                      desktop against a busy promo image. This badge is the
+                      only signal a customer gets that tapping does
+                      something. */}
+                  {isClickable && (
+                    <span className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center text-white pointer-events-none">
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </span>
+                  )}
                   {(banner.title || banner.subtitle) && (
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 pointer-events-none">
                       {banner.title && <p className="text-white font-bold text-sm leading-tight">{banner.title}</p>}
                       {banner.subtitle && <p className="text-white/80 text-xs leading-tight">{banner.subtitle}</p>}
                     </div>
@@ -449,7 +503,7 @@ export function CustomerApp() {
         )}
 
         {/* Categories */}
-        <section>
+        <section id="menu-categories" className="scroll-mt-4">
           <div className="flex overflow-x-auto no-scrollbar gap-2.5 pb-1">
             <button
               onClick={() => setSelectedCategory("all")}
@@ -500,9 +554,9 @@ export function CustomerApp() {
                 </div>
                 <h3 className="text-lg font-bold text-[#14151A] mb-2">Məhsul tapılmadı</h3>
                 <p className="text-[#8A8F98] text-sm mb-6">Seçilmiş kateqoriyaya uyğun məhsul yoxdur. Daha geniş kateqoriya üçün bütün məhsullara qayıdın.</p>
-                <button type="button" onClick={() => setSelectedCategory('all')} className="customer-btn-primary px-5 h-11 text-sm">
+                <Button type="button" context="customer" variant="primary" onClick={() => setSelectedCategory('all')} className="h-11">
                   Hamısına qayıt
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -637,29 +691,43 @@ export function CustomerApp() {
       />
 
       {/* Bill Modal */}
-      {isBillModalOpen && (
-        <div className="customer-theme fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white border border-[#ECECEC] rounded-3xl w-full max-w-sm p-6 shadow-xl text-center" style={{ boxShadow: '0 20px 60px rgba(0,0,0,.15)' }}>
+      <Modal
+        isOpen={isBillModalOpen}
+        onClose={() => setIsBillModalOpen(false)}
+        context="customer"
+        size="sm"
+        stacked
+        ariaLabel={getLocalizedText("paymentType", lang)}
+        panelClassName="p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,.15)]"
+      >
             <h2 className="text-xl font-bold text-[#14151A] mb-2">{getLocalizedText("paymentType", lang)}</h2>
             <p className="text-[#8A8F98] mb-6 text-sm">{getLocalizedText("paymentPrompt", lang)}</p>
 
             <div className="flex gap-3">
-              <button
+              {/* Button's own customer/secondary recipe is bg-white (not this
+                  screen's bg-[#F7F8FA]) with a border-color hover instead of
+                  a bg change — className overrides restore the exact
+                  original colors/hover so the look stays pixel-identical. */}
+              <Button
                 type="button"
+                context="customer"
+                variant="secondary"
                 onClick={() => handleRequestBill('cash')}
                 disabled={billRequesting}
-                className="flex-1 py-3 bg-[#F7F8FA] hover:bg-[#EFEFF3] text-[#14151A] rounded-xl font-bold transition-colors border border-[#E8E8E8] disabled:opacity-60"
+                className="flex-1 py-3 bg-[#F7F8FA] hover:bg-[#EFEFF3] text-[#14151A] rounded-xl border-[#E8E8E8]"
               >
                 {getLocalizedText("cash", lang)}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                context="customer"
+                variant="primary"
                 onClick={() => handleRequestBill('card')}
                 disabled={billRequesting}
-                className="customer-btn-primary flex-1 h-auto py-3 text-sm disabled:opacity-60"
+                className="flex-1 h-auto py-3 text-sm"
               >
                 {getLocalizedText("card", lang)}
-              </button>
+              </Button>
             </div>
             {/* Changing your mind here (cash -> card etc.) after already
                 requesting the bill updates the same staff-side alert in
@@ -671,9 +739,9 @@ export function CustomerApp() {
                 Tapping is itself the capability check: requestWalletPayment
                 (lib/services/paymentService.js) returns a clear error if the
                 wallet genuinely isn't available on this device. */}
-            {(restaurant?.feature_flags?.google_pay !== false || restaurant?.feature_flags?.apple_pay !== false) && (
+            {(hasFeature(restaurant, FEATURES.GOOGLE_PAY) || hasFeature(restaurant, FEATURES.APPLE_PAY)) && (
               <div className="flex gap-3 mt-3">
-                {restaurant?.feature_flags?.google_pay !== false && (
+                {hasFeature(restaurant, FEATURES.GOOGLE_PAY) && (
                   <button
                     type="button"
                     disabled={walletPaying === 'google_pay'}
@@ -683,7 +751,7 @@ export function CustomerApp() {
                     {walletPaying === 'google_pay' ? '...' : 'G Pay'}
                   </button>
                 )}
-                {restaurant?.feature_flags?.apple_pay !== false && (
+                {hasFeature(restaurant, FEATURES.APPLE_PAY) && (
                   <button
                     type="button"
                     disabled={walletPaying === 'apple_pay'}
@@ -702,9 +770,7 @@ export function CustomerApp() {
             >
               {getLocalizedText("cancel", lang)}
             </button>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

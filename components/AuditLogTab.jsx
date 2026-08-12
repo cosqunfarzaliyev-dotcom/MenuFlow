@@ -3,19 +3,39 @@
 import React, { useEffect } from "react";
 import { ClipboardList } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import { useAdminTranslation, LOCALE_TAGS } from "@/lib/i18n/dictionaries/admin";
+import {
+  PageHeader, Card, Badge, EmptyState,
+  Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell,
+} from "@/components/ui";
 
-const formatWhen = (iso) => {
+const formatWhen = (iso, localeTag) => {
   try {
-    return new Date(iso).toLocaleString('az-AZ', { dateStyle: 'medium', timeStyle: 'short' });
+    return new Date(iso).toLocaleString(localeTag, { dateStyle: 'medium', timeStyle: 'short' });
   } catch {
     return iso;
   }
 };
 
+// audit_logs.action is always "<entityType>.<verb>" (see
+// lib/services/promotionsService.js's logAuditEvent) — e.g. 'product.create',
+// 'campaign.delete'. The verb is the part the Badge cares about; anything
+// that isn't create/update/delete (e.g. the one-off
+// 'restaurant.onboarding_complete') falls back to a neutral "Other" tone
+// rather than guessing at a color for a verb this table doesn't know about.
+const ACTION_BADGE = {
+  create: 'success',
+  update: 'info',
+  delete: 'danger',
+};
+
+const actionVerb = (action) => (action || '').split('.').pop();
+
 // Audit Log: Kim / Nə vaxt / Nəyi dəyişib — hər admin əməliyyatından
 // (məhsul, kampaniya, endirim, banner, dizayn dəyişikliyi) sonra avtomatik
 // qeyd olunur (bax: lib/store.js -> recordAudit).
 export function AuditLogTab() {
+  const { t, language } = useAdminTranslation();
   const { auditLogs, loadAuditLogs } = useAppStore();
 
   useEffect(() => {
@@ -23,34 +43,38 @@ export function AuditLogTab() {
   }, [loadAuditLogs]);
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <ClipboardList className="w-5 h-5 text-blue-400" />
-        <h2 className="font-bold text-lg text-white">Audit Log</h2>
-      </div>
+    <div className="space-y-6">
+      <PageHeader context="dark" title={t('titleAudit')} description={t('auditSubtitle')} />
+
       {auditLogs.length === 0 ? (
-        <p className="text-sm text-slate-500">Hələ heç bir dəyişiklik qeydə alınmayıb.</p>
+        <EmptyState icon={<ClipboardList className="w-8 h-8 text-blue-400" />} title={t('auditEmptyText')} description={t('auditNotFoundDescription')} />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-slate-500 border-b border-slate-800">
-                <th className="py-2 pr-4 font-bold">Kim</th>
-                <th className="py-2 pr-4 font-bold">Nə vaxt</th>
-                <th className="py-2 pr-4 font-bold">Nəyi dəyişib</th>
-              </tr>
-            </thead>
-            <tbody>
-              {auditLogs.map((log) => (
-                <tr key={log.id} className="border-b border-slate-800/60">
-                  <td className="py-2.5 pr-4 text-slate-300 whitespace-nowrap">{log.actor_email || 'Naməlum'}</td>
-                  <td className="py-2.5 pr-4 text-slate-500 whitespace-nowrap">{formatWhen(log.created_at)}</td>
-                  <td className="py-2.5 pr-4 text-white">{log.summary || log.action}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card context="dark" variant="flat" className="overflow-hidden">
+          <Table>
+            <TableHead>
+              <TableHeaderCell>{t('auditColWho')}</TableHeaderCell>
+              <TableHeaderCell>{t('auditColWhen')}</TableHeaderCell>
+              <TableHeaderCell>{t('auditColAction')}</TableHeaderCell>
+              <TableHeaderCell>{t('auditColWhat')}</TableHeaderCell>
+            </TableHead>
+            <TableBody>
+              {auditLogs.map((log) => {
+                const verb = actionVerb(log.action);
+                const badgeText = { create: t('auditActionCreate'), update: t('auditActionUpdate'), delete: t('auditActionDelete') }[verb] || t('auditActionOther');
+                return (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-slate-300 whitespace-nowrap">{log.actor_email || t('auditUnknownActor')}</TableCell>
+                    <TableCell className="text-slate-500 whitespace-nowrap">{formatWhen(log.created_at, LOCALE_TAGS[language] || 'az-AZ')}</TableCell>
+                    <TableCell>
+                      <Badge tone={ACTION_BADGE[verb] || 'neutral'}>{badgeText}</Badge>
+                    </TableCell>
+                    <TableCell className="text-white">{log.summary || log.action}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Card>
       )}
     </div>
   );

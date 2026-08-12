@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, Building2, Search, Users, Trash2, Edit2, ExternalLink, Copy,
-  X, Loader2,
+  X,
 } from 'lucide-react';
 import {
   createRestaurant, updateRestaurant, deleteRestaurant,
@@ -12,9 +12,33 @@ import {
   extendRestaurantTrial, setRestaurantActiveState, setRestaurantFeatureFlag, setRestaurantPlan,
   fetchProfilesForRestaurant, assignUserToRestaurant, removeUserFromRestaurant,
 } from '@/lib/services/superAdminService';
+import {
+  fetchRestaurantSubscription, getEffectiveSubscriptionStatus, setSubscriptionBillingInterval,
+  setSubscriptionAutoRenew, markSubscriptionExpired, touchSubscriptionCancelledAt, renewSubscription,
+} from '@/lib/services/planService';
 import { TRIAL_LENGTH_DAYS } from '@/lib/services/billingService';
-import { PLAN_ORDER, planMeta, subscriptionMeta, formatDate, daysUntil, FEATURE_FLAG_META, featureFlags } from './constants';
+import { PLAN_ORDER, planMeta, subscriptionMeta, formatDate, daysUntil, FEATURE_FLAG_META, featureFlags, LOCALE_TAGS } from './constants';
 import { useToast } from './Toast';
+import { ConfirmDialog, useConfirmDialog, Field, Input, Select, Badge, Button, EmptyState } from '@/components/ui';
+import { CAPABILITIES } from '@/lib/services/capabilityService';
+import { useCapability } from '@/hooks/useCapability';
+import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
+
+// Overrides FEATURE_FLAG_META's AZ-only label/description for display here
+// (and in PlansTab.jsx) without touching lib/services/entitlementService.js
+// — that registry is shared cross-surface infra (see its own header
+// comment), so translating its display text is scoped to the two SuperAdmin
+// consumers that render it, not the registry itself.
+const FEATURE_LABEL_KEYS = {
+  apple_pay: ['featureAppleyPayLabel', 'featureApplePayDescription'],
+  google_pay: ['featureGooglePayLabel', 'featureGooglePayDescription'],
+  banners: ['featureBannersLabel', 'featureBannersDescription'],
+};
+const translatedFeatureMeta = (key, meta, t) => {
+  const [labelKey, descKey] = FEATURE_LABEL_KEYS[key] || [];
+  if (!labelKey) return meta;
+  return { label: t(labelKey), description: t(descKey) };
+};
 
 // Small labeled on/off switch used throughout the restaurant controls panel.
 // `pending` disables it mid-request so a slow network can't produce a
@@ -42,7 +66,10 @@ function Switch({ label, description, checked, pending, onChange }) {
 }
 
 export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestaurantId, onConsumeOpenId }) {
+  const { t, language } = useSuperAdminTranslation();
+  const localeTag = LOCALE_TAGS[language] || 'az-AZ';
   const notify = useToast();
+  const confirmDialog = useConfirmDialog();
   const [query, setQuery] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingRestaurant, setEditingRestaurant] = useState(null);
@@ -69,34 +96,42 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ad, slug və ya owner email üzrə axtar…"
-            className="w-full bg-slate-900/60 border border-slate-800 sa-radius-input pl-10 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
-          />
+          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 z-10" />
+          <Field>
+            {(id, a11y) => (
+              <Input
+                id={id}
+                {...a11y}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('searchRestaurantsPlaceholder')}
+                className="pl-10"
+              />
+            )}
+          </Field>
         </div>
-        <button
-          onClick={() => setIsCreateOpen(true)}
-          className="sa-btn flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shrink-0"
-        >
-          <Plus className="w-4 h-4" /> Yeni restoran
-        </button>
+        <Button onClick={() => setIsCreateOpen(true)} className="shrink-0">
+          <Plus className="w-4 h-4" /> {t('newRestaurantButton')}
+        </Button>
       </div>
 
-      <div className="sa-card overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="py-16 text-center">
-            <Building2 className="w-8 h-8 text-slate-700 mx-auto mb-3" />
-            <p className="sa-caption text-slate-500">{query ? 'Nəticə tapılmadı.' : 'Hələ restoran yoxdur.'}</p>
-          </div>
-        ) : (
+      {/* EmptyState renders as its own top-level replacement (not nested
+          inside sa-card) — it carries its own glass-panel box, so nesting it
+          inside sa-card would double-box it. The table branch keeps sa-card
+          exactly as before; only which branch sa-card wraps moved. */}
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<Building2 className="w-8 h-8 text-slate-700" />}
+          title={query ? t('noResultsFound') : t('noRestaurantsYet')}
+          description=""
+        />
+      ) : (
+        <div className="sa-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-800/80 text-left">
-                  {['', 'Ad', 'Owner', 'Paket', 'Status', 'Bitmə tarixi', 'Sifariş sayı', ''].map((h, i) => (
+                  {[t('colAvatar'), t('colName'), t('colOwner'), t('colPackage'), t('colStatus'), t('colEndDate'), t('colOrderCount'), ''].map((h, i) => (
                     <th key={i} className="sa-caption font-bold text-slate-500 px-4 py-3 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -104,8 +139,8 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
               <tbody>
                 {filtered.map((r, idx) => {
                   const rowStats = stats[r.id] || { orderCount: 0, revenue: 0 };
-                  const plan = planMeta(r.plan);
-                  const status = subscriptionMeta(r.subscription_status);
+                  const plan = planMeta(r.plan, t);
+                  const status = subscriptionMeta(r.subscription_status, t);
                   const trialDays = r.subscription_status === 'trialing' ? daysUntil(r.trial_ends_at) : null;
                   const menuUrl = origin ? `${origin}/menu/${r.slug}` : '';
                   return (
@@ -136,34 +171,39 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          <span className={`sa-caption font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${status.bg} ${status.text} ${status.border}`}>
+                          {/* tone is the closest semantic match; the className
+                              override reproduces subscriptionMeta()'s exact
+                              per-status colors (e.g. past_due's orange, which
+                              has no dedicated Badge tone) so the color meaning
+                              is unchanged. */}
+                          <Badge tone="neutral" className={`whitespace-nowrap border ${status.bg} ${status.text} ${status.border}`}>
                             {status.label}
-                          </span>
+                          </Badge>
                           {r.is_active === false && (
-                            <span className="sa-caption font-bold px-2.5 py-1 rounded-full border bg-slate-800 text-slate-400 border-slate-700 whitespace-nowrap">
-                              Deaktiv
-                            </span>
+                            <Badge tone="neutral" className="whitespace-nowrap border bg-slate-800 text-slate-400 border-slate-700">
+                              {t('inactiveLabel')}
+                            </Badge>
                           )}
                         </div>
-                        <p className="sa-caption text-slate-600 mt-1">Redaktədən dəyiş →</p>
+                        <p className="sa-caption text-slate-600 mt-1">{t('editFromHere')}</p>
                       </td>
                       <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
                         {r.subscription_status === 'trialing' && trialDays !== null
-                          ? `${trialDays > 0 ? trialDays : 0} gün qalıb`
-                          : formatDate(r.trial_ends_at)}
+                          ? t('daysLeftSuffix')(trialDays > 0 ? trialDays : 0)
+                          : formatDate(r.trial_ends_at, localeTag)}
                       </td>
                       <td className="px-4 py-3 text-slate-300 font-semibold whitespace-nowrap">{rowStats.orderCount}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 justify-end">
                           {menuUrl && (
                             <>
-                              <a href={menuUrl} target="_blank" rel="noreferrer" title="Menyuya bax"
+                              <a href={menuUrl} target="_blank" rel="noreferrer" title={t('viewMenuTitle')}
                                 className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white">
                                 <ExternalLink className="w-3.5 h-3.5" />
                               </a>
                               <button
-                                onClick={() => { navigator.clipboard.writeText(menuUrl); notify('Link kopyalandı.'); }}
-                                title="Linki kopyala"
+                                onClick={() => { navigator.clipboard.writeText(menuUrl); notify(t('linkCopiedToast')); }}
+                                title={t('copyLinkTitle')}
                                 className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
                               >
                                 <Copy className="w-3.5 h-3.5" />
@@ -172,27 +212,30 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
                           )}
                           <button
                             onClick={() => setAdminsModalRestaurant(r)}
-                            title="Adminlər"
+                            title={t('adminsTitle')}
                             className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
                           >
                             <Users className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => setEditingRestaurant(r)}
-                            title="Redaktə et"
+                            title={t('editTitle')}
                             className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={async () => {
-                              if (!window.confirm(`"${r.name}" restoranını silmək istədiyinizə əminsiniz? Bütün menyu, sifariş və masa məlumatları silinəcək.`)) return;
-                              const { error } = await deleteRestaurant(r.id);
-                              if (error) { notify(error.message || 'Silinmədi, yenidən cəhd edin.', 'error'); return; }
-                              notify('Restoran silindi.');
-                              refresh();
-                            }}
-                            title="Sil"
+                            onClick={() => confirmDialog.confirm({
+                              title: t('deleteRestaurantConfirmTitle'),
+                              message: t('deleteRestaurantConfirmMessage')(r.name),
+                              onConfirm: async () => {
+                                const { error } = await deleteRestaurant(r.id);
+                                if (error) { notify(t('deleteFailedToast')(error.message), 'error'); return; }
+                                notify(t('restaurantDeletedToast'));
+                                refresh();
+                              },
+                            })}
+                            title={t('deleteTitle')}
                             className="p-2 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-400"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -205,26 +248,26 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {isCreateOpen && (
           <RestaurantModal
-            title="Yeni restoran"
+            title={t('newRestaurantModalTitle')}
             onClose={() => setIsCreateOpen(false)}
             onSave={async (form) => {
               const { error } = await createRestaurant(form);
-              if (error) { notify(error.message || 'Yaradılmadı, yenidən cəhd edin.', 'error'); return; }
+              if (error) { notify(t('createFailedToast')(error.message), 'error'); return; }
               setIsCreateOpen(false);
-              notify('Yeni restoran yaradıldı.');
+              notify(t('restaurantCreatedToast'));
               refresh();
             }}
           />
         )}
         {editingRestaurant && (
           <RestaurantModal
-            title="Restoranı redaktə et"
+            title={t('editRestaurantModalTitle')}
             initial={editingRestaurant}
             isEdit
             onClose={() => setEditingRestaurant(null)}
@@ -238,11 +281,11 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
                 id: editingRestaurant.id, name: form.name, tagline: form.tagline, currencySymbol: form.currencySymbol,
               });
               if (error || err2) {
-                notify((error || err2).message || 'Yadda saxlanmadı, yenidən cəhd edin.', 'error');
+                notify(t('saveFailedToast')((error || err2).message), 'error');
                 return;
               }
               setEditingRestaurant(null);
-              notify('Restoran yeniləndi.');
+              notify(t('restaurantUpdatedToast'));
               refresh();
             }}
           />
@@ -251,6 +294,7 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
           <AdminsModal restaurant={adminsModalRestaurant} onClose={() => setAdminsModalRestaurant(null)} onChange={refresh} />
         )}
       </AnimatePresence>
+      <ConfirmDialog {...confirmDialog.dialogProps} />
     </div>
   );
 }
@@ -266,6 +310,7 @@ const modalMotion = {
 };
 
 function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh }) {
+  const { t } = useSuperAdminTranslation();
   const [form, setForm] = useState({
     name: initial?.name || '',
     slug: initial?.slug || '',
@@ -296,54 +341,54 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
           <button type="button" onClick={onClose} className="p-1.5 hover:bg-slate-800 rounded-lg"><X className="w-4 h-4 text-slate-400" /></button>
         </div>
 
-        <div>
-          <label className="sa-caption font-bold text-slate-400 mb-1 block">Restoran adı</label>
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full bg-slate-900 border border-slate-800 sa-radius-input px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" required />
-        </div>
+        <Field label={t('restaurantNameFieldLabel')}>
+          {(id, a11y) => (
+            <Input id={id} {...a11y} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          )}
+        </Field>
 
-        <div>
-          <label className="sa-caption font-bold text-slate-400 mb-1 block">Slug (URL üçün, məs. acme-grill)</label>
-          <input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} disabled={isEdit}
-            className="w-full bg-slate-900 border border-slate-800 sa-radius-input px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50" required />
-          {isEdit && <p className="text-[10px] text-slate-500 mt-1">Slug yaradıldıqdan sonra dəyişdirilə bilməz (QR kodlar bu linkə bağlıdır).</p>}
-        </div>
+        <Field label={t('slugFieldLabel')} hint={isEdit ? t('slugImmutableHint') : undefined}>
+          {(id, a11y) => (
+            <Input id={id} {...a11y} value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} disabled={isEdit} required />
+          )}
+        </Field>
 
-        <div>
-          <label className="sa-caption font-bold text-slate-400 mb-1 block">Tagline</label>
-          <input value={form.tagline} onChange={(e) => setForm({ ...form, tagline: e.target.value })}
-            className="w-full bg-slate-900 border border-slate-800 sa-radius-input px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" />
-        </div>
+        <Field label={t('taglineFieldLabel')}>
+          {(id, a11y) => (
+            <Input id={id} {...a11y} value={form.tagline} onChange={(e) => setForm({ ...form, tagline: e.target.value })} />
+          )}
+        </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="sa-caption font-bold text-slate-400 mb-1 block">Valyuta simvolu</label>
-            <input value={form.currencySymbol} onChange={(e) => setForm({ ...form, currencySymbol: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-800 sa-radius-input px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" />
-          </div>
+          <Field label={t('currencySymbolFieldLabel')}>
+            {(id, a11y) => (
+              <Input id={id} {...a11y} value={form.currencySymbol} onChange={(e) => setForm({ ...form, currencySymbol: e.target.value })} />
+            )}
+          </Field>
           {!isEdit ? (
-            <div>
-              <label className="sa-caption font-bold text-slate-400 mb-1 block">Masa sayı</label>
-              <input type="number" min="1" max="200" value={form.tableCount} onChange={(e) => setForm({ ...form, tableCount: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 sa-radius-input px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" />
-            </div>
+            <Field label={t('tableCountFieldLabel')}>
+              {(id, a11y) => (
+                <Input id={id} {...a11y} type="number" min="1" max="200" value={form.tableCount} onChange={(e) => setForm({ ...form, tableCount: e.target.value })} />
+              )}
+            </Field>
           ) : (
-            <div>
-              <label className="sa-caption font-bold text-slate-400 mb-1 block">Paket</label>
-              <select value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 sa-radius-input px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
-                {PLAN_ORDER.map((p) => <option key={p} value={p}>{planMeta(p).label}</option>)}
-              </select>
-            </div>
+            <Field label={t('packageFieldLabel')}>
+              {(id, a11y) => (
+                <Select id={id} {...a11y} value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })}>
+                  {PLAN_ORDER.map((p) => <option key={p} value={p}>{planMeta(p, t).label}</option>)}
+                </Select>
+              )}
+            </Field>
           )}
         </div>
-        {isEdit && <p className="text-[10px] text-slate-500 -mt-2">Paket dəyişəndə Apple/Google Pay və Banner switch-ləri həmin paketin default vəziyyətinə sıfırlanır (aşağıda əl ilə yenidən dəyişə bilərsiniz).</p>}
+        {isEdit && <p className="text-[10px] text-slate-500 -mt-2">{t('planChangeResetHint')}</p>}
 
-        <button type="submit" disabled={saving} className="sa-btn w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-bold flex items-center justify-center gap-2">
-          {saving && <Loader2 className="w-4 h-4 animate-spin" />} Yadda saxla
-        </button>
+        <Button type="submit" loading={saving} size="block">
+          {t('saveButton')}
+        </Button>
 
         {isEdit && initial && <RestaurantControlsPanel restaurant={initial} onRefresh={onRefresh} />}
+        {isEdit && initial && <RestaurantSubscriptionPanel restaurant={initial} onRefresh={onRefresh} />}
       </motion.form>
     </motion.div>
   );
@@ -356,6 +401,7 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
 // the underlying update failed, which is why the Aktiv/Deaktiv control used
 // to look broken.
 function RestaurantControlsPanel({ restaurant, onRefresh }) {
+  const { t } = useSuperAdminTranslation();
   const notify = useToast();
   const [local, setLocal] = useState(restaurant);
   const [pendingKey, setPendingKey] = useState(null);
@@ -369,10 +415,10 @@ function RestaurantControlsPanel({ restaurant, onRefresh }) {
     setPendingKey(null);
     if (error) {
       setLocal(restaurant); // roll back the optimistic change
-      notify(error.message || 'Yenilənmədi, yenidən cəhd edin.', 'error');
+      notify(t('updateFailedToast')(error.message), 'error');
       return;
     }
-    notify('Yeniləndi.');
+    notify(t('updatedToast'));
     onRefresh?.();
   };
 
@@ -380,18 +426,18 @@ function RestaurantControlsPanel({ restaurant, onRefresh }) {
 
   return (
     <div className="border-t border-slate-800 pt-3 mt-1 space-y-1">
-      <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-1">Nəzarət</p>
+      <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-1">{t('controlsTitle')}</p>
 
       <Switch
-        label="Restoran Aktiv"
-        description={local.is_active === false ? 'Müştəri menyusu və admin/işçi paneli bağlıdır' : 'Müştəri menyusu və admin/işçi paneli açıqdır'}
+        label={t('restaurantActiveLabel')}
+        description={local.is_active === false ? t('restaurantActiveOffDescription') : t('restaurantActiveOnDescription')}
         checked={local.is_active !== false}
         pending={pendingKey === 'is_active'}
         onChange={(val) => run('is_active', () => setRestaurantActiveState(local.id, val), { is_active: val })}
       />
       <Switch
-        label={`Sınaq Müddəti (${TRIAL_LENGTH_DAYS} gün)`}
-        description={local.subscription_status === 'trialing' ? `${daysUntil(local.trial_ends_at) ?? 0} gün qalıb` : 'Sınaqda deyil'}
+        label={t('trialPeriodLabel')(TRIAL_LENGTH_DAYS)}
+        description={local.subscription_status === 'trialing' ? t('daysLeftSuffix')(daysUntil(local.trial_ends_at) ?? 0) : t('notInTrialDescription')}
         checked={local.subscription_status === 'trialing'}
         pending={pendingKey === 'trialing'}
         onChange={(val) => {
@@ -404,38 +450,200 @@ function RestaurantControlsPanel({ restaurant, onRefresh }) {
         }}
       />
       <Switch
-        label="Abunəlik Aktiv"
-        description={local.subscription_status === 'active' ? 'Sınaqdan asılı olmayaraq tam giriş' : 'Abunəlik aktiv deyil'}
+        label={t('subscriptionActiveLabel')}
+        description={local.subscription_status === 'active' ? t('subscriptionActiveOnDescription') : t('subscriptionActiveOffDescription')}
         checked={local.subscription_status === 'active'}
         pending={pendingKey === 'active'}
         onChange={(val) => run('active', () => (val ? markRestaurantActive(local.id) : cancelRestaurantSubscription(local.id)), { subscription_status: val ? 'active' : 'canceled' })}
       />
       <Switch
-        label="Ödəniş gecikib (Past Due)"
-        description="Manual olaraq ödəniş problemi işarələ"
+        label={t('pastDueLabel')}
+        description={t('pastDueDescription')}
         checked={local.subscription_status === 'past_due'}
         pending={pendingKey === 'past_due'}
         onChange={(val) => run('past_due', () => (val ? markRestaurantPastDue(local.id) : cancelRestaurantSubscription(local.id)), { subscription_status: val ? 'past_due' : 'canceled' })}
       />
 
       <div className="h-px bg-slate-800 my-2" />
-      <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-1">Funksiyalar</p>
-      {Object.entries(FEATURE_FLAG_META).map(([key, meta]) => (
-        <Switch
-          key={key}
-          label={meta.label}
-          description={meta.description}
-          checked={Boolean(flags[key])}
-          pending={pendingKey === key}
-          onChange={(val) => run(key, () => setRestaurantFeatureFlag(local, key, val), { feature_flags: { ...flags, [key]: val } })}
-        />
-      ))}
+      <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-1">{t('featuresTitle')}</p>
+      {Object.entries(FEATURE_FLAG_META).map(([key, meta]) => {
+        const translated = translatedFeatureMeta(key, meta, t);
+        return (
+          <Switch
+            key={key}
+            label={translated.label}
+            description={translated.description}
+            checked={Boolean(flags[key])}
+            pending={pendingKey === key}
+            onChange={(val) => run(key, () => setRestaurantFeatureFlag(local, key, val), { feature_flags: { ...flags, [key]: val } })}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// Restaurant Subscription (public.restaurant_subscriptions) — the normalized
+// view, separate from RestaurantControlsPanel above (which stays exactly as
+// it was, still driving is_active/trialing/active/past_due off the
+// `restaurants` columns). This panel reads and edits the NEW table directly:
+// billing_interval/auto_renew have no restaurants-column equivalent at all,
+// and "mark as expired"/"mark as renewed" are explicit super_admin actions a
+// status Switch can't express. See lib/services/planService.js's header
+// comment for exactly which fields this writes directly vs. routes through
+// the old restaurants-column + sync-trigger path.
+function RestaurantSubscriptionPanel({ restaurant, onRefresh }) {
+  const { t, language } = useSuperAdminTranslation();
+  const localeTag = LOCALE_TAGS[language] || 'az-AZ';
+  const notify = useToast();
+  const [subscription, setSubscription] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [pendingKey, setPendingKey] = useState(null);
+
+  // Async loader defined and invoked entirely inside the effect (not a
+  // useCallback referenced from the dependency array) — matches
+  // CustomerApp.jsx's loadAppData pattern, which is the one data-loading
+  // shape in this codebase that doesn't trip react-hooks/set-state-in-effect
+  // (the useCallback-then-call-in-effect shape a few lines up in this same
+  // file, e.g. AdminsModal's `refresh`, does trip it — that's an accepted
+  // pre-existing baseline violation there, not a pattern to add a new
+  // instance of here).
+  React.useEffect(() => {
+    const loadSubscription = async () => {
+      setLoading(true);
+      const sub = await fetchRestaurantSubscription(restaurant.id);
+      setSubscription(sub);
+      setLoading(false);
+    };
+    loadSubscription();
+  }, [restaurant.id]);
+
+  const run = async (key, action) => {
+    setPendingKey(key);
+    const { error } = await action();
+    setPendingKey(null);
+    if (error) {
+      notify(t('updateFailedToast')(error.message), 'error');
+      return;
+    }
+    notify(t('updatedToast'));
+    const sub = await fetchRestaurantSubscription(restaurant.id);
+    setSubscription(sub);
+    onRefresh?.();
+  };
+
+  if (loading) {
+    return (
+      <div className="border-t border-slate-800 pt-3 mt-1">
+        <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-2">{t('subscriptionDetailsTitle')}</p>
+        <p className="sa-caption text-slate-500 py-2">{t('loadingText')}</p>
+      </div>
+    );
+  }
+
+  if (!subscription) {
+    return (
+      <div className="border-t border-slate-800 pt-3 mt-1">
+        <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-2">{t('subscriptionDetailsTitle')}</p>
+        <p className="sa-caption text-slate-500 py-2">{t('subscriptionNotFound')}</p>
+      </div>
+    );
+  }
+
+  const effectiveStatus = getEffectiveSubscriptionStatus(subscription);
+  const effectiveMeta = subscriptionMeta(effectiveStatus, t);
+
+  return (
+    <div className="border-t border-slate-800 pt-3 mt-1 space-y-3">
+      <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-1">{t('subscriptionDetailsTitle')}</p>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+        <div><span className="text-slate-500">{t('planLabel')}</span><span className="text-white font-semibold">{subscription.plan?.name || '—'}</span></div>
+        <div>
+          <span className="text-slate-500">{t('statusLabelColon')}</span>
+          <Badge tone="neutral" className={`px-1.5 py-0.5 ${effectiveMeta.bg} ${effectiveMeta.text}`}>{effectiveMeta.label}</Badge>
+        </div>
+        <div><span className="text-slate-500">{t('startDateLabel')}</span><span className="text-white">{formatDate(subscription.start_date, localeTag)}</span></div>
+        <div><span className="text-slate-500">{t('endDateLabel')}</span><span className="text-white">{formatDate(subscription.end_date, localeTag)}</span></div>
+        <div><span className="text-slate-500">{t('trialEndsLabel')}</span><span className="text-white">{formatDate(subscription.trial_ends_at, localeTag)}</span></div>
+        <div><span className="text-slate-500">{t('lastRenewedLabel')}</span><span className="text-white">{formatDate(subscription.renewed_at, localeTag)}</span></div>
+        {subscription.cancelled_at && (
+          <div className="col-span-2"><span className="text-slate-500">{t('cancelledDateLabel')}</span><span className="text-white">{formatDate(subscription.cancelled_at, localeTag)}</span></div>
+        )}
+      </div>
+
+      <Field label={t('billingIntervalLabel')}>
+        {(id, a11y) => (
+          <Select
+            id={id} {...a11y}
+            value={subscription.billing_interval}
+            disabled={pendingKey === 'billing_interval'}
+            onChange={(e) => run('billing_interval', () => setSubscriptionBillingInterval(restaurant.id, e.target.value))}
+          >
+            <option value="monthly">{t('monthlyOption')}</option>
+            <option value="yearly">{t('yearlyOption')}</option>
+          </Select>
+        )}
+      </Field>
+
+      <Switch
+        label={t('autoRenewLabel')}
+        description={subscription.auto_renew ? t('autoRenewOnDescription') : t('autoRenewOffDescription')}
+        checked={subscription.auto_renew}
+        pending={pendingKey === 'auto_renew'}
+        onChange={(val) => run('auto_renew', () => setSubscriptionAutoRenew(restaurant.id, val))}
+      />
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        {effectiveStatus !== 'expired' && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={pendingKey === 'expired'}
+            onClick={() => run('expired', () => markSubscriptionExpired(restaurant.id))}
+            className="text-slate-300 hover:bg-rose-500/20 hover:text-rose-400"
+          >
+            {t('markExpiredButton')}
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={pendingKey === 'renew'}
+          onClick={() => run('renew', () => renewSubscription(restaurant.id))}
+          className="text-slate-300 hover:bg-emerald-500/20 hover:text-emerald-400"
+        >
+          {t('markRenewedButton')}
+        </Button>
+        {(subscription.status === 'cancelled' || subscription.status === 'canceled') && !subscription.cancelled_at && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={pendingKey === 'cancelled_at'}
+            onClick={() => run('cancelled_at', () => touchSubscriptionCancelledAt(restaurant.id))}
+            className="text-slate-300"
+          >
+            {t('markCancelledDateButton')}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
 
 function AdminsModal({ restaurant, onClose, onChange }) {
+  const { t } = useSuperAdminTranslation();
   const notify = useToast();
+  const confirmDialog = useConfirmDialog();
+  // Formal capability layer (Master Plan Phase 6) — this modal only ever
+  // renders inside SuperAdminApp (super_admin-only route), so this is always
+  // true today; it's the one place users.manage's real implementation
+  // (assignUserToRestaurant/removeUserFromRestaurant) actually lives, per
+  // the D1-locked account model — see capabilityService.js.
+  const canManageUsers = useCapability(CAPABILITIES.USERS_MANAGE);
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState('');
@@ -460,11 +668,11 @@ function AdminsModal({ restaurant, onClose, onChange }) {
     const { error: err } = await assignUserToRestaurant({ email: newEmail.trim(), restaurantId: restaurant.id, role: newRole });
     setSubmitting(false);
     if (err) {
-      setError(err.message || 'Xəta baş verdi.');
+      setError(err.message || t('genericError'));
       return;
     }
     setNewEmail('');
-    notify('İstifadəçi restorana təyin edildi.');
+    notify(t('userAssignedToast'));
     refresh();
     onChange?.();
   };
@@ -473,59 +681,82 @@ function AdminsModal({ restaurant, onClose, onChange }) {
     <motion.div {...modalMotion.overlay} className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <motion.div {...modalMotion.panel} className="w-full max-w-lg bg-slate-950 border border-slate-800 sa-radius-modal p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="sa-heading-4 text-white">{restaurant.name} — Adminlər</h3>
+          <h3 className="sa-heading-4 text-white">{t('adminsModalTitle')(restaurant.name)}</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-800 rounded-lg"><X className="w-4 h-4 text-slate-400" /></button>
         </div>
 
-        <form onSubmit={handleAssign} className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
-            placeholder="istifadəçi@email.com"
-            className="flex-1 bg-slate-900 border border-slate-800 sa-radius-input px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
-          />
-          <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
-            className="bg-slate-900 border border-slate-800 sa-radius-input px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
-            <option value="restaurant_admin">Admin</option>
-            <option value="staff">İşçi (staff)</option>
-          </select>
-          <button type="submit" disabled={submitting} className="sa-btn px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-sm font-bold whitespace-nowrap">
-            {submitting ? '...' : 'Təyin et'}
-          </button>
-        </form>
+        {canManageUsers && (
+          <form onSubmit={handleAssign} className="flex flex-col sm:flex-row gap-2">
+            {/* Neither control had a visible <label> before — Field is used
+                unlabeled here (same treatment as the search input above)
+                purely for the Input/Select primitive, not to invent new
+                label text. */}
+            <Field className="flex-1">
+              {(id, a11y) => (
+                <Input
+                  id={id} {...a11y}
+                  type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder={t('userEmailPlaceholder')}
+                />
+              )}
+            </Field>
+            <Field>
+              {(id, a11y) => (
+                // w-auto overrides Select's own w-full — the original raw
+                // <select> had no w-full and stayed content-width; keeping
+                // that same compact sizing here.
+                <Select id={id} {...a11y} value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-auto">
+                  <option value="restaurant_admin">{t('roleFilterAdmin')}</option>
+                  <option value="staff">{t('staffRoleOption')}</option>
+                </Select>
+              )}
+            </Field>
+            <Button type="submit" disabled={submitting} className="whitespace-nowrap">
+              {submitting ? t('assigningButton') : t('assignButton')}
+            </Button>
+          </form>
+        )}
         {error && <p className="text-rose-500 text-xs font-bold">{error}</p>}
         <p className="text-[10px] text-slate-500">
-          İstifadəçi əvvəlcə <span className="text-slate-300">/admin</span> və ya <span className="text-slate-300">/staff</span> səhifəsində hesab yaratmalıdır (email + şifrə), sonra burada email daxil edərək bu restorana təyin edin.
+          {t('assignHelperText')}
         </p>
 
         <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
           {loading ? (
-            <p className="text-slate-500 text-sm text-center py-4">Yüklənir…</p>
+            <p className="text-slate-500 text-sm text-center py-4">{t('loadingText')}</p>
           ) : profiles.length === 0 ? (
-            <p className="text-slate-500 text-sm text-center py-4">Bu restorana hələ admin təyin edilməyib.</p>
+            <p className="text-slate-500 text-sm text-center py-4">{t('noAdminsAssignedYet')}</p>
           ) : (
             profiles.map((p) => (
               <div key={p.id} className="flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-xl px-4 py-2.5">
                 <div>
                   <p className="text-white text-sm font-semibold">{p.email}</p>
-                  <p className="text-slate-500 text-[10px] font-bold uppercase">{p.role === 'restaurant_admin' ? 'Admin' : 'İşçi'}</p>
+                  <p className="text-slate-500 text-[10px] font-bold uppercase">{p.role === 'restaurant_admin' ? t('roleFilterAdmin') : t('staffRoleShort')}</p>
                 </div>
-                <button
-                  onClick={async () => {
-                    await removeUserFromRestaurant(p.id);
-                    notify('İstifadəçi restorandan silindi.');
-                    refresh();
-                    onChange?.();
-                  }}
-                  className="p-2 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-400"
-                  title="Sil"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {canManageUsers && (
+                  <button
+                    onClick={() => confirmDialog.confirm({
+                      title: t('deleteUserConfirmTitle'),
+                      message: t('deleteUserConfirmMessage')(p.email),
+                      onConfirm: async () => {
+                        await removeUserFromRestaurant(p.id);
+                        notify(t('userRemovedToast'));
+                        refresh();
+                        onChange?.();
+                      },
+                    })}
+                    className="p-2 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-400"
+                    title={t('deleteTitle')}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             ))
           )}
         </div>
       </motion.div>
+      <ConfirmDialog {...confirmDialog.dialogProps} />
     </motion.div>
   );
 }

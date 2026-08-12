@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import Image from 'next/image';
 import {
-  X,
   Trash2,
   Plus,
   Minus,
@@ -17,6 +16,7 @@ import { useAppStore } from '@/lib/store';
 import { fetchTableByNumber } from '@/lib/services/supabaseService';
 import { getLocalizedProduct, getLocalizedText } from '@/lib/translations';
 import { requestWalletPayment } from '@/lib/services/paymentService';
+import { Modal, ModalCloseButton, Button, Field, Input } from '@/components/ui';
 
 // Shown for every customer regardless of browser/device — feature-detecting
 // window.PaymentRequest/ApplePaySession beforehand just makes the buttons
@@ -51,7 +51,7 @@ export const CartDrawer = ({
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [walletAuthorizing, setWalletAuthorizing] = useState(false);
 
-  const currentTable = tables.find(t => t.table_number?.toString() === tableNumber?.toString() || t.id === tableNumber) || { id: tableNumber, name: `Masa ${tableNumber}` };
+  const currentTable = tables.find(t => t.table_number?.toString() === tableNumber?.toString() || t.id === tableNumber) || { id: tableNumber, name: getLocalizedText('tableFallbackName', lang)(tableNumber) };
 
   if (!isOpen) return null;
 
@@ -103,7 +103,7 @@ export const CartDrawer = ({
       });
       setWalletAuthorizing(false);
       if (!token) {
-        setSubmitError(walletError?.message || 'Ödəniş ləğv edildi.');
+        setSubmitError(walletError?.message || getLocalizedText('paymentCancelled', lang));
         return;
       }
     }
@@ -125,8 +125,8 @@ export const CartDrawer = ({
       const isUuid = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
       if (!table?.id || !isUuid(table.id)) {
-        const message = `Table record not found for table number ${tableNumber}`;
-        console.error(message);
+        const message = getLocalizedText('tableRecordNotFound', lang)(tableNumber);
+        console.error(`Table record not found for table number ${tableNumber}`);
         setSubmitError(message);
         return;
       }
@@ -142,7 +142,7 @@ export const CartDrawer = ({
 
       if (error) {
         console.error('createOrder error:', error);
-        setSubmitError(error.message || 'Failed to submit order.');
+        setSubmitError(error.message || getLocalizedText('orderSubmitFailed', lang));
         return;
       }
 
@@ -150,31 +150,28 @@ export const CartDrawer = ({
       setOrderSubmitted(true);
     } catch (err) {
       console.error(err);
-      setSubmitError(err?.message || 'Failed to submit order.');
+      setSubmitError(err?.message || getLocalizedText('orderSubmitFailed', lang));
     }
   };
 
   return (
-    <div className="customer-theme fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm">
-      <div className="absolute inset-0" onClick={onClose} />
-
-      <div className="relative w-full max-w-md h-full bg-white border-l border-[#ECECEC] z-10 flex flex-col justify-between" style={{ boxShadow: '-24px 0 60px rgba(0,0,0,.12)' }}>
-
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      context="customer"
+      position="right"
+      ariaLabel={`${getLocalizedText("cartTitle", lang)} — ${currentTable.name}`}
+      panelClassName="max-w-md flex flex-col justify-between shadow-[-24px_0_60px_rgba(0,0,0,.12)]"
+    >
         {/* Header */}
-        <div className="p-4 sm:p-6 border-b border-[#E8E8E8] flex items-center justify-between bg-white">
+        <div className="p-4 sm:p-6 border-b border-[#E8E8E8] flex items-center justify-between bg-white shrink-0">
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-[var(--theme-primary)]" />
             <h2 className="text-lg sm:text-xl font-bold text-[#14151A]">
               {getLocalizedText("cartTitle", lang)} ({currentTable.name})
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full bg-[#F7F8FA] text-[#8A8F98] hover:text-[#14151A] transition-colors"
-            id="cart-close-btn"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <ModalCloseButton onClick={onClose} context="customer" id="cart-close-btn" className="bg-[#F7F8FA]" />
         </div>
 
         {/* Content */}
@@ -206,12 +203,15 @@ export const CartDrawer = ({
               </div>
             </div>
 
-            <button
+            <Button
+              type="button"
+              context="customer"
+              variant="primary"
               onClick={handleResetOrder}
-              className="customer-btn-primary w-full h-auto py-3.5 text-xs"
+              className="w-full h-auto py-3.5 text-xs"
             >
               {getLocalizedText("completeAndNewOrder", lang)}
-            </button>
+            </Button>
           </div>
         ) : items.length === 0 ? (
           <div className="flex-1 flex items-center justify-center px-4">
@@ -243,7 +243,7 @@ export const CartDrawer = ({
                 >
                   <Image
                     src={localizedProduct?.image?.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80"}
-                    alt={localizedProduct?.name || "Məhsul"}
+                    alt={localizedProduct?.name || getLocalizedText('productAltFallback', lang)}
                     className="rounded-xl object-cover flex-shrink-0"
                     width={64}
                     height={64}
@@ -262,13 +262,27 @@ export const CartDrawer = ({
                       </p>
                     )}
 
-                    <input
-                      type="text"
-                      value={item.note || ""}
-                      onChange={(e) => onUpdateNote && onUpdateNote(item.id, e.target.value)}
-                      placeholder={getLocalizedText("specialRequestPlaceholder", lang)}
-                      className="w-full bg-[#F7F8FA] border border-[#E8E8E8] rounded-md px-2 py-1 text-[10px] text-[#14151A] placeholder-[#B4B8C0] focus:outline-none focus:border-[var(--theme-primary)] mt-1"
-                    />
+                    {/* No visible <label> existed before — Field used
+                        unlabeled, only for id/aria wiring (same pattern used
+                        throughout the SuperAdmin migration). className fully
+                        overrides Input's own size classes to keep this
+                        ultra-compact per-item field pixel-identical; the
+                        real gain is Input's focus-visible ring — the raw
+                        version only had `focus:outline-none` with no visible
+                        keyboard-focus replacement. */}
+                    <Field className="mt-1">
+                      {(id, a11y) => (
+                        <Input
+                          id={id} {...a11y}
+                          type="text"
+                          value={item.note || ""}
+                          onChange={(e) => onUpdateNote && onUpdateNote(item.id, e.target.value)}
+                          placeholder={getLocalizedText("specialRequestPlaceholder", lang)}
+                          context="customer"
+                          className="rounded-md px-2 py-1 text-[10px] placeholder:text-[#B4B8C0]"
+                        />
+                      )}
+                    </Field>
 
                     <div className="text-xs font-extrabold text-[#14151A] mt-1">
                       {calculateItemPrice(item).toFixed(2)} {currencySymbol}
@@ -280,7 +294,7 @@ export const CartDrawer = ({
                     <button
                       onClick={() => onRemoveItem(item.id)}
                       className="text-[#B4B8C0] hover:text-rose-500 p-1"
-                      title="Sil"
+                      title={getLocalizedText('removeItemTitle', lang)}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -308,18 +322,26 @@ export const CartDrawer = ({
               );
             })}
 
-            {/* Note for kitchen input */}
+            {/* Note for kitchen input — the raw <label> here had no htmlFor,
+                a real a11y gap Field fixes. Field's own label typography
+                (text-xs font-bold) is a small, accepted normalization from
+                the original's text-[11px] font-semibold — same class of
+                ~1px/weight normalization already accepted throughout the
+                Admin/Staff/SuperAdmin migrations. */}
             <div className="pt-2">
-              <label className="text-[11px] font-semibold text-[#8A8F98] block mb-1">
-                {getLocalizedText("tableNoteLabel", lang)}
-              </label>
-              <input
-                type="text"
-                value={kitchenNote}
-                onChange={(e) => setKitchenNote(e.target.value)}
-                placeholder={getLocalizedText("tableNotePlaceholder", lang)}
-                className="w-full bg-[#F7F8FA] border border-[#E8E8E8] rounded-xl px-3 py-2 text-xs text-[#14151A] placeholder-[#B4B8C0] focus:outline-none focus:border-[var(--theme-primary)]"
-              />
+              <Field label={getLocalizedText("tableNoteLabel", lang)} context="customer">
+                {(id, a11y) => (
+                  <Input
+                    id={id} {...a11y}
+                    type="text"
+                    value={kitchenNote}
+                    onChange={(e) => setKitchenNote(e.target.value)}
+                    placeholder={getLocalizedText("tableNotePlaceholder", lang)}
+                    context="customer"
+                    className="rounded-xl px-3 py-2 text-xs placeholder:text-[#B4B8C0]"
+                  />
+                )}
+              </Field>
             </div>
             {submitError && (
               <div className="mt-3 rounded-2xl bg-rose-50 border border-rose-200 p-3 text-rose-600 text-xs font-semibold">
@@ -372,19 +394,28 @@ export const CartDrawer = ({
               </div>
             </div>
 
-            <button
+            {/* `loading` (Button's own spinner API) deliberately NOT used here
+                — it would add a Loader2 icon alongside the existing Send
+                icon, a new visual element the original never had. The
+                existing manual "..." text-swap during walletAuthorizing is
+                kept instead, so the only change is the button chrome
+                (context/variant) — disabled logic, onClick, icon and text
+                are all untouched. */}
+            <Button
+              type="button"
+              context="customer"
+              variant="primary"
               onClick={handleSendOrder}
               disabled={items.length === 0 || walletAuthorizing}
-              className={`customer-btn-primary w-full h-auto py-3.5 text-xs flex items-center justify-center gap-2 ${(items.length === 0 || walletAuthorizing) ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className="w-full h-auto py-3.5 text-xs"
               id="cart-submit-order-btn"
             >
               <Send className="w-4 h-4" />
               <span>{walletAuthorizing ? '...' : getLocalizedText("sendToWaiterAndKitchen", lang)}</span>
-            </button>
+            </Button>
           </div>
         )}
 
-      </div>
-    </div>
+    </Modal>
   );
 };

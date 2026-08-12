@@ -9,19 +9,27 @@ import { Menu, AlertTriangle } from 'lucide-react';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { useAppStore, ROLES } from '@/lib/store';
 import { fetchRestaurants, fetchRestaurantStats, fetchPlatformUsers } from '@/lib/services/superAdminService';
-import { PageSkeleton } from '@/components/ui';
+import { fetchAllPlans, fetchPlanFeatures } from '@/lib/services/planService';
+import { PageSkeleton, LanguageSwitcher, Card, Button } from '@/components/ui';
+import { buttonVariants } from '@/components/ui/variants';
+import { cn } from '@/lib/utils';
+import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
+import { useLocaleSync } from '@/hooks/useLocaleSync';
 
 import { ToastProvider } from '@/components/superadmin/Toast';
-import { Sidebar, TABS } from '@/components/superadmin/Sidebar';
+import { Sidebar, getTabs } from '@/components/superadmin/Sidebar';
 import { DashboardTab } from '@/components/superadmin/DashboardTab';
 import { RestaurantsTab } from '@/components/superadmin/RestaurantsTab';
+import { PlansTab } from '@/components/superadmin/PlansTab';
 import { SubscriptionsTab } from '@/components/superadmin/SubscriptionsTab';
 import { AnalyticsTab } from '@/components/superadmin/AnalyticsTab';
 import { UsersTab } from '@/components/superadmin/UsersTab';
 import { computeMetrics } from '@/components/superadmin/metrics';
 
 export function SuperAdminApp() {
-  const { profile, loadProfile, isAdminAuthenticated, setIsAdminAuthenticated } = useAppStore();
+  const { profile, loadProfile, isAdminAuthenticated, setIsAdminAuthenticated, loadPlans } = useAppStore();
+  const { t } = useSuperAdminTranslation();
+  useLocaleSync(profile?.locale);
   const router = useRouter();
 
   const [authChecking, setAuthChecking] = useState(true);
@@ -33,6 +41,14 @@ export function SuperAdminApp() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(true);
+  // All plans (active + inactive/legacy) for PlansTab's catalog view — a
+  // separate fetch/state from the store's loadPlans() above, which only
+  // pulls active plans for entitlement hydration/customer-facing use. A
+  // super_admin managing the catalog needs to see (and reactivate) a
+  // deactivated plan too.
+  const [plans, setPlans] = useState([]);
+  const [planFeatures, setPlanFeatures] = useState([]);
+  const [plansLoading, setPlansLoading] = useState(true);
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(false);
@@ -73,12 +89,27 @@ export function SuperAdminApp() {
     setUsersLoading(false);
   }, []);
 
+  const refreshPlans = useCallback(async () => {
+    setPlansLoading(true);
+    const [plansData, featuresData] = await Promise.all([fetchAllPlans(), fetchPlanFeatures()]);
+    setPlans(plansData);
+    setPlanFeatures(featuresData);
+    setPlansLoading(false);
+  }, []);
+
   useEffect(() => {
     if (isAdminAuthenticated && profile?.role === ROLES.SUPER_ADMIN) {
       refresh();
       refreshUsers();
+      refreshPlans();
+      // Hydrates entitlementService's PLAN_FEATURE_DEFAULTS from the live
+      // plans/plan_features tables — RestaurantsTab.jsx's per-restaurant
+      // feature toggles (featureFlags() -> getEntitlements()) read the same
+      // resolver, so this keeps that display in sync with the same source
+      // /pricing and the customer/admin surfaces use.
+      loadPlans();
     }
-  }, [isAdminAuthenticated, profile, refresh, refreshUsers]);
+  }, [isAdminAuthenticated, profile, refresh, refreshUsers, refreshPlans, loadPlans]);
 
   const handleLogout = async () => {
     if (supabaseReady) await supabase.auth.signOut();
@@ -118,23 +149,29 @@ export function SuperAdminApp() {
   if (!profile || profile.role !== ROLES.SUPER_ADMIN) {
     return (
       <div className="superadmin-theme min-h-screen bg-[#050505] flex items-center justify-center p-4">
-        <div className="max-w-sm text-center sa-card p-8">
+        {/* Card replaces the raw sa-card box — matches the same auth-gate
+            treatment already applied to Staff/Admin's no-access screens
+            (plain flat surface, not the glass sa-card look, for consistency
+            with those screens rather than the rest of SuperAdmin's dashboard
+            chrome). sa-heading-4/sa-caption typography kept as-is — only the
+            container/buttons were in scope for this pass. */}
+        <Card context="dark" variant="flat" className="max-w-sm text-center p-8">
           <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-          <h2 className="sa-heading-4 text-white mb-2">Giriş yoxdur</h2>
+          <h2 className="sa-heading-4 text-white mb-2">{t('noAccessTitle')}</h2>
           <p className="sa-caption text-slate-400 mb-6">
-            Bu hesabın super admin səlahiyyəti yoxdur{profile?.role ? ` (rol: ${profile.role})` : ''}.
-            Əgər restoran admini və ya işçisinizsə, öz panelinizə keçin.
+            {t('noSuperAdminAccess')(profile?.role)}
           </p>
           <div className="flex flex-col gap-2">
-            <Link href="/admin" className="sa-btn py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm">Admin panelə keç</Link>
-            <button onClick={handleLogout} className="sa-btn py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm">Çıxış et</button>
+            <Link href="/admin" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'block' }))}>{t('goToAdminPanel')}</Link>
+            <Button variant="secondary" size="block" onClick={handleLogout}>{t('logoutButton')}</Button>
           </div>
-        </div>
+        </Card>
       </div>
     );
   }
 
-  const activeMeta = TABS.find((t) => t.id === activeTab) || TABS[0];
+  const tabs = getTabs(t);
+  const activeMeta = tabs.find((tab) => tab.id === activeTab) || tabs[0];
 
   return (
     <ToastProvider>
@@ -164,8 +201,11 @@ export function SuperAdminApp() {
               </div>
               <div>
                 <h1 className="sa-heading-4 text-white leading-tight">{activeMeta.label}</h1>
-                <p className="sa-caption text-slate-500 hidden sm:block">{restaurants.length} restoran qeydiyyatda</p>
+                <p className="sa-caption text-slate-500 hidden sm:block">{restaurants.length} {t('restaurantsRegisteredSuffix')}</p>
               </div>
+            </div>
+            <div className="ml-auto">
+              <LanguageSwitcher context="dark" profile={profile} />
             </div>
           </header>
 
@@ -193,6 +233,9 @@ export function SuperAdminApp() {
                       openRestaurantId={openRestaurantId}
                       onConsumeOpenId={() => setOpenRestaurantId(null)}
                     />
+                  )}
+                  {activeTab === 'plans' && (
+                    <PlansTab plans={plans} planFeatures={planFeatures} loading={plansLoading} refresh={refreshPlans} />
                   )}
                   {activeTab === 'subscriptions' && <SubscriptionsTab metrics={metrics} />}
                   {activeTab === 'analytics' && <AnalyticsTab metrics={metrics} />}

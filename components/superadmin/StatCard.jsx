@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
+import { LOCALE_TAGS } from './constants';
+import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
 // Animates from 0 to `value` over ~900ms using an ease-out curve.
 function useCountUp(value, duration = 900) {
@@ -27,6 +29,7 @@ function useCountUp(value, duration = 900) {
 }
 
 export function StatCard({ icon: Icon, label, value, prefix = '', suffix = '', decimals = 0, accent = '#3b82f6', index = 0 }) {
+  const { language } = useSuperAdminTranslation();
   const animated = useCountUp(value);
 
   return (
@@ -46,7 +49,7 @@ export function StatCard({ icon: Icon, label, value, prefix = '', suffix = '', d
       </div>
       <p className="sa-heading-2 text-white tabular-nums leading-none mb-1">
         {prefix}
-        {animated.toLocaleString('az-AZ', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
+        {animated.toLocaleString(LOCALE_TAGS[language] || 'az-AZ', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
         {suffix}
       </p>
       <p className="sa-caption text-slate-500 font-medium">{label}</p>

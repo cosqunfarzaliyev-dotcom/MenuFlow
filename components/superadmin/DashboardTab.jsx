@@ -4,9 +4,13 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Building2, CheckCircle2, Clock, XCircle, Wallet, Users } from 'lucide-react';
 import { StatCard } from './StatCard';
-import { planMeta, subscriptionMeta, formatMoney, formatDate } from './constants';
+import { planMeta, subscriptionMeta, formatMoney, formatDate, LOCALE_TAGS } from './constants';
+import { Badge } from '@/components/ui';
+import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
 export function DashboardTab({ restaurants, metrics, onOpenRestaurant }) {
+  const { t, language } = useSuperAdminTranslation();
+  const localeTag = LOCALE_TAGS[language] || 'az-AZ';
   const recent = [...restaurants]
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
     .slice(0, 5);
@@ -14,12 +18,12 @@ export function DashboardTab({ restaurants, metrics, onOpenRestaurant }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
-        <StatCard index={0} icon={Building2} label="Ümumi restoran sayı" value={metrics.total} accent="#3b82f6" />
-        <StatCard index={1} icon={CheckCircle2} label="Aktiv restoran" value={metrics.active} accent="#34d399" />
-        <StatCard index={2} icon={Clock} label="Trial" value={metrics.trialing} accent="#fbbf24" />
-        <StatCard index={3} icon={XCircle} label="Ləğv olunmuş" value={metrics.cancelled} accent="#f87171" />
-        <StatCard index={4} icon={Wallet} label="Aylıq gəlir (MRR)" value={metrics.mrr} prefix="" suffix=" ₼" accent="#a78bfa" />
-        <StatCard index={5} icon={Users} label="Aktiv istifadəçi" value={metrics.activeUsers} accent="#38bdf8" />
+        <StatCard index={0} icon={Building2} label={t('totalRestaurantsLabel')} value={metrics.total} accent="#3b82f6" />
+        <StatCard index={1} icon={CheckCircle2} label={t('activeRestaurantLabel')} value={metrics.active} accent="#34d399" />
+        <StatCard index={2} icon={Clock} label={t('trialLabel')} value={metrics.trialing} accent="#fbbf24" />
+        <StatCard index={3} icon={XCircle} label={t('cancelledLabel')} value={metrics.cancelled} accent="#f87171" />
+        <StatCard index={4} icon={Wallet} label={t('monthlyRevenueLabel')} value={metrics.mrr} prefix="" suffix=" ₼" accent="#a78bfa" />
+        <StatCard index={5} icon={Users} label={t('activeUserLabel')} value={metrics.activeUsers} accent="#38bdf8" />
       </div>
 
       <motion.div
@@ -29,15 +33,15 @@ export function DashboardTab({ restaurants, metrics, onOpenRestaurant }) {
         className="sa-card p-5"
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="sa-heading-4 text-white">Son qoşulan restoranlar</h3>
+          <h3 className="sa-heading-4 text-white">{t('recentRestaurantsTitle')}</h3>
         </div>
         {recent.length === 0 ? (
-          <p className="sa-caption text-slate-500 text-center py-8">Hələ restoran yoxdur.</p>
+          <p className="sa-caption text-slate-500 text-center py-8">{t('noRestaurantsYet')}</p>
         ) : (
           <div className="space-y-1.5">
             {recent.map((r) => {
-              const plan = planMeta(r.plan);
-              const status = subscriptionMeta(r.subscription_status);
+              const plan = planMeta(r.plan, t);
+              const status = subscriptionMeta(r.subscription_status, t);
               return (
                 <button
                   key={r.id}
@@ -54,12 +58,15 @@ export function DashboardTab({ restaurants, metrics, onOpenRestaurant }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-semibold truncate">{r.name}</p>
-                    <p className="sa-caption text-slate-500">{formatDate(r.created_at)}</p>
+                    <p className="sa-caption text-slate-500">{formatDate(r.created_at, localeTag)}</p>
                   </div>
                   <span className="sa-caption font-bold" style={{ color: plan.color }}>{plan.label}</span>
-                  <span className={`sa-caption font-bold px-2.5 py-1 rounded-full border ${status.bg} ${status.text} ${status.border}`}>
+                  {/* tone is a closest-match placeholder; className override
+                      reproduces subscriptionMeta()'s exact per-status colors
+                      (same technique used in RestaurantsTab/UsersTab/PlansTab). */}
+                  <Badge tone="neutral" className={`border ${status.bg} ${status.text} ${status.border}`}>
                     {status.label}
-                  </span>
+                  </Badge>
                 </button>
               );
             })}
