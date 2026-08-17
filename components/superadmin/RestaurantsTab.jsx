@@ -19,7 +19,10 @@ import {
 import { TRIAL_LENGTH_DAYS } from '@/lib/services/billingService';
 import { PLAN_ORDER, planMeta, subscriptionMeta, formatDate, daysUntil, FEATURE_FLAG_META, featureFlags, LOCALE_TAGS } from './constants';
 import { useToast } from './Toast';
-import { ConfirmDialog, useConfirmDialog, Field, Input, Select, Badge, Button, EmptyState } from '@/components/ui';
+import {
+  ConfirmDialog, useConfirmDialog, Field, Input, Select, Tag, Button, EmptyState, Switch,
+  Table, TableHead, TableHeaderCell, TableBody, TableCell,
+} from '@/components/kit';
 import { CAPABILITIES } from '@/lib/services/capabilityService';
 import { useCapability } from '@/hooks/useCapability';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
@@ -39,31 +42,6 @@ const translatedFeatureMeta = (key, meta, t) => {
   if (!labelKey) return meta;
   return { label: t(labelKey), description: t(descKey) };
 };
-
-// Small labeled on/off switch used throughout the restaurant controls panel.
-// `pending` disables it mid-request so a slow network can't produce a
-// double-toggle, and `onChange` is expected to return a promise that
-// resolves to a truthy/falsy success so the caller can show a real error
-// toast instead of always claiming success (the bug the switches replace).
-function Switch({ label, description, checked, pending, onChange }) {
-  return (
-    <div className="flex items-center justify-between gap-3 py-2.5">
-      <div className="min-w-0">
-        <p className="text-white text-sm font-semibold">{label}</p>
-        {description && <p className="sa-caption text-slate-500">{description}</p>}
-      </div>
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => onChange(!checked)}
-        aria-pressed={checked}
-        className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${checked ? 'bg-emerald-500' : 'bg-slate-700'}`}
-      >
-        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
-      </button>
-    </div>
-  );
-}
 
 export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestaurantId, onConsumeOpenId }) {
   const { t, language } = useSuperAdminTranslation();
@@ -96,7 +74,7 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 z-10" />
+          <Search className="w-4 h-4 text-[var(--k-text-3)] absolute left-3.5 top-1/2 -translate-y-1/2 z-10" />
           <Field>
             {(id, a11y) => (
               <Input
@@ -110,144 +88,141 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
             )}
           </Field>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)} className="shrink-0">
-          <Plus className="w-4 h-4" /> {t('newRestaurantButton')}
+        <Button variant="primary" onClick={() => setIsCreateOpen(true)} className="shrink-0" icon={<Plus className="w-4 h-4" />}>
+          {t('newRestaurantButton')}
         </Button>
       </div>
 
       {/* EmptyState renders as its own top-level replacement (not nested
-          inside sa-card) — it carries its own glass-panel box, so nesting it
-          inside sa-card would double-box it. The table branch keeps sa-card
-          exactly as before; only which branch sa-card wraps moved. */}
+          inside a card). The table branch keeps a plain kit surface. */}
       {filtered.length === 0 ? (
         <EmptyState
-          icon={<Building2 className="w-8 h-8 text-slate-700" />}
+          icon={<Building2 className="w-5 h-5" />}
           title={query ? t('noResultsFound') : t('noRestaurantsYet')}
           description=""
         />
       ) : (
-        <div className="sa-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-800/80 text-left">
-                  {[t('colAvatar'), t('colName'), t('colOwner'), t('colPackage'), t('colStatus'), t('colEndDate'), t('colOrderCount'), ''].map((h, i) => (
-                    <th key={i} className="sa-caption font-bold text-slate-500 px-4 py-3 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r, idx) => {
-                  const rowStats = stats[r.id] || { orderCount: 0, revenue: 0 };
-                  const plan = planMeta(r.plan, t);
-                  const status = subscriptionMeta(r.subscription_status, t);
-                  const trialDays = r.subscription_status === 'trialing' ? daysUntil(r.trial_ends_at) : null;
-                  const menuUrl = origin ? `${origin}/menu/${r.slug}` : '';
-                  return (
-                    <motion.tr
-                      key={r.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: Math.min(idx * 0.03, 0.3) }}
-                      className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center overflow-hidden">
-                          {r.logo ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={r.logo} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <Building2 className="w-4 h-4 text-slate-500" />
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-white font-semibold whitespace-nowrap">{r.name}</p>
-                        <p className="sa-caption text-slate-500">/{r.slug}</p>
-                      </td>
-                      <td className="px-4 py-3 text-slate-400 whitespace-nowrap">{r.owner_email || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className="font-bold whitespace-nowrap" style={{ color: plan.color }}>{plan.label}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          {/* tone is the closest semantic match; the className
-                              override reproduces subscriptionMeta()'s exact
-                              per-status colors (e.g. past_due's orange, which
-                              has no dedicated Badge tone) so the color meaning
-                              is unchanged. */}
-                          <Badge tone="neutral" className={`whitespace-nowrap border ${status.bg} ${status.text} ${status.border}`}>
-                            {status.label}
-                          </Badge>
-                          {r.is_active === false && (
-                            <Badge tone="neutral" className="whitespace-nowrap border bg-slate-800 text-slate-400 border-slate-700">
-                              {t('inactiveLabel')}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="sa-caption text-slate-600 mt-1">{t('editFromHere')}</p>
-                      </td>
-                      <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
-                        {r.subscription_status === 'trialing' && trialDays !== null
-                          ? t('daysLeftSuffix')(trialDays > 0 ? trialDays : 0)
-                          : formatDate(r.trial_ends_at, localeTag)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-300 font-semibold whitespace-nowrap">{rowStats.orderCount}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 justify-end">
-                          {menuUrl && (
-                            <>
-                              <a href={menuUrl} target="_blank" rel="noreferrer" title={t('viewMenuTitle')}
-                                className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white">
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                              <button
-                                onClick={() => { navigator.clipboard.writeText(menuUrl); notify(t('linkCopiedToast')); }}
-                                title={t('copyLinkTitle')}
-                                className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                            </>
-                          )}
-                          <button
-                            onClick={() => setAdminsModalRestaurant(r)}
-                            title={t('adminsTitle')}
-                            className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
-                          >
-                            <Users className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setEditingRestaurant(r)}
-                            title={t('editTitle')}
-                            className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => confirmDialog.confirm({
-                              title: t('deleteRestaurantConfirmTitle'),
-                              message: t('deleteRestaurantConfirmMessage')(r.name),
-                              onConfirm: async () => {
-                                const { error } = await deleteRestaurant(r.id);
-                                if (error) { notify(t('deleteFailedToast')(error.message), 'error'); return; }
-                                notify(t('restaurantDeletedToast'));
-                                refresh();
-                              },
-                            })}
-                            title={t('deleteTitle')}
-                            className="p-2 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </motion.tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <div className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] overflow-hidden">
+          <Table>
+            <TableHead>
+              {[t('colAvatar'), t('colName'), t('colOwner'), t('colPackage'), t('colStatus'), t('colEndDate'), t('colOrderCount'), ''].map((h, i) => (
+                <TableHeaderCell key={i}>{h}</TableHeaderCell>
+              ))}
+            </TableHead>
+            <TableBody>
+              {filtered.map((r, idx) => {
+                const rowStats = stats[r.id] || { orderCount: 0, revenue: 0 };
+                const plan = planMeta(r.plan, t);
+                const status = subscriptionMeta(r.subscription_status, t);
+                const trialDays = r.subscription_status === 'trialing' ? daysUntil(r.trial_ends_at) : null;
+                const menuUrl = origin ? `${origin}/menu/${r.slug}` : '';
+                return (
+                  // motion.tr (not TableRow) — preserves the stagger-in
+                  // animation, using the exact same visual classes TableRow
+                  // itself applies.
+                  <motion.tr
+                    key={r.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: Math.min(idx * 0.025, 0.25) }}
+                    className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)] transition-colors"
+                  >
+                    <TableCell>
+                      <div className="w-9 h-9 rounded-[var(--k-r)] bg-[var(--k-surface-3)] flex items-center justify-center overflow-hidden">
+                        {r.logo ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={r.logo} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <Building2 className="w-4 h-4 text-[var(--k-text-3)]" />
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <p className="text-[var(--k-text)] font-medium whitespace-nowrap">{r.name}</p>
+                      <p className="text-[13px] text-[var(--k-text-3)]">/{r.slug}</p>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">{r.owner_email || '—'}</TableCell>
+                    <TableCell>
+                      <span className="font-medium whitespace-nowrap" style={{ color: plan.color }}>{plan.label}</span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        {/* tone is the closest semantic match; the className
+                            override reproduces subscriptionMeta()'s exact
+                            per-status colors (e.g. past_due's orange, which
+                            has no dedicated Tag tone) so the color meaning
+                            is unchanged. */}
+                        <Tag tone="neutral" className={`whitespace-nowrap border ${status.bg} ${status.text} ${status.border}`}>
+                          {status.label}
+                        </Tag>
+                        {r.is_active === false && (
+                          <Tag tone="neutral" className="whitespace-nowrap">
+                            {t('inactiveLabel')}
+                          </Tag>
+                        )}
+                      </div>
+                      <p className="text-[13px] text-[var(--k-text-3)] mt-1">{t('editFromHere')}</p>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {r.subscription_status === 'trialing' && trialDays !== null
+                        ? t('daysLeftSuffix')(trialDays > 0 ? trialDays : 0)
+                        : formatDate(r.trial_ends_at, localeTag)}
+                    </TableCell>
+                    <TableCell className="font-medium whitespace-nowrap">{rowStats.orderCount}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 justify-end">
+                        {menuUrl && (
+                          <>
+                            <a href={menuUrl} target="_blank" rel="noreferrer" title={t('viewMenuTitle')}
+                              className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-surface-2)] text-[var(--k-text-3)] hover:text-[var(--k-text)]">
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(menuUrl); notify(t('linkCopiedToast')); }}
+                              title={t('copyLinkTitle')}
+                              className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-surface-2)] text-[var(--k-text-3)] hover:text-[var(--k-text)]"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => setAdminsModalRestaurant(r)}
+                          title={t('adminsTitle')}
+                          className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-surface-2)] text-[var(--k-text-3)] hover:text-[var(--k-text)]"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setEditingRestaurant(r)}
+                          title={t('editTitle')}
+                          className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-surface-2)] text-[var(--k-text-3)] hover:text-[var(--k-text)]"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => confirmDialog.confirm({
+                            title: t('deleteRestaurantConfirmTitle'),
+                            message: t('deleteRestaurantConfirmMessage')(r.name),
+                            onConfirm: async () => {
+                              const { error } = await deleteRestaurant(r.id);
+                              if (error) { notify(t('deleteFailedToast')(error.message), 'error'); return; }
+                              notify(t('restaurantDeletedToast'));
+                              refresh();
+                            },
+                          })}
+                          title={t('deleteTitle')}
+                          className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-danger-soft)] text-[var(--k-text-3)] hover:text-[var(--k-danger)]"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </TableCell>
+                  </motion.tr>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -299,13 +274,16 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
   );
 }
 
+// Values tightened slightly (scale 0.96 not 0.94, 180ms not 200ms) to match
+// the rest of the Quiet Premium kit's faster, smaller-amplitude motion — same
+// change applied to PlansTab.jsx's local copy of this shape.
 const modalMotion = {
   overlay: { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } },
   panel: {
-    initial: { opacity: 0, scale: 0.94 },
+    initial: { opacity: 0, scale: 0.96 },
     animate: { opacity: 1, scale: 1 },
-    exit: { opacity: 0, scale: 0.94 },
-    transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
+    exit: { opacity: 0, scale: 0.96 },
+    transition: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
   },
 };
 
@@ -334,11 +312,11 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
   };
 
   return (
-    <motion.div {...modalMotion.overlay} className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <motion.form {...modalMotion.panel} onSubmit={handleSubmit} className="w-full max-w-md bg-slate-950 border border-slate-800 sa-radius-modal p-6 space-y-4">
+    <motion.div {...modalMotion.overlay} className="kit-dark fixed inset-0 bg-[var(--k-scrim)] backdrop-blur-[2px] flex items-center justify-center p-4 z-50">
+      <motion.form {...modalMotion.panel} onSubmit={handleSubmit} className="w-full max-w-md bg-[var(--k-surface)] border border-[var(--k-border)] rounded-[var(--k-r-lg)] p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="sa-heading-4 text-white">{title}</h3>
-          <button type="button" onClick={onClose} className="p-1.5 hover:bg-slate-800 rounded-lg"><X className="w-4 h-4 text-slate-400" /></button>
+          <h3 className="text-[15px] font-semibold text-[var(--k-text)]">{title}</h3>
+          <button type="button" onClick={onClose} className="p-1.5 hover:bg-[var(--k-surface-2)] rounded-[var(--k-r-sm)]"><X className="w-4 h-4 text-[var(--k-text-3)]" /></button>
         </div>
 
         <Field label={t('restaurantNameFieldLabel')}>
@@ -381,9 +359,9 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
             </Field>
           )}
         </div>
-        {isEdit && <p className="text-[10px] text-slate-500 -mt-2">{t('planChangeResetHint')}</p>}
+        {isEdit && <p className="text-[10px] text-[var(--k-text-3)] -mt-2">{t('planChangeResetHint')}</p>}
 
-        <Button type="submit" loading={saving} size="block">
+        <Button type="submit" variant="primary" loading={saving} size="block">
           {t('saveButton')}
         </Button>
 
@@ -425,21 +403,21 @@ function RestaurantControlsPanel({ restaurant, onRefresh }) {
   const flags = featureFlags(local);
 
   return (
-    <div className="border-t border-slate-800 pt-3 mt-1 space-y-1">
-      <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-1">{t('controlsTitle')}</p>
+    <div className="border-t border-[var(--k-border)] pt-3 mt-1 space-y-0.5">
+      <p className="text-[11px] font-semibold text-[var(--k-text-3)] uppercase tracking-wider mb-1">{t('controlsTitle')}</p>
 
       <Switch
         label={t('restaurantActiveLabel')}
         description={local.is_active === false ? t('restaurantActiveOffDescription') : t('restaurantActiveOnDescription')}
         checked={local.is_active !== false}
-        pending={pendingKey === 'is_active'}
+        disabled={pendingKey === 'is_active'}
         onChange={(val) => run('is_active', () => setRestaurantActiveState(local.id, val), { is_active: val })}
       />
       <Switch
         label={t('trialPeriodLabel')(TRIAL_LENGTH_DAYS)}
         description={local.subscription_status === 'trialing' ? t('daysLeftSuffix')(daysUntil(local.trial_ends_at) ?? 0) : t('notInTrialDescription')}
         checked={local.subscription_status === 'trialing'}
-        pending={pendingKey === 'trialing'}
+        disabled={pendingKey === 'trialing'}
         onChange={(val) => {
           if (val) {
             const trial_ends_at = new Date(Date.now() + TRIAL_LENGTH_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -453,19 +431,19 @@ function RestaurantControlsPanel({ restaurant, onRefresh }) {
         label={t('subscriptionActiveLabel')}
         description={local.subscription_status === 'active' ? t('subscriptionActiveOnDescription') : t('subscriptionActiveOffDescription')}
         checked={local.subscription_status === 'active'}
-        pending={pendingKey === 'active'}
+        disabled={pendingKey === 'active'}
         onChange={(val) => run('active', () => (val ? markRestaurantActive(local.id) : cancelRestaurantSubscription(local.id)), { subscription_status: val ? 'active' : 'canceled' })}
       />
       <Switch
         label={t('pastDueLabel')}
         description={t('pastDueDescription')}
         checked={local.subscription_status === 'past_due'}
-        pending={pendingKey === 'past_due'}
+        disabled={pendingKey === 'past_due'}
         onChange={(val) => run('past_due', () => (val ? markRestaurantPastDue(local.id) : cancelRestaurantSubscription(local.id)), { subscription_status: val ? 'past_due' : 'canceled' })}
       />
 
-      <div className="h-px bg-slate-800 my-2" />
-      <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-1">{t('featuresTitle')}</p>
+      <div className="h-px bg-[var(--k-border)] my-2" />
+      <p className="text-[11px] font-semibold text-[var(--k-text-3)] uppercase tracking-wider mb-1">{t('featuresTitle')}</p>
       {Object.entries(FEATURE_FLAG_META).map(([key, meta]) => {
         const translated = translatedFeatureMeta(key, meta, t);
         return (
@@ -474,7 +452,7 @@ function RestaurantControlsPanel({ restaurant, onRefresh }) {
             label={translated.label}
             description={translated.description}
             checked={Boolean(flags[key])}
-            pending={pendingKey === key}
+            disabled={pendingKey === key}
             onChange={(val) => run(key, () => setRestaurantFeatureFlag(local, key, val), { feature_flags: { ...flags, [key]: val } })}
           />
         );
@@ -534,18 +512,18 @@ function RestaurantSubscriptionPanel({ restaurant, onRefresh }) {
 
   if (loading) {
     return (
-      <div className="border-t border-slate-800 pt-3 mt-1">
-        <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-2">{t('subscriptionDetailsTitle')}</p>
-        <p className="sa-caption text-slate-500 py-2">{t('loadingText')}</p>
+      <div className="border-t border-[var(--k-border)] pt-3 mt-1">
+        <p className="text-[11px] font-semibold text-[var(--k-text-3)] uppercase tracking-wider mb-2">{t('subscriptionDetailsTitle')}</p>
+        <p className="text-[13px] text-[var(--k-text-3)] py-2">{t('loadingText')}</p>
       </div>
     );
   }
 
   if (!subscription) {
     return (
-      <div className="border-t border-slate-800 pt-3 mt-1">
-        <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-2">{t('subscriptionDetailsTitle')}</p>
-        <p className="sa-caption text-slate-500 py-2">{t('subscriptionNotFound')}</p>
+      <div className="border-t border-[var(--k-border)] pt-3 mt-1">
+        <p className="text-[11px] font-semibold text-[var(--k-text-3)] uppercase tracking-wider mb-2">{t('subscriptionDetailsTitle')}</p>
+        <p className="text-[13px] text-[var(--k-text-3)] py-2">{t('subscriptionNotFound')}</p>
       </div>
     );
   }
@@ -554,21 +532,21 @@ function RestaurantSubscriptionPanel({ restaurant, onRefresh }) {
   const effectiveMeta = subscriptionMeta(effectiveStatus, t);
 
   return (
-    <div className="border-t border-slate-800 pt-3 mt-1 space-y-3">
-      <p className="sa-caption font-bold text-slate-400 uppercase tracking-wider mb-1">{t('subscriptionDetailsTitle')}</p>
+    <div className="border-t border-[var(--k-border)] pt-3 mt-1 space-y-3">
+      <p className="text-[11px] font-semibold text-[var(--k-text-3)] uppercase tracking-wider mb-1">{t('subscriptionDetailsTitle')}</p>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-        <div><span className="text-slate-500">{t('planLabel')}</span><span className="text-white font-semibold">{subscription.plan?.name || '—'}</span></div>
+        <div><span className="text-[var(--k-text-3)]">{t('planLabel')}</span><span className="text-[var(--k-text)] font-medium">{subscription.plan?.name || '—'}</span></div>
         <div>
-          <span className="text-slate-500">{t('statusLabelColon')}</span>
-          <Badge tone="neutral" className={`px-1.5 py-0.5 ${effectiveMeta.bg} ${effectiveMeta.text}`}>{effectiveMeta.label}</Badge>
+          <span className="text-[var(--k-text-3)]">{t('statusLabelColon')}</span>
+          <Tag tone="neutral" className={`${effectiveMeta.bg} ${effectiveMeta.text}`}>{effectiveMeta.label}</Tag>
         </div>
-        <div><span className="text-slate-500">{t('startDateLabel')}</span><span className="text-white">{formatDate(subscription.start_date, localeTag)}</span></div>
-        <div><span className="text-slate-500">{t('endDateLabel')}</span><span className="text-white">{formatDate(subscription.end_date, localeTag)}</span></div>
-        <div><span className="text-slate-500">{t('trialEndsLabel')}</span><span className="text-white">{formatDate(subscription.trial_ends_at, localeTag)}</span></div>
-        <div><span className="text-slate-500">{t('lastRenewedLabel')}</span><span className="text-white">{formatDate(subscription.renewed_at, localeTag)}</span></div>
+        <div><span className="text-[var(--k-text-3)]">{t('startDateLabel')}</span><span className="text-[var(--k-text)]">{formatDate(subscription.start_date, localeTag)}</span></div>
+        <div><span className="text-[var(--k-text-3)]">{t('endDateLabel')}</span><span className="text-[var(--k-text)]">{formatDate(subscription.end_date, localeTag)}</span></div>
+        <div><span className="text-[var(--k-text-3)]">{t('trialEndsLabel')}</span><span className="text-[var(--k-text)]">{formatDate(subscription.trial_ends_at, localeTag)}</span></div>
+        <div><span className="text-[var(--k-text-3)]">{t('lastRenewedLabel')}</span><span className="text-[var(--k-text)]">{formatDate(subscription.renewed_at, localeTag)}</span></div>
         {subscription.cancelled_at && (
-          <div className="col-span-2"><span className="text-slate-500">{t('cancelledDateLabel')}</span><span className="text-white">{formatDate(subscription.cancelled_at, localeTag)}</span></div>
+          <div className="col-span-2"><span className="text-[var(--k-text-3)]">{t('cancelledDateLabel')}</span><span className="text-[var(--k-text)]">{formatDate(subscription.cancelled_at, localeTag)}</span></div>
         )}
       </div>
 
@@ -590,7 +568,7 @@ function RestaurantSubscriptionPanel({ restaurant, onRefresh }) {
         label={t('autoRenewLabel')}
         description={subscription.auto_renew ? t('autoRenewOnDescription') : t('autoRenewOffDescription')}
         checked={subscription.auto_renew}
-        pending={pendingKey === 'auto_renew'}
+        disabled={pendingKey === 'auto_renew'}
         onChange={(val) => run('auto_renew', () => setSubscriptionAutoRenew(restaurant.id, val))}
       />
 
@@ -602,7 +580,7 @@ function RestaurantSubscriptionPanel({ restaurant, onRefresh }) {
             size="sm"
             disabled={pendingKey === 'expired'}
             onClick={() => run('expired', () => markSubscriptionExpired(restaurant.id))}
-            className="text-slate-300 hover:bg-rose-500/20 hover:text-rose-400"
+            className="hover:bg-[var(--k-danger-soft)] hover:text-[var(--k-danger)]"
           >
             {t('markExpiredButton')}
           </Button>
@@ -613,7 +591,7 @@ function RestaurantSubscriptionPanel({ restaurant, onRefresh }) {
           size="sm"
           disabled={pendingKey === 'renew'}
           onClick={() => run('renew', () => renewSubscription(restaurant.id))}
-          className="text-slate-300 hover:bg-emerald-500/20 hover:text-emerald-400"
+          className="hover:bg-[var(--k-success-soft)] hover:text-[var(--k-success)]"
         >
           {t('markRenewedButton')}
         </Button>
@@ -624,7 +602,6 @@ function RestaurantSubscriptionPanel({ restaurant, onRefresh }) {
             size="sm"
             disabled={pendingKey === 'cancelled_at'}
             onClick={() => run('cancelled_at', () => touchSubscriptionCancelledAt(restaurant.id))}
-            className="text-slate-300"
           >
             {t('markCancelledDateButton')}
           </Button>
@@ -678,11 +655,11 @@ function AdminsModal({ restaurant, onClose, onChange }) {
   };
 
   return (
-    <motion.div {...modalMotion.overlay} className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <motion.div {...modalMotion.panel} className="w-full max-w-lg bg-slate-950 border border-slate-800 sa-radius-modal p-6 space-y-4">
+    <motion.div {...modalMotion.overlay} className="kit-dark fixed inset-0 bg-[var(--k-scrim)] backdrop-blur-[2px] flex items-center justify-center p-4 z-50">
+      <motion.div {...modalMotion.panel} className="w-full max-w-lg bg-[var(--k-surface)] border border-[var(--k-border)] rounded-[var(--k-r-lg)] p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="sa-heading-4 text-white">{t('adminsModalTitle')(restaurant.name)}</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-800 rounded-lg"><X className="w-4 h-4 text-slate-400" /></button>
+          <h3 className="text-[15px] font-semibold text-[var(--k-text)]">{t('adminsModalTitle')(restaurant.name)}</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-[var(--k-surface-2)] rounded-[var(--k-r-sm)]"><X className="w-4 h-4 text-[var(--k-text-3)]" /></button>
         </div>
 
         {canManageUsers && (
@@ -711,27 +688,27 @@ function AdminsModal({ restaurant, onClose, onChange }) {
                 </Select>
               )}
             </Field>
-            <Button type="submit" disabled={submitting} className="whitespace-nowrap">
+            <Button type="submit" variant="primary" disabled={submitting} className="whitespace-nowrap">
               {submitting ? t('assigningButton') : t('assignButton')}
             </Button>
           </form>
         )}
-        {error && <p className="text-rose-500 text-xs font-bold">{error}</p>}
-        <p className="text-[10px] text-slate-500">
+        {error && <p className="text-[var(--k-danger)] text-xs font-medium">{error}</p>}
+        <p className="text-[10px] text-[var(--k-text-3)]">
           {t('assignHelperText')}
         </p>
 
         <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
           {loading ? (
-            <p className="text-slate-500 text-sm text-center py-4">{t('loadingText')}</p>
+            <p className="text-[var(--k-text-3)] text-sm text-center py-4">{t('loadingText')}</p>
           ) : profiles.length === 0 ? (
-            <p className="text-slate-500 text-sm text-center py-4">{t('noAdminsAssignedYet')}</p>
+            <p className="text-[var(--k-text-3)] text-sm text-center py-4">{t('noAdminsAssignedYet')}</p>
           ) : (
             profiles.map((p) => (
-              <div key={p.id} className="flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-xl px-4 py-2.5">
+              <div key={p.id} className="flex items-center justify-between bg-[var(--k-surface-2)] border border-[var(--k-border)] rounded-[var(--k-r)] px-4 py-2.5">
                 <div>
-                  <p className="text-white text-sm font-semibold">{p.email}</p>
-                  <p className="text-slate-500 text-[10px] font-bold uppercase">{p.role === 'restaurant_admin' ? t('roleFilterAdmin') : t('staffRoleShort')}</p>
+                  <p className="text-[var(--k-text)] text-sm font-medium">{p.email}</p>
+                  <p className="text-[var(--k-text-3)] text-[10px] font-medium uppercase">{p.role === 'restaurant_admin' ? t('roleFilterAdmin') : t('staffRoleShort')}</p>
                 </div>
                 {canManageUsers && (
                   <button
@@ -745,7 +722,7 @@ function AdminsModal({ restaurant, onClose, onChange }) {
                         onChange?.();
                       },
                     })}
-                    className="p-2 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-400"
+                    className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-danger-soft)] text-[var(--k-text-3)] hover:text-[var(--k-danger)]"
                     title={t('deleteTitle')}
                   >
                     <Trash2 className="w-4 h-4" />

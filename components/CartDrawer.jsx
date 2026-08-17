@@ -2,21 +2,17 @@
 
 import React, { useState } from "react";
 import Image from 'next/image';
-import {
-  Trash2,
-  Plus,
-  Minus,
-  ShoppingBag,
-  Send,
-  CheckCircle2,
-  UtensilsCrossed
-} from "lucide-react";
+import { Trash2, Plus, Minus, ShoppingBag, Send, CheckCircle2, UtensilsCrossed } from "lucide-react";
 
 import { useAppStore } from '@/lib/store';
 import { fetchTableByNumber } from '@/lib/services/supabaseService';
 import { getLocalizedProduct, getLocalizedText } from '@/lib/translations';
 import { requestWalletPayment } from '@/lib/services/paymentService';
-import { Modal, ModalCloseButton, Button, Field, Input } from '@/components/ui';
+import { Sheet, SheetHeader, Button, Input, Field, Tag, Banner, EmptyState } from '@/components/kit';
+import { cn } from '@/lib/utils';
+
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80";
 
 // Shown for every customer regardless of browser/device — feature-detecting
 // window.PaymentRequest/ApplePaySession beforehand just makes the buttons
@@ -65,21 +61,14 @@ export const CartDrawer = ({
     return base * item.quantity;
   };
 
-  const totalPrice = items.reduce(
-    (sum, item) => sum + calculateItemPrice(item),
-    0
-  );
+  const totalPrice = items.reduce((sum, item) => sum + calculateItemPrice(item), 0);
 
   const handleResetOrder = () => {
     setOrderSubmitted(false);
     setKitchenNote("");
     setPaymentMethod('cash');
-    if (typeof onClearCart === 'function') {
-      onClearCart();
-    }
-    if (typeof onClose === 'function') {
-      onClose();
-    }
+    if (typeof onClearCart === 'function') onClearCart();
+    if (typeof onClose === 'function') onClose();
   };
 
   const paymentLabels = {
@@ -117,9 +106,7 @@ export const CartDrawer = ({
 
       if (!table || isFallback) {
         const dbTable = await fetchTableByNumber(tableNumber);
-        if (dbTable) {
-          table = dbTable;
-        }
+        if (dbTable) table = dbTable;
       }
 
       const isUuid = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -155,267 +142,245 @@ export const CartDrawer = ({
   };
 
   return (
-    <Modal
+    <Sheet
       isOpen={isOpen}
       onClose={onClose}
-      context="customer"
-      position="right"
+      side="right"
       ariaLabel={`${getLocalizedText("cartTitle", lang)} — ${currentTable.name}`}
-      panelClassName="max-w-md flex flex-col justify-between shadow-[-24px_0_60px_rgba(0,0,0,.12)]"
+      /* Renders in place, not portalled — see ProductDetailModal for why
+         (--theme-primary is an inline style on CustomerApp's root). */
+      theme={null}
+      panelClassName="kit-light max-w-md flex flex-col"
     >
-        {/* Header */}
-        <div className="p-4 sm:p-6 border-b border-[#E8E8E8] flex items-center justify-between bg-white shrink-0">
-          <div className="flex items-center gap-2">
-            <ShoppingBag className="w-5 h-5 text-[var(--theme-primary)]" />
-            <h2 className="text-lg sm:text-xl font-bold text-[#14151A]">
-              {getLocalizedText("cartTitle", lang)} ({currentTable.name})
+      <SheetHeader onClose={onClose}>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <ShoppingBag className="w-4 h-4 shrink-0 text-[var(--k-accent)]" />
+          <div className="min-w-0">
+            <h2 className="truncate text-[15px] font-semibold text-[var(--k-text)]">
+              {getLocalizedText("cartTitle", lang)}
             </h2>
+            <p className="truncate text-xs text-[var(--k-text-3)]">{currentTable.name}</p>
           </div>
-          <ModalCloseButton onClick={onClose} context="customer" id="cart-close-btn" className="bg-[#F7F8FA]" />
         </div>
+      </SheetHeader>
 
-        {/* Content */}
-        {orderSubmitted ? (
-          /* Success Screen after sending order */
-          <div className="flex-1 p-6 flex flex-col items-center justify-center text-center">
-            <div className="w-20 h-20 rounded-full bg-[#34C759]/12 border-2 border-[#34C759] flex items-center justify-center text-[#218838] mb-6">
-              <CheckCircle2 className="w-10 h-10" />
-            </div>
-            <h3 className="text-2xl font-bold text-[#14151A] mb-2">
-              {getLocalizedText("orderSent", lang)}
-            </h3>
-            <p className="text-[#5A5F68] text-xs sm:text-sm max-w-xs leading-relaxed mb-6">
-              <strong className="text-[var(--theme-primary)] font-bold">{currentTable.name}</strong> {getLocalizedText("orderSuccessDesc", lang)}
-            </p>
-
-            <div className="bg-[#F7F8FA] border border-[#E8E8E8] rounded-2xl p-4 w-full mb-6 text-left text-xs space-y-2">
-              <div className="flex justify-between text-[#8A8F98]">
-                <span>{getLocalizedText("table", lang)}</span>
-                <span className="text-[#14151A] font-bold">{currentTable.name}</span>
-              </div>
-              <div className="flex justify-between text-[#8A8F98]">
-                <span>{getLocalizedText("itemCount", lang)}</span>
-                <span className="text-[#14151A] font-bold">{items.length} {getLocalizedText("piece", lang)}</span>
-              </div>
-              <div className="flex justify-between text-[#8A8F98] pt-2 border-t border-[#E8E8E8]">
-                <span>{getLocalizedText("totalAmount", lang)}</span>
-                <span className="text-[var(--theme-primary)] font-extrabold text-sm">{totalPrice.toFixed(2)} ₼</span>
-              </div>
-            </div>
-
-            <Button
-              type="button"
-              context="customer"
-              variant="primary"
-              onClick={handleResetOrder}
-              className="w-full h-auto py-3.5 text-xs"
-            >
-              {getLocalizedText("completeAndNewOrder", lang)}
-            </Button>
+      {orderSubmitted ? (
+        /* Success screen */
+        <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--k-success-soft)] text-[var(--k-success)]">
+            <CheckCircle2 className="w-7 h-7" />
           </div>
-        ) : items.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center px-4">
-            <div className="w-full max-w-xs customer-card p-8 text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#F7F8FA] border border-[#E8E8E8] text-[#B4B8C0]">
-                <UtensilsCrossed className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-bold text-[#14151A] mb-2">{getLocalizedText("cartEmpty", lang)}</h3>
-              <p className="text-[#8A8F98] text-sm">{getLocalizedText("cartEmptyDesc", lang)}</p>
+          <h3 className="text-lg font-semibold text-[var(--k-text)]">
+            {getLocalizedText("orderSent", lang)}
+          </h3>
+          <p className="mt-2 max-w-xs text-[13px] leading-relaxed text-[var(--k-text-3)]">
+            <strong className="font-medium text-[var(--k-accent)]">{currentTable.name}</strong>{' '}
+            {getLocalizedText("orderSuccessDesc", lang)}
+          </p>
+
+          <dl className="mt-6 w-full space-y-2.5 rounded-[var(--k-r)] border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-left text-[13px]">
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--k-text-3)]">{getLocalizedText("table", lang)}</dt>
+              <dd className="font-medium text-[var(--k-text)]">{currentTable.name}</dd>
             </div>
-          </div>
-        ) : (
-          /* Cart items list */
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar">
-
-            {/* Table info bar inside cart */}
-            <div className="bg-[#F7F8FA] border border-[#E8E8E8] rounded-xl p-3 flex items-center justify-between text-xs mb-2">
-              <span className="text-[#8A8F98] font-semibold">{getLocalizedText("yourTable", lang)}</span>
-              <span className="bg-white text-[var(--theme-primary)] border border-[#E8E8E8] rounded-lg px-2 py-1 font-bold">{currentTable.name}</span>
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--k-text-3)]">{getLocalizedText("itemCount", lang)}</dt>
+              <dd className="k-nums font-medium text-[var(--k-text)]">
+                {items.length} {getLocalizedText("piece", lang)}
+              </dd>
             </div>
+            <div className="flex justify-between gap-3 border-t border-[var(--k-border)] pt-2.5">
+              <dt className="text-[var(--k-text-3)]">{getLocalizedText("totalAmount", lang)}</dt>
+              <dd className="k-nums font-semibold text-[var(--k-accent)]">
+                {totalPrice.toFixed(2)} {currencySymbol}
+              </dd>
+            </div>
+          </dl>
 
-            {items.map((item) => {
-              const localizedProduct = getLocalizedProduct(item.product, lang);
-              return (
-                <div
-                  key={item.id}
-                  className="bg-white border border-[#ECECEC] rounded-2xl p-3 flex gap-3 items-center justify-between"
-                  style={{ boxShadow: '0 4px 16px rgba(0,0,0,.04)' }}
-                >
-                  <Image
-                    src={localizedProduct?.image?.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80"}
-                    alt={localizedProduct?.name || getLocalizedText('productAltFallback', lang)}
-                    className="rounded-xl object-cover flex-shrink-0"
-                    width={64}
-                    height={64}
-                    unoptimized
-                  />
+          <Button variant="primary" size="block" onClick={handleResetOrder} className="mt-6">
+            {getLocalizedText("completeAndNewOrder", lang)}
+          </Button>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center">
+          <EmptyState
+            icon={<UtensilsCrossed className="w-5 h-5" />}
+            title={getLocalizedText("cartEmpty", lang)}
+            description={getLocalizedText("cartEmptyDesc", lang)}
+          />
+        </div>
+      ) : (
+        /* Cart items */
+        <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+          {items.map((item) => {
+            const localizedProduct = getLocalizedProduct(item.product, lang);
+            return (
+              <div
+                key={item.id}
+                className="flex gap-3 rounded-[var(--k-r)] border border-[var(--k-border)] bg-[var(--k-surface)] p-2.5"
+              >
+                <Image
+                  src={localizedProduct?.image?.trim() || FALLBACK_IMAGE}
+                  alt={localizedProduct?.name || getLocalizedText('productAltFallback', lang)}
+                  className="h-16 w-16 shrink-0 rounded-[var(--k-r-sm)] object-cover"
+                  width={64}
+                  height={64}
+                  unoptimized
+                />
 
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-xs text-[#14151A] truncate">
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <h4 className="truncate text-[13px] font-semibold text-[var(--k-text)]">
                       {localizedProduct.name}
                     </h4>
-
-                    {/* Selected options preview */}
-                    {item.selectedOptions && Object.keys(item.selectedOptions).length > 0 && (
-                      <p className="text-[10px] text-[var(--theme-primary)] truncate">
-                        {Object.values(item.selectedOptions).map(o => o.name).join(", ")}
-                      </p>
-                    )}
-
-                    {/* No visible <label> existed before — Field used
-                        unlabeled, only for id/aria wiring (same pattern used
-                        throughout the SuperAdmin migration). className fully
-                        overrides Input's own size classes to keep this
-                        ultra-compact per-item field pixel-identical; the
-                        real gain is Input's focus-visible ring — the raw
-                        version only had `focus:outline-none` with no visible
-                        keyboard-focus replacement. */}
-                    <Field className="mt-1">
-                      {(id, a11y) => (
-                        <Input
-                          id={id} {...a11y}
-                          type="text"
-                          value={item.note || ""}
-                          onChange={(e) => onUpdateNote && onUpdateNote(item.id, e.target.value)}
-                          placeholder={getLocalizedText("specialRequestPlaceholder", lang)}
-                          context="customer"
-                          className="rounded-md px-2 py-1 text-[10px] placeholder:text-[#B4B8C0]"
-                        />
-                      )}
-                    </Field>
-
-                    <div className="text-xs font-extrabold text-[#14151A] mt-1">
-                      {calculateItemPrice(item).toFixed(2)} {currencySymbol}
-                    </div>
-                  </div>
-
-                  {/* Quantity Controls & Remove */}
-                  <div className="flex flex-col items-end gap-2">
                     <button
                       onClick={() => onRemoveItem(item.id)}
-                      className="text-[#B4B8C0] hover:text-rose-500 p-1"
+                      className="-mr-0.5 -mt-0.5 shrink-0 rounded p-1 text-[var(--k-text-3)] transition-colors hover:text-[var(--k-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--k-focus)]"
                       title={getLocalizedText('removeItemTitle', lang)}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
-
-                    <div className="flex items-center gap-1.5 bg-[#F7F8FA] border border-[#E8E8E8] rounded-lg p-1">
-                      <button
-                        onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
-                        className="p-1 hover:text-[#14151A] text-[#8A8F98]"
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <span className="text-xs font-bold text-[#14151A] w-4 text-center">
-                        {item.quantity}
-                      </span>
-                      <button
-                        onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
-                        className="p-1 hover:text-[#14151A] text-[#8A8F98]"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    </div>
                   </div>
 
+                  {item.selectedOptions && Object.keys(item.selectedOptions).length > 0 && (
+                    <p className="truncate text-[11px] text-[var(--k-accent)]">
+                      {Object.values(item.selectedOptions).map(o => o.name).join(", ")}
+                    </p>
+                  )}
+
+                  {/* Per-item note. Unlabeled by design (the placeholder is the
+                      label here) — Field still wires id/aria. */}
+                  <Field>
+                    {(id, a11y) => (
+                      <Input
+                        id={id} {...a11y}
+                        size="sm"
+                        type="text"
+                        value={item.note || ""}
+                        onChange={(e) => onUpdateNote && onUpdateNote(item.id, e.target.value)}
+                        placeholder={getLocalizedText("specialRequestPlaceholder", lang)}
+                        className="h-7 rounded-[var(--k-r-sm)] px-2 text-[11px] bg-[var(--k-surface-2)]"
+                      />
+                    )}
+                  </Field>
+
+                  <div className="mt-0.5 flex items-center justify-between gap-2">
+                    <span className="k-nums text-[13px] font-semibold text-[var(--k-text)]">
+                      {calculateItemPrice(item).toFixed(2)} {currencySymbol}
+                    </span>
+
+                    <div className="flex items-center gap-0.5 rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-2)] p-0.5">
+                      <Button
+                        variant="ghost" size="iconSm"
+                        onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
+                        aria-label="-"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </Button>
+                      <span className="k-nums w-5 text-center text-xs font-semibold text-[var(--k-text)]">
+                        {item.quantity}
+                      </span>
+                      <Button
+                        variant="ghost" size="iconSm"
+                        onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
+                        aria-label="+"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-              );
-            })}
-
-            {/* Note for kitchen input — the raw <label> here had no htmlFor,
-                a real a11y gap Field fixes. Field's own label typography
-                (text-xs font-bold) is a small, accepted normalization from
-                the original's text-[11px] font-semibold — same class of
-                ~1px/weight normalization already accepted throughout the
-                Admin/Staff/SuperAdmin migrations. */}
-            <div className="pt-2">
-              <Field label={getLocalizedText("tableNoteLabel", lang)} context="customer">
-                {(id, a11y) => (
-                  <Input
-                    id={id} {...a11y}
-                    type="text"
-                    value={kitchenNote}
-                    onChange={(e) => setKitchenNote(e.target.value)}
-                    placeholder={getLocalizedText("tableNotePlaceholder", lang)}
-                    context="customer"
-                    className="rounded-xl px-3 py-2 text-xs placeholder:text-[#B4B8C0]"
-                  />
-                )}
-              </Field>
-            </div>
-            {submitError && (
-              <div className="mt-3 rounded-2xl bg-rose-50 border border-rose-200 p-3 text-rose-600 text-xs font-semibold">
-                {submitError}
               </div>
-            )}
+            );
+          })}
+
+          {/* Table-wide kitchen note */}
+          <div className="pt-1.5">
+            <Field label={getLocalizedText("tableNoteLabel", lang)}>
+              {(id, a11y) => (
+                <Input
+                  id={id} {...a11y}
+                  size="sm"
+                  type="text"
+                  value={kitchenNote}
+                  onChange={(e) => setKitchenNote(e.target.value)}
+                  placeholder={getLocalizedText("tableNotePlaceholder", lang)}
+                />
+              )}
+            </Field>
           </div>
-        )}
 
-        {/* Footer */}
-        {!orderSubmitted && items.length > 0 && (
-          <div className="p-4 sm:p-6 border-t border-[#E8E8E8] bg-white space-y-4" style={{ boxShadow: '0 -8px 24px rgba(0,0,0,.05)' }}>
-            <div className="space-y-1.5 text-xs text-[#8A8F98]">
-              <div className="flex justify-between">
-                <span>{getLocalizedText("subtotal", lang)}</span>
-                <span className="text-[#5A5F68]">{totalPrice.toFixed(2)} {currencySymbol}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>{getLocalizedText("serviceFee", lang)}</span>
-                <span className="text-[#218838]">{getLocalizedText("free", lang)}</span>
-              </div>
-              <div className="flex justify-between text-sm font-extrabold text-[#14151A] pt-2 border-t border-[#E8E8E8]">
-                <span>{getLocalizedText("totalAmount", lang)}</span>
-                <span className="text-[var(--theme-primary)] text-lg">{totalPrice.toFixed(2)} {currencySymbol}</span>
-              </div>
+          {submitError && (
+            <Banner tone="danger" className="mt-1">{submitError}</Banner>
+          )}
+        </div>
+      )}
+
+      {/* Footer */}
+      {!orderSubmitted && items.length > 0 && (
+        <div className="shrink-0 space-y-4 border-t border-[var(--k-border)] bg-[var(--k-surface)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <dl className="space-y-1.5 text-[13px]">
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--k-text-3)]">{getLocalizedText("subtotal", lang)}</dt>
+              <dd className="k-nums text-[var(--k-text-2)]">{totalPrice.toFixed(2)} {currencySymbol}</dd>
             </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--k-text-3)]">{getLocalizedText("serviceFee", lang)}</dt>
+              <dd className="text-[var(--k-success)]">{getLocalizedText("free", lang)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-3 border-t border-[var(--k-border)] pt-2.5">
+              <dt className="text-sm font-semibold text-[var(--k-text)]">{getLocalizedText("totalAmount", lang)}</dt>
+              <dd className="k-nums text-lg font-semibold text-[var(--k-accent)]">
+                {totalPrice.toFixed(2)} {currencySymbol}
+              </dd>
+            </div>
+          </dl>
 
-            {/* Payment method — cash/card just tag the order; Google/Apple
-                Pay pop the native wallet sheet on submit (see handleSendOrder). */}
-            <div>
-              <label className="text-[11px] font-semibold text-[#8A8F98] block mb-1.5">
-                {getLocalizedText("paymentType", lang)}
-              </label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {PAYMENT_METHODS.map((m) => (
+          {/* Payment method — cash/card just tag the order; Google/Apple
+              Pay pop the native wallet sheet on submit (see handleSendOrder). */}
+          <div role="radiogroup" aria-label={getLocalizedText("paymentType", lang)}>
+            <p className="mb-1.5 text-[13px] font-medium text-[var(--k-text-2)]">
+              {getLocalizedText("paymentType", lang)}
+            </p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {PAYMENT_METHODS.map((m) => {
+                const active = paymentMethod === m.key;
+                return (
                   <button
                     key={m.key}
                     type="button"
+                    role="radio"
+                    aria-checked={active}
                     onClick={() => setPaymentMethod(m.key)}
-                    className={`flex flex-col items-center justify-center gap-0.5 rounded-xl border py-2 text-[10px] font-bold transition-colors ${
-                      paymentMethod === m.key
-                        ? 'border-[var(--theme-primary)] bg-[var(--theme-primary)]/10 text-[var(--theme-primary)]'
-                        : 'border-[#E8E8E8] bg-[#F7F8FA] text-[#5A5F68] hover:bg-[#EFEFF3]'
-                    }`}
+                    className={cn(
+                      'flex flex-col items-center justify-center gap-1 rounded-[var(--k-r)] border py-2 text-[10px] font-medium transition-colors duration-[var(--k-dur)]',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--k-focus)]',
+                      active
+                        ? 'border-[var(--k-accent)] bg-[var(--k-accent-soft)] text-[var(--k-accent)]'
+                        : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text-3)] hover:border-[var(--k-border-2)]',
+                    )}
                   >
                     <span className="text-sm leading-none">{m.icon}</span>
-                    <span className="truncate max-w-full">{m.label || getLocalizedText(m.labelKey, lang)}</span>
+                    <span className="max-w-full truncate">{m.label || getLocalizedText(m.labelKey, lang)}</span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
-
-            {/* `loading` (Button's own spinner API) deliberately NOT used here
-                — it would add a Loader2 icon alongside the existing Send
-                icon, a new visual element the original never had. The
-                existing manual "..." text-swap during walletAuthorizing is
-                kept instead, so the only change is the button chrome
-                (context/variant) — disabled logic, onClick, icon and text
-                are all untouched. */}
-            <Button
-              type="button"
-              context="customer"
-              variant="primary"
-              onClick={handleSendOrder}
-              disabled={items.length === 0 || walletAuthorizing}
-              className="w-full h-auto py-3.5 text-xs"
-              id="cart-submit-order-btn"
-            >
-              <Send className="w-4 h-4" />
-              <span>{walletAuthorizing ? '...' : getLocalizedText("sendToWaiterAndKitchen", lang)}</span>
-            </Button>
           </div>
-        )}
 
-    </Modal>
+          <Button
+            variant="primary"
+            size="block"
+            onClick={handleSendOrder}
+            disabled={items.length === 0 || walletAuthorizing}
+            loading={walletAuthorizing}
+            icon={<Send className="w-4 h-4" />}
+            id="cart-submit-order-btn"
+          >
+            {getLocalizedText("sendToWaiterAndKitchen", lang)}
+          </Button>
+        </div>
+      )}
+    </Sheet>
   );
 };

@@ -21,41 +21,41 @@ export function SubscriptionsTab({ metrics }) {
           return (
             <motion.div
               key={planId}
-              initial={{ opacity: 0, y: 14 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.06, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-              className="sa-card p-5 flex flex-col"
+              transition={{ delay: i * 0.05, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-5 flex flex-col"
             >
               <div className="flex items-center justify-between mb-4">
                 <div
-                  className="w-11 h-11 rounded-2xl flex items-center justify-center"
+                  className="w-11 h-11 rounded-[var(--k-r)] flex items-center justify-center"
                   style={{ backgroundColor: `${meta.color}1a`, border: `1px solid ${meta.color}33` }}
                 >
                   <Icon className="w-5 h-5" style={{ color: meta.color }} />
                 </div>
-                <span className="sa-caption font-bold text-slate-500">{share}%</span>
+                <span className="text-[13px] font-medium text-[var(--k-text-3)]">{share}%</span>
               </div>
-              <p className="sa-heading-4 text-white mb-0.5">{meta.label}</p>
-              <p className="sa-caption text-slate-500 mb-4">
+              <p className="text-lg font-semibold text-[var(--k-text)] mb-0.5">{meta.label}</p>
+              <p className="text-[13px] text-[var(--k-text-3)] mb-4">
                 {meta.price === 0 ? t('freeLabel') : `${formatMoney(meta.price)} ${t('perMonthSuffix')}`}
               </p>
 
               <div className="mt-auto space-y-2">
                 <div className="flex items-baseline justify-between">
-                  <span className="text-white text-2xl font-bold tabular-nums">{count}</span>
-                  <span className="sa-caption text-slate-500">{t('restaurantsSuffixLower')}</span>
+                  <span className="text-[var(--k-text)] text-2xl font-semibold tabular-nums">{count}</span>
+                  <span className="text-[13px] text-[var(--k-text-3)]">{t('restaurantsSuffixLower')}</span>
                 </div>
-                <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                <div className="h-1.5 rounded-full bg-[var(--k-surface-3)] overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${share}%` }}
-                    transition={{ delay: 0.3 + i * 0.06, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                    transition={{ delay: 0.25 + i * 0.05, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                     className="h-full rounded-full"
                     style={{ backgroundColor: meta.color }}
                   />
                 </div>
                 {planId !== 'free' && (
-                  <p className="sa-caption text-slate-400 pt-1">{formatMoney(revenue)} {t('monthlyRevenueSuffix')}</p>
+                  <p className="text-[13px] text-[var(--k-text-2)] pt-1">{formatMoney(revenue)} {t('monthlyRevenueSuffix')}</p>
                 )}
               </div>
             </motion.div>
@@ -64,22 +64,22 @@ export function SubscriptionsTab({ metrics }) {
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.35 }}
-        className="sa-card p-5 grid grid-cols-2 sm:grid-cols-3 gap-4"
+        transition={{ delay: 0.25, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+        className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-5 grid grid-cols-2 sm:grid-cols-3 gap-4"
       >
         <div>
-          <p className="sa-caption text-slate-500 mb-1">{t('payingRestaurantsLabel')}</p>
-          <p className="sa-heading-4 text-white">{totalPaying}</p>
+          <p className="text-[13px] text-[var(--k-text-3)] mb-1">{t('payingRestaurantsLabel')}</p>
+          <p className="text-lg font-semibold text-[var(--k-text)]">{totalPaying}</p>
         </div>
         <div>
-          <p className="sa-caption text-slate-500 mb-1">{t('mrrLabel')}</p>
-          <p className="sa-heading-4 text-white">{formatMoney(metrics.mrr)}</p>
+          <p className="text-[13px] text-[var(--k-text-3)] mb-1">{t('mrrLabel')}</p>
+          <p className="text-lg font-semibold text-[var(--k-text)]">{formatMoney(metrics.mrr)}</p>
         </div>
         <div>
-          <p className="sa-caption text-slate-500 mb-1">{t('arrLabel')}</p>
-          <p className="sa-heading-4 text-white">{formatMoney(metrics.arr)}</p>
+          <p className="text-[13px] text-[var(--k-text-3)] mb-1">{t('arrLabel')}</p>
+          <p className="text-lg font-semibold text-[var(--k-text)]">{formatMoney(metrics.arr)}</p>
         </div>
       </motion.div>
     </div>

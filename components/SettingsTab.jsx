@@ -5,7 +5,7 @@ import Image from "next/image";
 import PropTypes from "prop-types";
 import { CheckCircle2, Building2, Image as ImageIcon, DollarSign, Users2, Sparkles, RefreshCw } from "lucide-react";
 import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
-import { PageHeader, Card, CardBody, Field, Input, Button, Badge, Alert } from "@/components/ui";
+import { PageHeader, Card, CardBody, Field, Input, Button, Tag, Banner } from "@/components/kit";
 
 const DEFAULT_SETTINGS = {
   restaurantName: "MenuFlow",
@@ -79,59 +79,57 @@ export function SettingsTab({ settings, updateSettings }) {
   }, [showSavedMessage, updateSettings]);
 
   const hasLogo = Boolean(form.restaurantLogo.trim());
-  const nameFieldLabel = <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-blue-400" />{t('restaurantNameLabel')}</span>;
-  const logoFieldLabel = <span className="flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-blue-400" />{t('logoUrlLabel')}</span>;
-  const currencyFieldLabel = <span className="flex items-center gap-1.5"><DollarSign className="w-4 h-4 text-blue-400" />{t('currencySymbolLabel')}</span>;
-  const tableCountFieldLabel = <span className="flex items-center gap-1.5"><Users2 className="w-4 h-4 text-blue-400" />{t('tableCountLabel')}</span>;
-  const taglineFieldLabel = <span className="flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-blue-400" />{t('taglineLabel')}</span>;
+  const nameFieldLabel = <span className="flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('restaurantNameLabel')}</span>;
+  const logoFieldLabel = <span className="flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('logoUrlLabel')}</span>;
+  const currencyFieldLabel = <span className="flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('currencySymbolLabel')}</span>;
+  const tableCountFieldLabel = <span className="flex items-center gap-1.5"><Users2 className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('tableCountLabel')}</span>;
+  const taglineFieldLabel = <span className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('taglineLabel')}</span>;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-8">
       <PageHeader
-        context="dark"
         title={t('titleSettings')}
         description={t('settingsDescription')}
         actions={
-          <Button type="button" variant="secondary" size="sm" onClick={handleResetDefaults} title={t('resetToDefaultsTitle')}>
-            <RefreshCw className="w-3.5 h-3.5" />
+          <Button type="button" variant="secondary" size="sm" onClick={handleResetDefaults} title={t('resetToDefaultsTitle')} icon={<RefreshCw className="w-3.5 h-3.5" />}>
             <span className="hidden sm:inline">{t('resetButton')}</span>
           </Button>
         }
       />
 
       {savedMessage && (
-        <Alert tone="success" icon={<CheckCircle2 className="w-4 h-4 shrink-0" />} className="font-bold">
+        <Banner tone="success" icon={<CheckCircle2 className="w-4 h-4 shrink-0" />} className="font-medium">
           {t('settingsSavedMessage')}
-        </Alert>
+        </Banner>
       )}
 
-      <Card context="dark" variant="flat">
+      <Card variant="plain">
         <CardBody>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <Field context="dark" label={nameFieldLabel} required>
+            <Field label={nameFieldLabel} required>
               {(id, a11y) => (
                 <Input
-                  context="dark" id={id} type="text" value={form.restaurantName}
+                  id={id} type="text" value={form.restaurantName}
                   onChange={(event) => updateForm("restaurantName", event.target.value)}
                   placeholder={t('restaurantNamePlaceholder')} {...a11y}
                 />
               )}
             </Field>
 
-            <Field context="dark" label={logoFieldLabel} hint={!hasLogo ? t('logoEmptyHint') : undefined}>
+            <Field label={logoFieldLabel} hint={!hasLogo ? t('logoEmptyHint') : undefined}>
               {(id, a11y) => (
                 <>
                   <Input
-                    context="dark" id={id} type="text" value={form.restaurantLogo}
+                    id={id} type="text" value={form.restaurantLogo}
                     onChange={handleLogoChange} placeholder={t('logoUrlPlaceholder')} {...a11y}
                   />
                   {hasLogo && (
-                    <div className="mt-3 flex items-center gap-3 p-3 bg-slate-950 border border-slate-800 rounded-xl">
-                      <span className="text-xs font-semibold text-slate-400">{t('logoPreviewLabel')}</span>
+                    <div className="mt-3 flex items-center gap-3 p-3 bg-[var(--k-surface-2)] border border-[var(--k-border)] rounded-[var(--k-r)]">
+                      <span className="text-xs font-medium text-[var(--k-text-3)]">{t('logoPreviewLabel')}</span>
                       {isLogoValid ? (
-                        <Image key={form.restaurantLogo} src={form.restaurantLogo.trim()} alt={t('logoPreviewAlt')} className="w-10 h-10 object-contain rounded-lg border border-slate-800 bg-slate-900" width={40} height={40} unoptimized onError={() => setIsLogoValid(false)} />
+                        <Image key={form.restaurantLogo} src={form.restaurantLogo.trim()} alt={t('logoPreviewAlt')} className="w-10 h-10 object-contain rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-3)]" width={40} height={40} unoptimized onError={() => setIsLogoValid(false)} />
                       ) : (
-                        <Badge tone="danger">{t('logoInvalidBadge')}</Badge>
+                        <Tag tone="danger">{t('logoInvalidBadge')}</Tag>
                       )}
                     </div>
                   )}
@@ -139,16 +137,16 @@ export function SettingsTab({ settings, updateSettings }) {
               )}
             </Field>
 
-            <Field context="dark" label={currencyFieldLabel} hint={t('currencyHint')}>
+            <Field label={currencyFieldLabel} hint={t('currencyHint')}>
               {(id, a11y) => (
                 <div className="flex flex-wrap items-center gap-2">
                   {CURRENCIES.map((currency) => (
-                    <button type="button" key={currency} onClick={() => updateForm("currencySymbol", currency)} className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${form.currencySymbol === currency ? "bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/20" : "bg-slate-950 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700"}`}>
+                    <button type="button" key={currency} onClick={() => updateForm("currencySymbol", currency)} className={`px-3.5 py-2 rounded-[var(--k-r)] text-xs font-medium border transition-colors ${form.currencySymbol === currency ? "bg-[var(--k-accent)] text-[var(--k-accent-fg)] border-[var(--k-accent)]" : "bg-[var(--k-surface-2)] text-[var(--k-text-3)] border-[var(--k-border)] hover:text-[var(--k-text)] hover:border-[var(--k-border-2)]"}`}>
                       {currency}
                     </button>
                   ))}
                   <Input
-                    context="dark" id={id} type="text" value={form.currencySymbol}
+                    id={id} type="text" value={form.currencySymbol}
                     onChange={(event) => updateForm("currencySymbol", event.target.value)}
                     placeholder={t('currencyOtherPlaceholder')} className="w-24 text-center" {...a11y}
                   />
@@ -156,20 +154,20 @@ export function SettingsTab({ settings, updateSettings }) {
               )}
             </Field>
 
-            <Field context="dark" label={tableCountFieldLabel} hint={t('tableCountHint')} required>
+            <Field label={tableCountFieldLabel} hint={t('tableCountHint')} required>
               {(id, a11y) => (
                 <Input
-                  context="dark" id={id} type="number" min="1" max="200" value={form.tableCount}
+                  id={id} type="number" min="1" max="200" value={form.tableCount}
                   onChange={(event) => updateForm("tableCount", normalizeTableCount(event.target.value))}
-                  className="font-bold" {...a11y}
+                  className="font-medium" {...a11y}
                 />
               )}
             </Field>
 
-            <Field context="dark" label={taglineFieldLabel}>
+            <Field label={taglineFieldLabel}>
               {(id, a11y) => (
                 <Input
-                  context="dark" id={id} type="text" value={form.tagline}
+                  id={id} type="text" value={form.tagline}
                   onChange={(event) => updateForm("tagline", event.target.value)}
                   placeholder={t('taglinePlaceholderDefault')} {...a11y}
                 />
@@ -177,8 +175,7 @@ export function SettingsTab({ settings, updateSettings }) {
             </Field>
 
             <div className="pt-2">
-              <Button type="submit" size="block">
-                <CheckCircle2 className="w-4 h-4" />
+              <Button type="submit" variant="primary" size="block" icon={<CheckCircle2 className="w-4 h-4" />}>
                 <span>{t('saveChangesButton')}</span>
               </Button>
             </div>

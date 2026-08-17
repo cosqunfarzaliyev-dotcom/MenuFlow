@@ -11,12 +11,13 @@ import { isAccessBlocked, accessBlockReason } from '@/lib/services/billingServic
 import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode, Lock, Shield } from 'lucide-react';
 import { OrderCard } from '@/components/staff/OrderCard';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
-import { LoadingState, ErrorState, EmptyState, PageSkeleton, Tabs, TabsTrigger, LanguageSwitcher, Card, CardHeader, CardBody, Badge, Button, PageHeader, Alert } from '@/components/ui';
-import { buttonVariants } from '@/components/ui/variants';
+import { LoadingState, ErrorState, EmptyState, PageSkeleton, Tabs, TabsTrigger, LanguageToggle, Card, CardHeader, CardBody, Tag, Button, PageHeader, Banner } from '@/components/kit';
+import { buttonVariants } from '@/components/kit/variants';
 import { cn } from '@/lib/utils';
 import { CAPABILITIES } from '@/lib/services/capabilityService';
 import { useCapability } from '@/hooks/useCapability';
 import { useStaffTranslation } from '@/lib/i18n/dictionaries/staff';
+import { useCommonTranslation } from '@/lib/i18n/dictionaries/common';
 import { useLocaleSync } from '@/hooks/useLocaleSync';
 
 export function StaffApp() {
@@ -38,6 +39,7 @@ export function StaffApp() {
   } = useAppStore();
   const settings = restaurant ? { restaurantName: restaurant.name } : (rawSettings || { restaurantName: 'MenuFlow' });
   const { t } = useStaffTranslation();
+  const { t: tc } = useCommonTranslation();
   useLocaleSync(profile?.locale);
   // Formal capability layer (Master Plan Phase 6) — both roles that reach
   // /staff (`staff`, `restaurant_admin`) have orders.manage today (see
@@ -215,7 +217,7 @@ export function StaffApp() {
     if (nextStatus) updateOrderStatus(id, nextStatus);
   };
 
-  if (!isMounted || authChecking) return <PageSkeleton />;
+  if (!isMounted || authChecking) return <PageSkeleton className="kit-dark" />;
 
   if (!isAdminAuthenticated) {
     // middleware.js already redirects unauthenticated requests to /staff
@@ -225,19 +227,16 @@ export function StaffApp() {
 
   if (profile && profile.role === 'super_admin') {
     router.replace('/superadmin');
-    return <PageSkeleton />;
+    return <PageSkeleton className="kit-dark" />;
   }
 
   if (profile && !isAuthorizedStaff) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-        {/* Card replaces the raw bg-slate-950/60 border-slate-800 box —
-            className overrides keep the exact same translucent background
-            and rounded-3xl corners Card's own flat variant doesn't default to. */}
-        <Card context="dark" variant="flat" className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl">
-          <Lock className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2">{t('noAccessTitle')}</h2>
-          <p className="text-slate-400 text-sm mb-6">
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
+        <Card variant="plain" className="max-w-sm text-center p-8">
+          <Lock className="w-9 h-9 text-[var(--k-warning)] mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-[var(--k-text)] mb-2">{t('noAccessTitle')}</h2>
+          <p className="text-[var(--k-text-3)] text-sm mb-6">
             {profile.role === 'unassigned'
               ? t('noAccessUnassigned')
               : t('noAccessNotStaff')}
@@ -257,13 +256,11 @@ export function StaffApp() {
       canceled: t('lockedCanceled')(restaurant.name),
     };
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-        {/* Card replaces the raw bg-slate-950/60 border-slate-800 box — same
-            treatment as the no-access screen above. */}
-        <Card context="dark" variant="flat" className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl">
-          <Lock className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2">{t('panelLockedTitle')}</h2>
-          <p className="text-slate-400 text-sm mb-6">{messages[reason] || messages.canceled}</p>
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
+        <Card variant="plain" className="max-w-sm text-center p-8">
+          <Lock className="w-9 h-9 text-[var(--k-warning)] mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-[var(--k-text)] mb-2">{t('panelLockedTitle')}</h2>
+          <p className="text-[var(--k-text-3)] text-sm mb-6">{messages[reason] || messages.canceled}</p>
           <Button variant="secondary" size="block" onClick={handleLogout}>{t('logoutButton')}</Button>
         </Card>
       </div>
@@ -271,55 +268,62 @@ export function StaffApp() {
   }
 
   if (loading) {
-    return <LoadingState title={t('panelLoadingTitle')} subtitle={t('panelLoadingSubtitle')} />;
+    return (
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)]">
+        <LoadingState title={t('panelLoadingTitle')} description={t('panelLoadingSubtitle')} />
+      </div>
+    );
   }
 
   if (loadError) {
-    return <ErrorState title={t('loadErrorTitle')} description={loadError} onRetry={() => window.location.reload()} />;
+    return (
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)]">
+        <ErrorState title={t('loadErrorTitle')} description={loadError} actionLabel={tc('tryAgain')} onRetry={() => window.location.reload()} />
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 sm:p-8 font-sans">
-      
-      {/* Notification Toast */}
+    <div className="kit-dark min-h-screen bg-[var(--k-bg)] text-[var(--k-text)] p-4 sm:p-8 font-sans">
+
+      {/* Notification Toast — same triggerNotification()/timeout/chime logic
+          as before, restyled onto kit tokens (solid --k-danger, no bounce/
+          heavy shadow — the shared k-anim-in entrance instead). */}
       {notification && (
-        <div className="fixed top-6 right-6 z-[100] bg-rose-600 text-white px-6 py-4 rounded-2xl font-bold shadow-[0_10px_40px_rgba(225,29,72,0.4)] flex items-center gap-4 animate-bounce">
-          <Bell className="w-6 h-6 animate-pulse" />
-          <span className="text-lg tracking-wide">{notification}</span>
+        <div className="k-anim-in fixed top-6 right-6 z-[100] bg-[var(--k-danger)] text-white px-5 py-3.5 rounded-[var(--k-r)] border border-[var(--k-danger)] font-medium flex items-center gap-3 shadow-lg">
+          <Bell className="w-5 h-5 animate-pulse shrink-0" />
+          <span className="text-sm tracking-wide">{notification}</span>
         </div>
       )}
 
       <div className="max-w-6xl mx-auto space-y-6">
-        
-        {/* Header — Card (replaces the old bg-slate-900/50 + border-slate-800
-            literal) wrapping PageHeader (title/description/actions), same
-            primitives AdminApp already migrated onto. Kept boxed (unlike
-            AdminApp's own unboxed PageHeaders) since StaffApp has no sidebar
-            chrome and this panel is the page's only "app bar" — preserving
-            that visual role, not just its literal classes. */}
-        <Card context="dark" variant="flat" className="bg-slate-900/50 p-6">
+
+        {/* Header — Card wrapping PageHeader (title/description/actions).
+            Kept boxed (unlike AdminApp's own unboxed PageHeaders) since
+            StaffApp has no sidebar chrome and this panel is the page's only
+            "app bar" — preserving that visual role, not just its literal
+            classes. */}
+        <Card variant="plain" className="p-6">
           <PageHeader
-            context="dark"
             title={
               <span className="flex items-center gap-3">
-                <UserSquare2 className="w-8 h-8 text-blue-500" />
+                <UserSquare2 className="w-7 h-7 text-[var(--k-accent)]" />
                 {t('panelTitle')}
               </span>
             }
             description={t('panelSubtitle')(settings.restaurantName || "MenuFlow")}
             actions={
               <>
-                <LanguageSwitcher context="dark" profile={profile} />
+                <LanguageToggle profile={profile} />
                 {/* / is now the public marketing homepage, not the customer
                     menu (see app/page.jsx) — link to this restaurant's own
                     real menu when the slug is known, falling back to the
                     marketing home rather than a dead link while it's still
-                    loading. Styled via buttonVariants (same pattern as
-                    MarketingHeader's nav links) since a Link can't render the
-                    Button primitive itself. */}
+                    loading. Styled via buttonVariants since a Link can't
+                    render the Button primitive itself. */}
                 <Link
                   href={restaurant?.slug ? `/menu/${restaurant.slug}` : '/'}
-                  className={cn(buttonVariants({ context: 'dark', variant: 'subtle', size: 'sm' }), 'gap-2')}
+                  className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'gap-2')}
                 >
                   <QrCode className="w-4 h-4" />
                   <span>{t('customerMenuLink')}</span>
@@ -333,12 +337,12 @@ export function StaffApp() {
                   <TabsTrigger active={activeTab === 'orders'} onClick={() => setActiveTab('orders')}>
                     {t('ordersTab')(pendingOrders.length)}
                   </TabsTrigger>
-                  <TabsTrigger active={activeTab === 'alerts'} accent="warning" onClick={() => setActiveTab('alerts')}>
+                  <TabsTrigger active={activeTab === 'alerts'} onClick={() => setActiveTab('alerts')}>
                     {t('alertsTab')}
                     {activeAlerts.length > 0 && (
-                      <Badge tone="warning" className="bg-white text-amber-600 w-5 h-5 px-0 py-0 justify-center text-[10px] font-black">
+                      <Tag tone="warning" size="sm" className="px-1.5 justify-center min-w-[18px]">
                         {activeAlerts.length}
-                      </Badge>
+                      </Tag>
                     )}
                   </TabsTrigger>
                 </Tabs>
@@ -361,27 +365,27 @@ export function StaffApp() {
             still render nothing when empty — pre-existing behavior, unchanged. */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            <PageHeader context="dark" title={t('ordersTab')(pendingOrders.length)} description={t('ordersSubtitle')} />
+            <PageHeader title={t('ordersTab')(pendingOrders.length)} description={t('ordersSubtitle')} />
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
               {/* Pending */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-lg text-white flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-amber-400" />
+                  <h3 className="font-semibold text-sm text-[var(--k-text)] flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-[var(--k-warning)]" />
                     {t('pendingTitle')(pendingOrders.length)}
                   </h3>
                 </div>
                 {pendingOrders.length > 0 ? (
                   <div className="space-y-4">
                     {pendingOrders.map(order => (
-                      <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.ACCEPTED} nextLabel={t('acceptButton')} nextColor="bg-blue-600 hover:bg-blue-500" readOnly={!canManageOrders} />
+                      <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.ACCEPTED} nextLabel={t('acceptButton')} readOnly={!canManageOrders} />
                     ))}
                   </div>
                 ) : (
                   <EmptyState
-                    icon={<Clock className="w-8 h-8 text-amber-400" />}
+                    icon={<Clock className="w-5 h-5" />}
                     title={t('noNewOrdersTitle')}
                     description={t('noNewOrdersDescription')}
                   />
@@ -391,14 +395,14 @@ export function StaffApp() {
               {/* Preparing */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-lg text-white flex items-center gap-2">
-                    <UtensilsCrossed className="w-5 h-5 text-blue-400" />
+                  <h3 className="font-semibold text-sm text-[var(--k-text)] flex items-center gap-2">
+                    <UtensilsCrossed className="w-4 h-4 text-[var(--k-accent)]" />
                     {t('preparingTitle')(preparingOrders.length)}
                   </h3>
                 </div>
                 <div className="space-y-4">
                   {preparingOrders.map(order => (
-                    <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.READY} nextLabel={t('readyButton')} nextColor="bg-emerald-600 hover:bg-emerald-500" readOnly={!canManageOrders} />
+                    <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.READY} nextLabel={t('readyButton')} readOnly={!canManageOrders} />
                   ))}
                 </div>
               </div>
@@ -406,14 +410,14 @@ export function StaffApp() {
               {/* Completed */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-lg text-white flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  <h3 className="font-semibold text-sm text-[var(--k-text)] flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-[var(--k-success)]" />
                     {t('finishedTitle')(finishedOrders.length)}
                   </h3>
                 </div>
                 <div className="space-y-4">
                   {finishedOrders.slice(0, 10).map(order => (
-                    <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} isCompleted={order.status === ORDER_STATUS.SERVED} nextLabel={t('servedButton')} nextColor="bg-emerald-600 hover:bg-emerald-500" readOnly={!canManageOrders} />
+                    <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} isCompleted={order.status === ORDER_STATUS.SERVED} nextLabel={t('servedButton')} readOnly={!canManageOrders} />
                   ))}
                 </div>
               </div>
@@ -428,7 +432,7 @@ export function StaffApp() {
             wrapper hack that rendered EmptyState *inside* the grid. */}
         {activeTab === 'alerts' && (
           <div className="space-y-6">
-            <PageHeader context="dark" title={t('alertsTab')} description={t('alertsSubtitle')} />
+            <PageHeader title={t('alertsTab')} description={t('alertsSubtitle')} />
 
             {activeAlerts.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -439,42 +443,41 @@ export function StaffApp() {
                   const paymentLabel = alert.paymentMethodLabel || (isCash ? t('cashLabel') : isCard ? t('posLabel') : t('cardLabel'));
 
                   return (
-                    <Card key={alert.id} context="dark" variant="flat" className="border-2 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+                    <Card key={alert.id} variant="raised" className="border-[color:var(--k-warning)]/30">
                       <CardHeader className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500 shrink-0">
-                          <Bell className="w-6 h-6 animate-pulse" />
+                        <div className="w-11 h-11 bg-[var(--k-warning-soft)] rounded-full flex items-center justify-center text-[var(--k-warning)] shrink-0">
+                          <Bell className="w-5 h-5 animate-pulse" />
                         </div>
                         <div className="min-w-0">
-                          <h4 className="font-bold text-lg text-white flex items-center gap-2">
+                          <h4 className="font-semibold text-[var(--k-text)] flex items-center gap-2">
                             {getTableName(alert.table)}
                             {alert.callCount > 1 && (
-                              <Badge tone="warning" className="bg-amber-500 text-white px-1.5 py-0.5 text-[10px] font-black" title={t('calledTimesTitle')(alert.callCount)}>
+                              <Tag tone="warning" size="sm" title={t('calledTimesTitle')(alert.callCount)}>
                                 ×{alert.callCount}
-                              </Badge>
+                              </Tag>
                             )}
                           </h4>
-                          <p className="text-amber-400 text-sm font-semibold">{alert.type === 'waiter' ? t('waiterCallType') : t('billRequestType')}</p>
+                          <p className="text-[var(--k-warning)] text-xs font-medium">{alert.type === 'waiter' ? t('waiterCallType') : t('billRequestType')}</p>
                         </div>
                       </CardHeader>
                       <CardBody>
                         {isBill && (
-                          <Alert tone={isCash ? 'success' : 'info'} className="mb-4 flex-col items-start gap-2">
-                            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">{t('paymentTypeLabel')}</span>
-                            <Badge tone={isCash ? 'success' : 'info'} className="px-3 py-2 text-sm gap-2 font-semibold">
+                          <Banner tone={isCash ? 'success' : 'info'} className="mb-4 flex-col items-start gap-2">
+                            <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-70">{t('paymentTypeLabel')}</span>
+                            <Tag tone={isCash ? 'success' : 'info'} size="md" className="px-2.5 py-1 h-auto">
                               <span>{isCash ? '💵' : '💳'}</span>
                               <span>{paymentLabel}</span>
-                            </Badge>
-                          </Alert>
+                            </Tag>
+                          </Banner>
                         )}
 
-                        <div className="text-xs text-slate-400 mb-4">
+                        <div className="text-xs text-[var(--k-text-3)] mb-4">
                           {alert.callCount > 1 ? t('lastCallPrefix') : t('timePrefix')}{new Date(alert.time).toLocaleTimeString()}
                         </div>
                         {/* Alert resolution is order-adjacent table service, so it
                             rides orders.manage too — see capabilityService.js. */}
                         {canManageOrders && (
-                          <Button onClick={() => resolveAlert(alert.id)} size="block" className="bg-amber-600 hover:bg-amber-500">
-                            <Check className="w-4 h-4" />
+                          <Button variant="primary" onClick={() => resolveAlert(alert.id)} size="block" icon={<Check className="w-4 h-4" />}>
                             {t('resolvedButton')}
                           </Button>
                         )}
@@ -485,7 +488,7 @@ export function StaffApp() {
               </div>
             ) : (
               <EmptyState
-                icon={<Bell className="w-8 h-8 text-emerald-400" />}
+                icon={<Bell className="w-5 h-5" />}
                 title={t('noPendingAlertsTitle')}
                 description={t('noPendingAlertsDescription')}
               />
@@ -511,14 +514,14 @@ function RoleRedirectStaff({ message, href }) {
   }, [router, href]);
 
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+    <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
       <div className="max-w-sm text-center">
-        <p className="text-slate-400 text-sm mb-4">{message}</p>
+        <p className="text-[var(--k-text-3)] text-sm mb-4">{message}</p>
         {/* Raw `text-blue-400 ... underline` link → buttonVariants (ghost),
             same cn()+buttonVariants pattern already used for the header's
             customer-menu Link — no Button primitive here since a <Link>
             can't render it directly. href/navigation/translation unchanged. */}
-        <Link href={href} className={cn(buttonVariants({ context: 'dark', variant: 'ghost' }))}>
+        <Link href={href} className={cn(buttonVariants({ variant: 'ghost' }))}>
           {t('manualRedirectLink')}
         </Link>
       </div>

@@ -34,25 +34,25 @@ export function StatCard({ icon: Icon, label, value, prefix = '', suffix = '', d
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      className="sa-card p-5"
+      transition={{ delay: index * 0.04, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+      className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-5"
     >
       <div className="flex items-center justify-between mb-3">
         <div
-          className="w-10 h-10 rounded-2xl flex items-center justify-center"
+          className="w-10 h-10 rounded-[var(--k-r)] flex items-center justify-center"
           style={{ backgroundColor: `${accent}1a`, border: `1px solid ${accent}33` }}
         >
-          <Icon className="w-5 h-5" style={{ color: accent }} />
+          <Icon className="w-[18px] h-[18px]" style={{ color: accent }} />
         </div>
       </div>
-      <p className="sa-heading-2 text-white tabular-nums leading-none mb-1">
+      <p className="text-[26px] font-semibold text-[var(--k-text)] tabular-nums leading-none mb-1 tracking-[-0.02em]">
         {prefix}
         {animated.toLocaleString(LOCALE_TAGS[language] || 'az-AZ', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
         {suffix}
       </p>
-      <p className="sa-caption text-slate-500 font-medium">{label}</p>
+      <p className="text-[13px] text-[var(--k-text-3)] font-medium">{label}</p>
     </motion.div>
   );
 }

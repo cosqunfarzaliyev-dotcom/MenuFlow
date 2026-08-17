@@ -42,17 +42,22 @@ export const planMeta = (plan, t) => {
 // imports keep working.
 export { PLAN_DEFAULT_FLAGS } from '@/lib/services/entitlementService';
 
+// bg/text/border are Tailwind arbitrary-value classes reading --k-* tokens
+// (not raw amber-500/emerald-500/... literals) so every status pill matches
+// the Quiet Premium kit's soft-tone Tag look exactly, including in dark/light
+// parity — see the "neutral Tag + className override" pattern each call site
+// (DashboardTab/RestaurantsTab/UsersTab/PlansTab) uses this for.
 export const SUBSCRIPTION_STATUS_META = {
-  trialing: { label: 'Trial', color: '#fbbf24', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20' },
-  active: { label: 'Aktiv', color: '#34d399', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
-  past_due: { label: 'Ödəniş gecikib', color: '#fb923c', bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' },
-  canceled: { label: 'Ləğv olunub', color: '#f87171', bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/20' },
-  cancelled: { label: 'Ləğv olunub', color: '#f87171', bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/20' },
+  trialing: { label: 'Trial', color: '#FBBF24', bg: 'bg-[var(--k-warning-soft)]', text: 'text-[var(--k-warning)]', border: 'border-[color:var(--k-warning)]/25' },
+  active: { label: 'Aktiv', color: '#34D399', bg: 'bg-[var(--k-success-soft)]', text: 'text-[var(--k-success)]', border: 'border-[color:var(--k-success)]/25' },
+  past_due: { label: 'Ödəniş gecikib', color: '#F97316', bg: 'bg-[var(--k-accent-soft)]', text: 'text-[var(--k-accent)]', border: 'border-[color:var(--k-accent)]/25' },
+  canceled: { label: 'Ləğv olunub', color: '#F87171', bg: 'bg-[var(--k-danger-soft)]', text: 'text-[var(--k-danger)]', border: 'border-[color:var(--k-danger)]/25' },
+  cancelled: { label: 'Ləğv olunub', color: '#F87171', bg: 'bg-[var(--k-danger-soft)]', text: 'text-[var(--k-danger)]', border: 'border-[color:var(--k-danger)]/25' },
   // 'expired' only ever appears via restaurant_subscriptions (either the
   // literal stored value or planService.getEffectiveSubscriptionStatus()'s
   // dynamic detection) — restaurants.subscription_status's check constraint
   // never included it, so this key is unreachable from that column's values.
-  expired: { label: 'Müddəti bitib', color: '#94a3b8', bg: 'bg-slate-500/10', text: 'text-slate-400', border: 'border-slate-500/20' },
+  expired: { label: 'Müddəti bitib', color: '#A1A1A6', bg: 'bg-[var(--k-surface-3)]', text: 'text-[var(--k-text-3)]', border: 'border-[var(--k-border-2)]' },
 };
 
 const STATUS_LABEL_KEYS = {

@@ -5,9 +5,9 @@ import { Megaphone, Percent, Plus, Trash2 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
 import {
-  PageHeader, Card, CardHeader, CardBody, Field, Input, Select, Button, Badge, EmptyState,
+  PageHeader, Card, CardHeader, CardBody, Field, Input, Select, Button, Tag, EmptyState,
   Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell,
-} from "@/components/ui";
+} from "@/components/kit";
 
 const emptyCampaign = { title: "", description: "", banner_image_url: "" };
 const emptyDiscount = { title: "", discount_type: "percentage", value: "", product_id: "" };
@@ -55,52 +55,52 @@ export function PromotionsTab() {
 
   return (
     <div className="space-y-6">
-      <PageHeader context="dark" title={t('titlePromotions')} description={t('promotionsSubtitle')} />
+      <PageHeader title={t('titlePromotions')} description={t('promotionsSubtitle')} />
 
       {/* Campaigns */}
-      <Card context="dark" variant="flat">
+      <Card variant="plain">
         <CardHeader>
-          <h2 className="font-bold text-lg text-white flex items-center gap-2">
-            <Megaphone className="w-5 h-5 text-blue-400" />
+          <h2 className="font-semibold text-[var(--k-text)] flex items-center gap-2 text-sm">
+            <Megaphone className="w-4 h-4 text-[var(--k-accent)]" />
             {t('campaignsSectionTitle')}
           </h2>
         </CardHeader>
         <CardBody>
           <form onSubmit={handleAddCampaign} className="grid sm:grid-cols-3 gap-3 mb-5">
-            <Field context="dark" label={t('campaignNameFieldLabel')} required>
+            <Field label={t('campaignNameFieldLabel')} required>
               {(id, a11y) => (
                 <Input
-                  context="dark" id={id} type="text" value={campaignForm.title}
+                  id={id} type="text" value={campaignForm.title}
                   onChange={(e) => setCampaignForm({ ...campaignForm, title: e.target.value })}
                   placeholder={t('campaignNamePlaceholder')} {...a11y}
                 />
               )}
             </Field>
-            <Field context="dark" label={t('campaignDescFieldLabel')}>
+            <Field label={t('campaignDescFieldLabel')}>
               {(id, a11y) => (
                 <Input
-                  context="dark" id={id} type="text" value={campaignForm.description}
+                  id={id} type="text" value={campaignForm.description}
                   onChange={(e) => setCampaignForm({ ...campaignForm, description: e.target.value })}
                   placeholder={t('campaignDescPlaceholder')} {...a11y}
                 />
               )}
             </Field>
-            <Field context="dark" label={t('campaignBannerUrlFieldLabel')}>
+            <Field label={t('campaignBannerUrlFieldLabel')}>
               {(id, a11y) => (
                 <Input
-                  context="dark" id={id} type="text" value={campaignForm.banner_image_url}
+                  id={id} type="text" value={campaignForm.banner_image_url}
                   onChange={(e) => setCampaignForm({ ...campaignForm, banner_image_url: e.target.value })}
                   placeholder={t('campaignBannerUrlPlaceholder')} {...a11y}
                 />
               )}
             </Field>
-            <Button type="submit" size="block" className="sm:col-span-3">
-              <Plus className="w-4 h-4" /> {t('addCampaignButton')}
+            <Button type="submit" variant="primary" size="block" className="sm:col-span-3" icon={<Plus className="w-4 h-4" />}>
+              {t('addCampaignButton')}
             </Button>
           </form>
 
           {campaigns.length === 0 ? (
-            <EmptyState icon={<Megaphone className="w-8 h-8 text-blue-400" />} title={t('noCampaignsYet')} description={t('campaignsNotFoundDescription')} />
+            <EmptyState icon={<Megaphone className="w-5 h-5" />} title={t('noCampaignsYet')} description={t('campaignsNotFoundDescription')} />
           ) : (
             <Table>
               <TableHead>
@@ -112,17 +112,17 @@ export function PromotionsTab() {
                 {campaigns.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell>
-                      <p className="font-bold text-white">{c.title}</p>
-                      {c.description && <p className="text-xs text-slate-500 mt-0.5">{c.description}</p>}
+                      <p className="font-medium text-[var(--k-text)]">{c.title}</p>
+                      {c.description && <p className="text-xs text-[var(--k-text-3)] mt-0.5">{c.description}</p>}
                     </TableCell>
                     <TableCell>
-                      <Badge tone={c.is_active ? 'success' : 'neutral'}>
+                      <Tag tone={c.is_active ? 'success' : 'neutral'}>
                         {c.is_active ? t('campaignActiveStatusBadge') : t('campaignInactiveStatusBadge')}
-                      </Badge>
+                      </Tag>
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end">
-                        <button onClick={() => deleteCampaign(c.id)} className="text-slate-500 hover:text-rose-400 p-2 shrink-0"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => deleteCampaign(c.id)} className="text-[var(--k-text-3)] hover:text-[var(--k-danger)] p-2 shrink-0"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -134,28 +134,28 @@ export function PromotionsTab() {
       </Card>
 
       {/* Discounts */}
-      <Card context="dark" variant="flat">
+      <Card variant="plain">
         <CardHeader>
-          <h2 className="font-bold text-lg text-white flex items-center gap-2">
-            <Percent className="w-5 h-5 text-emerald-400" />
+          <h2 className="font-semibold text-[var(--k-text)] flex items-center gap-2 text-sm">
+            <Percent className="w-4 h-4 text-[var(--k-success)]" />
             {t('discountsSectionTitle')}
           </h2>
         </CardHeader>
         <CardBody>
           <form onSubmit={handleAddDiscount} className="grid sm:grid-cols-4 gap-3 mb-5">
-            <Field context="dark" label={t('discountNameFieldLabel')} required>
+            <Field label={t('discountNameFieldLabel')} required>
               {(id, a11y) => (
                 <Input
-                  context="dark" id={id} type="text" value={discountForm.title}
+                  id={id} type="text" value={discountForm.title}
                   onChange={(e) => setDiscountForm({ ...discountForm, title: e.target.value })}
                   placeholder={t('discountNamePlaceholder')} {...a11y}
                 />
               )}
             </Field>
-            <Field context="dark" label={t('discountTypeFieldLabel')}>
+            <Field label={t('discountTypeFieldLabel')}>
               {(id, a11y) => (
                 <Select
-                  context="dark" id={id} value={discountForm.discount_type}
+                  id={id} value={discountForm.discount_type}
                   onChange={(e) => setDiscountForm({ ...discountForm, discount_type: e.target.value })} {...a11y}
                 >
                   <option value="percentage">{t('discountTypePercentage')}</option>
@@ -163,19 +163,19 @@ export function PromotionsTab() {
                 </Select>
               )}
             </Field>
-            <Field context="dark" label={t('discountValueFieldLabel')} required>
+            <Field label={t('discountValueFieldLabel')} required>
               {(id, a11y) => (
                 <Input
-                  context="dark" id={id} type="number" step="0.01" min="0" value={discountForm.value}
+                  id={id} type="number" step="0.01" min="0" value={discountForm.value}
                   onChange={(e) => setDiscountForm({ ...discountForm, value: e.target.value })}
                   placeholder={t('discountValuePlaceholder')} {...a11y}
                 />
               )}
             </Field>
-            <Field context="dark" label={t('discountProductFieldLabel')}>
+            <Field label={t('discountProductFieldLabel')}>
               {(id, a11y) => (
                 <Select
-                  context="dark" id={id} value={discountForm.product_id}
+                  id={id} value={discountForm.product_id}
                   onChange={(e) => setDiscountForm({ ...discountForm, product_id: e.target.value })} {...a11y}
                 >
                   <option value="">{t('allMenuOption')}</option>
@@ -185,27 +185,27 @@ export function PromotionsTab() {
                 </Select>
               )}
             </Field>
-            <Button type="submit" size="block" className="sm:col-span-4 bg-emerald-600 hover:bg-emerald-500">
-              <Plus className="w-4 h-4" /> {t('addDiscountButton')}
+            <Button type="submit" variant="primary" size="block" className="sm:col-span-4" icon={<Plus className="w-4 h-4" />}>
+              {t('addDiscountButton')}
             </Button>
           </form>
 
           {discounts.length === 0 ? (
-            <EmptyState icon={<Percent className="w-8 h-8 text-emerald-400" />} title={t('noDiscountsYet')} description={t('discountsNotFoundDescription')} />
+            <EmptyState icon={<Percent className="w-5 h-5" />} title={t('noDiscountsYet')} description={t('discountsNotFoundDescription')} />
           ) : (
             <div className="space-y-2">
               {discounts.map((d) => (
-                <div key={d.id} className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl p-3">
+                <div key={d.id} className="flex items-center gap-3 bg-[var(--k-surface-2)] border border-[var(--k-border)] rounded-[var(--k-r)] p-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-bold text-white truncate">{d.title}</p>
-                      <Badge tone={d.discount_type === 'percentage' ? 'info' : 'success'}>
+                      <p className="text-sm font-medium text-[var(--k-text)] truncate">{d.title}</p>
+                      <Tag tone={d.discount_type === 'percentage' ? 'info' : 'success'}>
                         {d.discount_type === 'percentage' ? `${d.value}%` : `${d.value} ₼`}
-                      </Badge>
+                      </Tag>
                     </div>
-                    <p className="text-xs text-slate-500 truncate">{d.product_id ? (productName(d.product_id) || t('productFallbackLabel')) : t('appliesAllMenu')}</p>
+                    <p className="text-xs text-[var(--k-text-3)] truncate">{d.product_id ? (productName(d.product_id) || t('productFallbackLabel')) : t('appliesAllMenu')}</p>
                   </div>
-                  <button onClick={() => deleteDiscount(d.id)} className="text-slate-500 hover:text-rose-400 p-2 shrink-0"><Trash2 className="w-4 h-4" /></button>
+                  <button onClick={() => deleteDiscount(d.id)} className="text-[var(--k-text-3)] hover:text-[var(--k-danger)] p-2 shrink-0"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
             </div>

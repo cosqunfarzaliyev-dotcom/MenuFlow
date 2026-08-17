@@ -5,7 +5,7 @@ import { motion } from 'motion/react';
 import { Building2, CheckCircle2, Clock, XCircle, Wallet, Users } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { planMeta, subscriptionMeta, formatMoney, formatDate, LOCALE_TAGS } from './constants';
-import { Badge } from '@/components/ui';
+import { Tag } from '@/components/kit';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
 export function DashboardTab({ restaurants, metrics, onOpenRestaurant }) {
@@ -29,14 +29,14 @@ export function DashboardTab({ restaurants, metrics, onOpenRestaurant }) {
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25, duration: 0.35 }}
-        className="sa-card p-5"
+        transition={{ delay: 0.25, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+        className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-5"
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="sa-heading-4 text-white">{t('recentRestaurantsTitle')}</h3>
+          <h3 className="text-[15px] font-semibold text-[var(--k-text)]">{t('recentRestaurantsTitle')}</h3>
         </div>
         {recent.length === 0 ? (
-          <p className="sa-caption text-slate-500 text-center py-8">{t('noRestaurantsYet')}</p>
+          <p className="text-[13px] text-[var(--k-text-3)] text-center py-8">{t('noRestaurantsYet')}</p>
         ) : (
           <div className="space-y-1.5">
             {recent.map((r) => {
@@ -46,27 +46,27 @@ export function DashboardTab({ restaurants, metrics, onOpenRestaurant }) {
                 <button
                   key={r.id}
                   onClick={() => onOpenRestaurant?.(r)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-slate-800/50 transition text-left"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--k-r)] hover:bg-[var(--k-surface-2)] transition-colors text-left"
                 >
-                  <div className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center overflow-hidden shrink-0">
+                  <div className="w-9 h-9 rounded-[var(--k-r)] bg-[var(--k-surface-3)] flex items-center justify-center overflow-hidden shrink-0">
                     {r.logo ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={r.logo} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <Building2 className="w-4 h-4 text-slate-500" />
+                      <Building2 className="w-4 h-4 text-[var(--k-text-3)]" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-semibold truncate">{r.name}</p>
-                    <p className="sa-caption text-slate-500">{formatDate(r.created_at, localeTag)}</p>
+                    <p className="text-[var(--k-text)] text-sm font-medium truncate">{r.name}</p>
+                    <p className="text-[13px] text-[var(--k-text-3)]">{formatDate(r.created_at, localeTag)}</p>
                   </div>
-                  <span className="sa-caption font-bold" style={{ color: plan.color }}>{plan.label}</span>
+                  <span className="text-[13px] font-medium" style={{ color: plan.color }}>{plan.label}</span>
                   {/* tone is a closest-match placeholder; className override
                       reproduces subscriptionMeta()'s exact per-status colors
                       (same technique used in RestaurantsTab/UsersTab/PlansTab). */}
-                  <Badge tone="neutral" className={`border ${status.bg} ${status.text} ${status.border}`}>
+                  <Tag tone="neutral" className={`border ${status.bg} ${status.text} ${status.border}`}>
                     {status.label}
-                  </Badge>
+                  </Tag>
                 </button>
               );
             })}

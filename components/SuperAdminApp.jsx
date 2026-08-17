@@ -10,8 +10,8 @@ import { supabase, supabaseReady } from '@/lib/supabase';
 import { useAppStore, ROLES } from '@/lib/store';
 import { fetchRestaurants, fetchRestaurantStats, fetchPlatformUsers } from '@/lib/services/superAdminService';
 import { fetchAllPlans, fetchPlanFeatures } from '@/lib/services/planService';
-import { PageSkeleton, LanguageSwitcher, Card, Button } from '@/components/ui';
-import { buttonVariants } from '@/components/ui/variants';
+import { PageSkeleton, LanguageToggle, Card, Button } from '@/components/kit';
+import { buttonVariants } from '@/components/kit/variants';
 import { cn } from '@/lib/utils';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 import { useLocaleSync } from '@/hooks/useLocaleSync';
@@ -137,32 +137,26 @@ export function SuperAdminApp() {
     setActiveTab('restaurants');
   };
 
-  if (!isMounted || authChecking) return <PageSkeleton />;
+  if (!isMounted || authChecking) return <PageSkeleton className="kit-dark" />;
 
   if (!isAdminAuthenticated) {
     // middleware.js already redirects unauthenticated requests to /superadmin
     // over to /login before this component mounts; this is a fallback.
     router.replace('/login?next=/superadmin');
-    return <PageSkeleton />;
+    return <PageSkeleton className="kit-dark" />;
   }
 
   if (!profile || profile.role !== ROLES.SUPER_ADMIN) {
     return (
-      <div className="superadmin-theme min-h-screen bg-[#050505] flex items-center justify-center p-4">
-        {/* Card replaces the raw sa-card box — matches the same auth-gate
-            treatment already applied to Staff/Admin's no-access screens
-            (plain flat surface, not the glass sa-card look, for consistency
-            with those screens rather than the rest of SuperAdmin's dashboard
-            chrome). sa-heading-4/sa-caption typography kept as-is — only the
-            container/buttons were in scope for this pass. */}
-        <Card context="dark" variant="flat" className="max-w-sm text-center p-8">
-          <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-          <h2 className="sa-heading-4 text-white mb-2">{t('noAccessTitle')}</h2>
-          <p className="sa-caption text-slate-400 mb-6">
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
+        <Card variant="plain" className="max-w-sm text-center p-8">
+          <AlertTriangle className="w-9 h-9 text-[var(--k-warning)] mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-[var(--k-text)] mb-2">{t('noAccessTitle')}</h2>
+          <p className="text-[var(--k-text-3)] text-sm mb-6">
             {t('noSuperAdminAccess')(profile?.role)}
           </p>
           <div className="flex flex-col gap-2">
-            <Link href="/admin" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'block' }))}>{t('goToAdminPanel')}</Link>
+            <Link href="/admin" className={cn(buttonVariants({ variant: 'primary', size: 'block' }))}>{t('goToAdminPanel')}</Link>
             <Button variant="secondary" size="block" onClick={handleLogout}>{t('logoutButton')}</Button>
           </div>
         </Card>
@@ -175,7 +169,7 @@ export function SuperAdminApp() {
 
   return (
     <ToastProvider>
-      <div className="superadmin-theme min-h-screen bg-[#050505] text-white font-sans lg:flex">
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] text-[var(--k-text)] font-sans lg:flex">
         <Sidebar
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -188,24 +182,24 @@ export function SuperAdminApp() {
         />
 
         <div className="flex-1 min-w-0">
-          <header className="sticky top-0 z-30 flex items-center gap-3 px-4 sm:px-8 py-4 bg-[#050505]/85 backdrop-blur-xl border-b border-slate-800/80">
+          <header className="sticky top-0 z-30 flex items-center gap-3 px-4 sm:px-8 py-4 bg-[var(--k-bg)]/90 backdrop-blur-xl border-b border-[var(--k-border)]">
             <button
               onClick={() => setMobileOpen(true)}
-              className="lg:hidden p-2 -ml-2 rounded-xl hover:bg-slate-800/80 text-slate-300"
+              className="lg:hidden p-2 -ml-2 rounded-[var(--k-r)] hover:bg-[var(--k-surface-2)] text-[var(--k-text-2)]"
             >
               <Menu className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-2.5">
-              <div className="h-8 px-2 bg-amber-500/15 rounded-xl flex items-center justify-center border border-amber-500/25 lg:hidden">
+              <div className="h-8 px-2 bg-[var(--k-warning-soft)] rounded-[var(--k-r)] flex items-center justify-center border border-[color:var(--k-warning)]/25 lg:hidden">
                 <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={72} height={11} className="h-3 w-auto object-contain" unoptimized />
               </div>
               <div>
-                <h1 className="sa-heading-4 text-white leading-tight">{activeMeta.label}</h1>
-                <p className="sa-caption text-slate-500 hidden sm:block">{restaurants.length} {t('restaurantsRegisteredSuffix')}</p>
+                <h1 className="text-lg font-semibold text-[var(--k-text)] leading-tight">{activeMeta.label}</h1>
+                <p className="text-[13px] text-[var(--k-text-3)] hidden sm:block">{restaurants.length} {t('restaurantsRegisteredSuffix')}</p>
               </div>
             </div>
             <div className="ml-auto">
-              <LanguageSwitcher context="dark" profile={profile} />
+              <LanguageToggle profile={profile} />
             </div>
           </header>
 

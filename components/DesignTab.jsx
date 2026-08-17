@@ -7,7 +7,7 @@ import { FEATURES } from "@/lib/services/entitlementService";
 import { useFeature } from "@/hooks/useEntitlement";
 import { CAPABILITIES } from "@/lib/services/capabilityService";
 import { useCapability } from "@/hooks/useCapability";
-import { PageHeader, Card, CardHeader, CardBody, Button, Input, Select, Field, Alert, EmptyState, ConfirmDialog, useConfirmDialog } from "@/components/ui";
+import { PageHeader, Card, CardHeader, CardBody, Button, Input, Select, Field, Banner, EmptyState, ConfirmDialog, useConfirmDialog } from "@/components/kit";
 import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
 import { useCommonTranslation } from "@/lib/i18n/dictionaries/common";
 
@@ -145,23 +145,23 @@ export function DesignTab() {
 
   return (
     <div className="space-y-6">
-      <PageHeader context="dark" title={t('titleDesign')} description={t('designSubtitle')} />
+      <PageHeader title={t('titleDesign')} description={t('designSubtitle')} />
 
       {/* Theme Builder */}
-      <Card context="dark" variant="flat">
+      <Card variant="plain">
         <CardHeader>
-          <h2 className="font-bold text-lg text-white flex items-center gap-2">
-            <Palette className="w-5 h-5 text-blue-400" />
+          <h2 className="font-semibold text-[var(--k-text)] flex items-center gap-2 text-sm">
+            <Palette className="w-4 h-4 text-[var(--k-accent)]" />
             {t('themeBuilderTitle')}
           </h2>
         </CardHeader>
         <CardBody>
-          <p className="text-sm text-slate-400 mb-4">{t('themeBuilderDescription')}</p>
+          <p className="text-sm text-[var(--k-text-3)] mb-4">{t('themeBuilderDescription')}</p>
           <div className="grid grid-cols-2 gap-4 max-w-md">
             <Field label={t('primaryColorLabel')}>
               {(id) => (
                 <div className="flex items-center gap-2">
-                  <input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} aria-label={t('primaryColorAriaLabel')} className="w-12 h-11 rounded-lg border border-slate-800 bg-slate-950 cursor-pointer" />
+                  <input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} aria-label={t('primaryColorAriaLabel')} className="w-11 h-10 rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-2)] cursor-pointer" />
                   <Input id={id} type="text" value={primary} onChange={(e) => setPrimary(e.target.value)} className="flex-1" />
                 </div>
               )}
@@ -169,34 +169,33 @@ export function DesignTab() {
             <Field label={t('secondaryColorLabel')}>
               {(id) => (
                 <div className="flex items-center gap-2">
-                  <input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} aria-label={t('secondaryColorAriaLabel')} className="w-12 h-11 rounded-lg border border-slate-800 bg-slate-950 cursor-pointer" />
+                  <input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} aria-label={t('secondaryColorAriaLabel')} className="w-11 h-10 rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-2)] cursor-pointer" />
                   <Input id={id} type="text" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="flex-1" />
                 </div>
               )}
             </Field>
           </div>
-          <Button onClick={handleSaveTheme} disabled={saving} className="mt-4">
-            {saved ? <CheckCircle2 className="w-4 h-4" /> : null}
+          <Button variant="primary" onClick={handleSaveTheme} disabled={saving} className="mt-4" icon={saved ? <CheckCircle2 className="w-4 h-4" /> : undefined}>
             {saving ? t('savingColors') : saved ? t('colorsSaved') : t('saveColorsButton')}
           </Button>
         </CardBody>
       </Card>
 
       {/* Banner system */}
-      <Card context="dark" variant="flat">
+      <Card variant="plain">
         <CardHeader>
-          <h2 className="font-bold text-lg text-white flex items-center gap-2">
-            <ImageIcon className="w-5 h-5 text-blue-400" />
+          <h2 className="font-semibold text-[var(--k-text)] flex items-center gap-2 text-sm">
+            <ImageIcon className="w-4 h-4 text-[var(--k-accent)]" />
             {t('bannerSystemTitle')}
           </h2>
         </CardHeader>
         <CardBody>
-          <p className="text-sm text-slate-400 mb-4">{t('bannerSystemDescription')}</p>
+          <p className="text-sm text-[var(--k-text-3)] mb-4">{t('bannerSystemDescription')}</p>
 
           {!bannersEnabled && (
-            <Alert tone="warning" icon={<span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />} className="mb-4 items-center">
-              <p className="text-xs font-semibold text-amber-300">{t('bannerFeatureDisabled')}</p>
-            </Alert>
+            <Banner tone="warning" icon={<span className="w-2 h-2 rounded-full bg-[var(--k-warning)] shrink-0" />} className="mb-4 items-center">
+              <p className="text-xs font-medium">{t('bannerFeatureDisabled')}</p>
+            </Banner>
           )}
 
           {/* editingBannerId set -> Save calls updateBanner (banners.edit);
@@ -258,13 +257,12 @@ export function DesignTab() {
             )}
 
             <div className="sm:col-span-2 flex gap-2">
-              <Button type="submit" disabled={bannerSaving} className="flex-1">
-                {editingBannerId ? <CheckCircle2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              <Button type="submit" variant="primary" disabled={bannerSaving} className="flex-1" icon={editingBannerId ? <CheckCircle2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}>
                 {editingBannerId ? t('saveChangesShort') : t('addBannerButton')}
               </Button>
               {editingBannerId && (
-                <Button type="button" variant="secondary" onClick={handleCancelEditBanner}>
-                  <X className="w-4 h-4" /> {tc('cancel')}
+                <Button type="button" variant="secondary" onClick={handleCancelEditBanner} icon={<X className="w-4 h-4" />}>
+                  {tc('cancel')}
                 </Button>
               )}
             </div>
@@ -272,17 +270,17 @@ export function DesignTab() {
           </fieldset>
 
           {banners.length === 0 ? (
-            <EmptyState icon={<ImageIcon className="w-8 h-8 text-blue-400" />} title={t('noBannersYet')} description={t('bannersNotFoundDescription')} />
+            <EmptyState icon={<ImageIcon className="w-5 h-5" />} title={t('noBannersYet')} description={t('bannersNotFoundDescription')} />
           ) : (
             <div className="space-y-2">
               {banners.map((b) => (
-                <div key={b.id} className={`flex items-center gap-3 bg-slate-950 border rounded-xl p-3 ${editingBannerId === b.id ? 'border-blue-500/60' : 'border-slate-800'} ${b.is_active ? '' : 'opacity-60'}`}>
+                <div key={b.id} className={`flex items-center gap-3 bg-[var(--k-surface-2)] border rounded-[var(--k-r)] p-3 ${editingBannerId === b.id ? 'border-[var(--k-accent)]/60' : 'border-[var(--k-border)]'} ${b.is_active ? '' : 'opacity-60'}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={b.image_url} alt={b.title || t('bannerAltFallback')} className="w-16 h-10 object-cover rounded-lg border border-slate-800 shrink-0" />
+                  <img src={b.image_url} alt={b.title || t('bannerAltFallback')} className="w-16 h-10 object-cover rounded-[var(--k-r-sm)] border border-[var(--k-border)] shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white truncate">{b.title || t('untitledBannerInline')}</p>
-                    {b.subtitle && <p className="text-xs text-slate-500 truncate">{b.subtitle}</p>}
-                    {!b.is_active && <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wide mt-0.5">{t('bannerInactiveLabel')}</p>}
+                    <p className="text-sm font-medium text-[var(--k-text)] truncate">{b.title || t('untitledBannerInline')}</p>
+                    {b.subtitle && <p className="text-xs text-[var(--k-text-3)] truncate">{b.subtitle}</p>}
+                    {!b.is_active && <p className="text-[10px] font-medium text-[var(--k-warning)] uppercase tracking-wide mt-0.5">{t('bannerInactiveLabel')}</p>}
                   </div>
                   {/* Active toggle is an updateBanner() PATCH, same as edit —
                       gated on the same capability. */}
@@ -290,10 +288,10 @@ export function DesignTab() {
                     <Button
                       onClick={() => handleToggleBannerActive(b)}
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       aria-label={b.is_active ? t('deactivateBannerAriaLabel')(b.title || t('untitledBannerLower')) : t('activateBannerAriaLabel')(b.title || t('untitledBannerLower'))}
                       title={b.is_active ? t('bannerActiveTooltip') : t('bannerInactiveTooltip')}
-                      className="shrink-0 p-2 rounded-lg"
+                      className="shrink-0"
                     >
                       {b.is_active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                     </Button>
@@ -302,9 +300,9 @@ export function DesignTab() {
                     <Button
                       onClick={() => handleEditBanner(b)}
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       aria-label={t('editBannerAriaLabel')(b.title || t('untitledBannerLower'))}
-                      className="shrink-0 p-2 rounded-lg hover:text-blue-400"
+                      className="shrink-0 hover:text-[var(--k-accent)]"
                     >
                       <Edit2 className="w-4 h-4" />
                     </Button>
@@ -313,9 +311,9 @@ export function DesignTab() {
                     <Button
                       onClick={() => handleDeleteBanner(b)}
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       aria-label={t('deleteBannerAriaLabel')(b.title || t('untitledBannerLower'))}
-                      className="shrink-0 p-2 rounded-lg hover:text-rose-400"
+                      className="shrink-0 hover:text-[var(--k-danger)]"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>

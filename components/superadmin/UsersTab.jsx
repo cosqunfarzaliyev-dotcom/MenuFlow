@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Search, Users as UsersIcon, ShieldCheck, UserCog, UserRound } from 'lucide-react';
 import { roleLabel, formatRelativeTime, LOCALE_TAGS } from './constants';
-import { Field, Input, Tabs, TabsTrigger, Table, TableHead, TableHeaderCell, TableBody, TableCell, Badge, EmptyState } from '@/components/ui';
+import { Field, Input, Tabs, TabsTrigger, Table, TableHead, TableHeaderCell, TableBody, TableCell, Tag, EmptyState } from '@/components/kit';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
 // Kept as a function now that labels are translated.
@@ -40,7 +40,7 @@ export function UsersTab({ users, loading }) {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 z-10" />
+          <Search className="w-4 h-4 text-[var(--k-text-3)] absolute left-3.5 top-1/2 -translate-y-1/2 z-10" />
           {/* No visible <label> existed before — Field used unlabeled, only
               for the Input primitive's id/aria wiring. */}
           <Field>
@@ -56,8 +56,7 @@ export function UsersTab({ users, loading }) {
             )}
           </Field>
         </div>
-        {/* Segmented single-select role filter — same shape Tabs already
-            models (active bg-blue-600 == var(--mf-primary), matches exactly). */}
+        {/* Segmented single-select role filter. */}
         <Tabs className="overflow-x-auto no-scrollbar">
           {roleFilters(t).map((f) => (
             <TabsTrigger key={f.id} active={roleFilter === f.id} onClick={() => setRoleFilter(f.id)}>
@@ -68,20 +67,20 @@ export function UsersTab({ users, loading }) {
       </div>
 
       {/* EmptyState renders as its own top-level replacement (not nested
-          inside sa-card, which carries its own glass-panel box). The loading
-          and table branches keep sa-card exactly as before. */}
+          inside a card). The loading and table branches keep a plain kit
+          Card-style surface. */}
       {loading ? (
-        <div className="sa-card overflow-hidden">
-          <div className="py-16 text-center sa-caption text-slate-500">{t('loadingText')}</div>
+        <div className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] overflow-hidden">
+          <div className="py-16 text-center text-[13px] text-[var(--k-text-3)]">{t('loadingText')}</div>
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon={<UsersIcon className="w-8 h-8 text-slate-700" />}
+          icon={<UsersIcon className="w-5 h-5" />}
           title={query ? t('noResultsFound') : t('noUsersYet')}
           description=""
         />
       ) : (
-        <div className="sa-card overflow-hidden">
+        <div className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] overflow-hidden">
           <Table>
             <TableHead>
               {[t('colUser'), t('colRestaurant'), t('colRole'), t('colStatus'), t('colLastLogin')].map((h) => (
@@ -100,30 +99,27 @@ export function UsersTab({ users, loading }) {
                     key={u.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ delay: Math.min(idx * 0.03, 0.3) }}
-                    className="hover:bg-slate-800/40 transition-colors border-t border-slate-800/60"
+                    transition={{ delay: Math.min(idx * 0.025, 0.25) }}
+                    className="hover:bg-[var(--k-surface-2)] transition-colors border-t border-[var(--k-border)]"
                   >
                     <TableCell>
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0">
-                          <Icon className="w-3.5 h-3.5 text-slate-400" />
+                        <div className="w-8 h-8 rounded-full bg-[var(--k-surface-3)] flex items-center justify-center shrink-0">
+                          <Icon className="w-3.5 h-3.5 text-[var(--k-text-3)]" />
                         </div>
-                        <span className="text-white font-semibold whitespace-nowrap">{u.email}</span>
+                        <span className="text-[var(--k-text)] font-medium whitespace-nowrap">{u.email}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-slate-400 whitespace-nowrap">{u.restaurant_name || '—'}</TableCell>
+                    <TableCell className="text-[var(--k-text-3)] whitespace-nowrap">{u.restaurant_name || '—'}</TableCell>
                     <TableCell>
-                      <span className="sa-caption font-bold text-slate-300 whitespace-nowrap">{roleLabel(u.role, t)}</span>
+                      <span className="text-[13px] font-medium text-[var(--k-text-2)] whitespace-nowrap">{roleLabel(u.role, t)}</span>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        tone={isOnline ? 'success' : 'neutral'}
-                        className={`whitespace-nowrap border ${isOnline ? '' : 'bg-slate-800/60 border-slate-700'}`}
-                      >
+                      <Tag tone={isOnline ? 'success' : 'neutral'} className="whitespace-nowrap">
                         {isOnline ? t('onlineLabel') : t('offlineLabel')}
-                      </Badge>
+                      </Tag>
                     </TableCell>
-                    <TableCell className="text-slate-400 whitespace-nowrap">{formatRelativeTime(u.last_sign_in_at, t, localeTag)}</TableCell>
+                    <TableCell className="text-[var(--k-text-3)] whitespace-nowrap">{formatRelativeTime(u.last_sign_in_at, t, localeTag)}</TableCell>
                   </motion.tr>
                 );
               })}

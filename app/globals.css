@@ -2,6 +2,15 @@
    Tailwind's ~2.6k lines in place, after which a later @import no longer
    "precedes all rules" and CSS parsing fails outright (500 on every route). */
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Inter:wght@400;500;600;700;800&display=swap');
+/* Quiet Premium design tokens for the 4 app panels (--k-*, .kit-dark/.kit-light).
+   Sits HERE, not at the end of the file: CSS requires every @import to precede
+   all other rules, so "append at the bottom" is not actually a legal option —
+   and anything after `@import "tailwindcss"` hits the inlining problem the
+   comment above describes. Grouping it with the other @imports satisfies both.
+   Being unlayered, its rules still win over Tailwind's `@layer base` preflight
+   regardless of source order, which is what lets `.kit-* h1` cancel the global
+   Playfair rule below. */
+@import "../components/kit/tokens.css";
 @import "tailwindcss";
 
 @layer base {
@@ -199,81 +208,33 @@
 }
 
 /* ============================================================================
-   Super Admin design system — radius/spacing/type scale tokens used across
-   the Dashboard, Restaurants, Subscriptions, Analytics and Users tabs.
-   ============================================================================ */
-.superadmin-theme {
-  --sa-radius-button: 16px;
-  --sa-radius-card: 20px;
-  --sa-radius-modal: 28px;
-  --sa-radius-input: 14px;
-}
-
-.sa-radius-button { border-radius: var(--sa-radius-button); }
-.sa-radius-card { border-radius: var(--sa-radius-card); }
-.sa-radius-modal { border-radius: var(--sa-radius-modal); }
-.sa-radius-input { border-radius: var(--sa-radius-input); }
-
-.sa-heading-1 { font-size: 32px; line-height: 1.2; font-weight: 700; }
-.sa-heading-2 { font-size: 28px; line-height: 1.25; font-weight: 700; }
-.sa-heading-3 { font-size: 24px; line-height: 1.3; font-weight: 700; }
-.sa-heading-4 { font-size: 20px; line-height: 1.35; font-weight: 600; }
-.sa-body { font-size: 16px; line-height: 1.5; }
-.sa-caption { font-size: 14px; line-height: 1.4; }
-
-.sa-card {
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--sa-radius-card);
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
-}
-.sa-card:hover {
-  transform: translateY(-5px);
-  border-color: rgba(59, 130, 246, 0.35);
-  box-shadow: 0 16px 34px -12px rgba(0, 0, 0, 0.45);
-}
-
-.sa-btn {
-  border-radius: var(--sa-radius-button);
-  transition: transform 0.12s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-}
-.sa-btn:active { transform: scale(0.98); }
-
-@keyframes sa-toast-in {
-  from { opacity: 0; transform: translate(16px, -12px) scale(0.95); }
-  to { opacity: 1; transform: translate(0, 0) scale(1); }
-}
-.sa-toast { animation: sa-toast-in 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
-
-@keyframes sa-sidebar-in {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-.sa-sidebar-item { animation: sa-sidebar-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
-
-/* ============================================================================
    Management (dark) context tokens for components/ui/* primitives.
    ----------------------------------------------------------------------------
    `.customer-theme` already defines a `--mf-*` semantic namespace (bg, border,
    primary, text, success, warning) for the light per-restaurant customer
-   menu. Admin/Staff/SuperAdmin have no equivalent — every dark surface today
-   is a literal `bg-slate-900 border-slate-800` string repeated ~90 times.
-   `.mf-dark` gives the SAME `--mf-*` keys dark values, so a primitive that
-   only ever reads `var(--mf-*)` renders correctly in both contexts with no
-   `variant="dark"` class-string branching baked into the component itself —
-   only the cva `context` prop selects which literal Tailwind classes apply
+   menu. `.mf-dark` gives the SAME `--mf-*` keys dark values so a primitive
+   that only ever reads `var(--mf-*)` renders correctly in both contexts with
+   no `variant="dark"` class-string branching baked into the component itself
+   — only the cva `context` prop selects which literal Tailwind classes apply
    (see components/ui/variants.js), and those classes are written to
    reference these variables rather than hardcoded hex/slate values so the
-   two token systems stay the single source of truth.
+   two token systems stay the single source of truth. `.mf-dark` is mounted
+   on `<body>` (app/layout.jsx) and still load-bearing for the marketing
+   site, /login, /reset-password and /onboarding — those four surfaces are
+   the only remaining `components/ui` consumers now that Customer/Staff/
+   Admin/SuperAdmin all run on the separate `components/kit` ("Quiet
+   Premium") system instead (see components/kit/tokens.css's own header).
 
-   This does NOT replace `.superadmin-theme` (`--sa-radius-*`, `.sa-card`,
-   `.sa-btn`, the `sa-*` type scale) — those keep governing the SuperAdmin
-   panel's existing glass surfaces untouched. `.mf-dark` is scoped to the
-   handful of new primitives (Button/Input/Field/Badge) that Admin, Staff
-   AND SuperAdmin can all equally adopt, since none of those four primitives
-   currently exist in any form.
+   The `.superadmin-theme`/`.sa-*` glass-panel system (radius tokens, type
+   scale, `.sa-card` hover-lift, `.sa-toast`/`.sa-sidebar-item` keyframes)
+   that used to sit here was retired when the SuperAdmin panel's Quiet
+   Premium redesign replaced every one of its consumers — `.superadmin-theme`
+   is no longer mounted anywhere and `.sa-*` has no remaining call site
+   (confirmed by a repo-wide search before removal; only
+   `components/ui/Toast.jsx`, itself unreferenced by any surface, still
+   contains dead `sa-toast`/`sa-card`/`sa-caption` class-name literals in its
+   own JSX — left as-is rather than edited, since it's an orphaned old-kit
+   file, not a live consumer of this CSS).
    ============================================================================ */
 .mf-dark {
   --mf-bg: #050505;
@@ -299,13 +260,13 @@
    them reduced-motion awareness is a separate, later change
    (`<MotionConfig reducedMotion="user">` at each app root). */
 @media (prefers-reduced-motion: reduce) {
-  .sa-toast, .sa-sidebar-item, .qr-code-card {
+  .qr-code-card {
     animation: none;
   }
-  .glass-panel-interactive, .sa-card, .sa-btn, .customer-card, .customer-btn-primary {
+  .glass-panel-interactive, .customer-card, .customer-btn-primary {
     transition: none;
   }
-  .sa-card:hover, .customer-card:hover {
+  .customer-card:hover {
     transform: none;
   }
 }

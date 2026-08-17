@@ -1,0 +1,184 @@
+/* ============================================================================
+   Quiet Premium — design tokens for the 4 application panels.
+   ----------------------------------------------------------------------------
+   Imported at the END of app/globals.css. That position is deliberate: the
+   Google-Fonts @import must stay above `@import "tailwindcss"` (see the comment
+   at the top of globals.css — Turbopack inlines Tailwind in place and any
+   @import after it stops "preceding all rules", which 500s every route). This
+   file contains no @import of its own, so appending it is always safe.
+
+   SCOPE: these tokens live under `.kit-dark` / `.kit-light`, mounted on each
+   PANEL ROOT — never on <body>. The marketing site, /login, /reset-password
+   and /onboarding keep rendering through the older `--mf-*` / `--sa-*` layer,
+   which this file does not touch. Two systems coexist on purpose.
+
+   NAMING: `--k-*` (kit). Chosen so it can never collide with `--mf-*`
+   (old primitive kit), `--sa-*` (SuperAdmin glass system) or `--theme-*`
+   (per-restaurant brand color injected from the database at runtime).
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   Shared scale — identical in both themes, so components never branch on it.
+   ---------------------------------------------------------------------------- */
+.kit-dark,
+.kit-light {
+  /* Radius. Deliberately tighter than the old system (16-20px -> 10px):
+     large radii read as "app from 2021", small ones read as precise. */
+  --k-r-sm: 6px;
+  --k-r: 10px;
+  --k-r-lg: 14px;
+
+  /* Motion. One duration + one curve for the whole product, so nothing feels
+     like it belongs to a different app. Fast enough to feel instant, slow
+     enough to be perceived. */
+  --k-dur: 160ms;
+  --k-dur-slow: 240ms;
+  --k-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ----------------------------------------------------------------------------
+   Dark — Admin / Staff / SuperAdmin.
+   True neutral greys, NOT Tailwind slate. Slate is blue-tinted (#0f172a has a
+   visible blue cast); against food photography and orange accents that reads
+   cold and dated. These are pure-hue-neutral with a hair of warmth.
+   ---------------------------------------------------------------------------- */
+.kit-dark {
+  --k-bg: #0A0A0B;          /* page canvas */
+  --k-surface: #141416;     /* card / panel */
+  --k-surface-2: #1C1C1F;   /* raised: inputs, table header, nested card */
+  --k-surface-3: #232327;   /* hover / pressed */
+
+  --k-border: #26262A;      /* hairline — the ONLY elevation cue (no shadows) */
+  --k-border-2: #34343A;    /* emphasised divider / focused input */
+
+  --k-text: #FAFAFA;
+  --k-text-2: #A1A1A6;      /* secondary — labels, meta */
+  --k-text-3: #6E6E76;      /* tertiary — placeholders, disabled */
+
+  --k-accent: #F97316;
+  --k-accent-hover: #FB923C;
+  --k-accent-fg: #0A0A0B;   /* text ON accent — dark, not white: 8.9:1 on orange */
+  --k-accent-soft: rgba(249, 115, 22, 0.14);
+  --k-accent-line: rgba(249, 115, 22, 0.32);
+
+  --k-success: #34D399;
+  --k-success-soft: rgba(52, 211, 153, 0.13);
+  --k-warning: #FBBF24;
+  --k-warning-soft: rgba(251, 191, 36, 0.13);
+  --k-danger: #F87171;
+  --k-danger-soft: rgba(248, 113, 113, 0.13);
+  --k-info: #60A5FA;
+  --k-info-soft: rgba(96, 165, 250, 0.13);
+
+  --k-focus: #F97316;
+  --k-scrim: rgba(0, 0, 0, 0.72);
+
+  color: var(--k-text);
+  /* Inter for data-dense management UI. Already loaded by globals.css:4 —
+     no new font request. Previously this surface used Plus Jakarta Sans and
+     the customer menu used Inter; the redesign swaps them, which is why both
+     surfaces read as genuinely different products now. */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+/* ----------------------------------------------------------------------------
+   Light — the customer QR menu.
+   Warm off-white, not the old cold #F7F8FA. Food photography sits on this
+   canvas; a blue-grey ground makes every dish look slightly grey too.
+   ---------------------------------------------------------------------------- */
+.kit-light {
+  --k-bg: #FAFAF9;
+  --k-surface: #FFFFFF;
+  --k-surface-2: #F5F5F4;
+  --k-surface-3: #EFEEEC;
+
+  --k-border: #EBEAE8;
+  --k-border-2: #DCDAD6;
+
+  --k-text: #18181B;
+  --k-text-2: #71717A;
+  --k-text-3: #A1A1AA;
+
+  /* The accent IS the restaurant's own brand colour, injected inline by
+     CustomerApp from restaurant.theme_primary_color. This is functional data,
+     not a design choice — the fallback only applies before the row loads. */
+  --k-accent: var(--theme-primary, #18181B);
+  --k-accent-hover: var(--theme-primary, #18181B);
+  --k-accent-fg: #FFFFFF;
+  --k-accent-soft: color-mix(in srgb, var(--theme-primary, #18181B) 10%, transparent);
+  --k-accent-line: color-mix(in srgb, var(--theme-primary, #18181B) 28%, transparent);
+
+  --k-success: #15803D;
+  --k-success-soft: rgba(34, 197, 94, 0.12);
+  --k-warning: #B45309;
+  --k-warning-soft: rgba(245, 158, 11, 0.14);
+  --k-danger: #B91C1C;
+  --k-danger-soft: rgba(239, 68, 68, 0.10);
+  --k-info: #1D4ED8;
+  --k-info-soft: rgba(59, 130, 246, 0.10);
+
+  --k-focus: var(--theme-primary, #18181B);
+  --k-scrim: rgba(24, 24, 27, 0.45);
+
+  color: var(--k-text);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ----------------------------------------------------------------------------
+   Cancel the global Playfair Display serif inside kit scopes only.
+   globals.css:15-17 sets `h1,h2,h3,.font-serif-title { Playfair Display }`
+   GLOBALLY. The marketing site uses that on purpose (15 call sites) and must
+   keep it, so the rule itself stays untouched — we override per scope instead.
+   ---------------------------------------------------------------------------- */
+.kit-dark h1, .kit-dark h2, .kit-dark h3, .kit-dark h4,
+.kit-light h1, .kit-light h2, .kit-light h3, .kit-light h4 {
+  font-family: inherit;
+  letter-spacing: -0.02em;
+}
+
+/* Numbers in tables, prices, counters and timers must not reflow as digits
+   change — a real bug class in the orders/analytics screens. */
+.kit-dark .k-nums,
+.kit-light .k-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* Scrollbars, scoped so the global slate/blue scrollbar rule in globals.css
+   (67-80) does not bleed into the redesigned panels. */
+.kit-dark ::-webkit-scrollbar,
+.kit-light ::-webkit-scrollbar { width: 10px; height: 10px; }
+.kit-dark ::-webkit-scrollbar-track,
+.kit-light ::-webkit-scrollbar-track { background: transparent; }
+.kit-dark ::-webkit-scrollbar-thumb,
+.kit-light ::-webkit-scrollbar-thumb {
+  background: var(--k-border-2);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.kit-dark ::-webkit-scrollbar-thumb:hover,
+.kit-light ::-webkit-scrollbar-thumb:hover { background-clip: content-box; background-color: var(--k-text-3); }
+
+/* ----------------------------------------------------------------------------
+   Reduced motion. Mirrors the existing block at the bottom of globals.css:
+   deliberately NOT a blanket `*{animation:none}` — motion/react drives
+   SuperAdmin's animations through WAAPI and a global kill breaks
+   AnimatePresence exit transitions (elements would never unmount).
+   ---------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .kit-dark, .kit-light {
+    --k-dur: 1ms;
+    --k-dur-slow: 1ms;
+  }
+  .kit-dark .k-anim-in,
+  .kit-light .k-anim-in { animation: none; }
+}
+
+/* Panel entrance — one shared, very restrained fade+rise. */
+@keyframes k-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.k-anim-in { animation: k-in var(--k-dur-slow) var(--k-ease) both; }

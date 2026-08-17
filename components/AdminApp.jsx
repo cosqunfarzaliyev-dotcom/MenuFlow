@@ -14,7 +14,12 @@ import {
   Wallet, CreditCard, Smartphone,
 } from 'lucide-react';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
-import { LoadingState, ErrorState, EmptyState, PageSkeleton, Modal, Alert, Tabs, TabsTrigger, Sidebar, SidebarMenuButton, ConfirmDialog, useConfirmDialog, Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell, TableEmptyRow, Card, CardHeader, CardBody, PageHeader, Button, Input, Select, Field, Badge } from '@/components/ui';
+import {
+  LoadingState, ErrorState, EmptyState, PageSkeleton, Sheet, SheetHeader, SheetFooter, Banner, Tabs, TabsTrigger,
+  Sidebar, SidebarMenuButton, ConfirmDialog, useConfirmDialog, Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell, TableEmptyRow,
+  Card, CardHeader, CardBody, PageHeader, Button, Input, Select, Textarea, Checkbox, Field, Tag, LanguageToggle,
+} from '@/components/kit';
+import { buttonVariants } from '@/components/kit/variants';
 import { QRCodeSVG } from 'qrcode.react';
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { SettingsTab } from '@/components/SettingsTab';
@@ -25,8 +30,6 @@ import { getTrialDaysLeft, isAccessBlocked, accessBlockReason } from '@/lib/serv
 import { getEntitlements } from '@/lib/services/entitlementService';
 import { CAPABILITIES } from '@/lib/services/capabilityService';
 import { useCapabilities } from '@/hooks/useCapability';
-import { BADGE_TONE_CLASSES } from '@/components/ui/variants';
-import { LanguageSwitcher } from '@/components/ui';
 import { useAdminTranslation, LOCALE_TAGS } from '@/lib/i18n/dictionaries/admin';
 import { useCommonTranslation } from '@/lib/i18n/dictionaries/common';
 import { useLocaleSync } from '@/hooks/useLocaleSync';
@@ -378,7 +381,7 @@ export function AdminApp() {
   if (!isMounted) return null;
 
   if (authChecking) {
-    return <PageSkeleton />;
+    return <PageSkeleton className="kit-dark" />;
   }
 
   // Role-based routing: this screen is only for restaurant_admin. Other
@@ -413,11 +416,15 @@ export function AdminApp() {
   }
 
   if (isAdminAuthenticated && loading) {
-    return <PageSkeleton />;
+    return <PageSkeleton className="kit-dark" />;
   }
 
   if (isAdminAuthenticated && loadError) {
-    return <ErrorState title={t('loadErrorTitle')} description={loadError} onRetry={() => window.location.reload()} />;
+    return (
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)]">
+        <ErrorState title={t('loadErrorTitle')} description={loadError} actionLabel={tc('tryAgain')} onRetry={() => window.location.reload()} />
+      </div>
+    );
   }
 
   const handleLogout = async () => {
@@ -475,20 +482,11 @@ export function AdminApp() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans flex">
+    <div className="kit-dark min-h-screen bg-[var(--k-bg)] text-[var(--k-text)] font-sans flex">
 
-      {/* Sidebar — matches the dark glass shell used by Staff/SuperAdmin panels
-          and by this same file's own auth-gate screens (see
-          SubscriptionLockedScreen/RoleRedirect/UnassignedScreen below); this
-          used to be a separate light theme, which is what created the
-          light-shell/dark-tab split fixed in this pass.
-
-          Mobile nav (Phase B): previously `hidden md:flex` with NO fallback
-          below 768px — a restaurant_admin on a phone could see whichever tab
-          loaded first but had no way to ever switch tabs. `components/ui/Sidebar`
-          (the scrim + off-canvas drawer pattern already proven in
-          components/superadmin/Sidebar.jsx) fixes that; the `<SidebarMenuButton>`
-          in the topbar below opens it. */}
+      {/* Sidebar — kit's Sidebar (ported from components/ui/Sidebar.jsx for
+          this panel, see components/kit/Sidebar.jsx) keeps the same mobile
+          scrim + off-canvas drawer behavior; only the tokens changed. */}
       <Sidebar
         items={NAV_ITEMS}
         activeKey={activeTab}
@@ -499,23 +497,23 @@ export function AdminApp() {
         header={
           settings.restaurantLogo ? (
             <div className="flex items-center gap-3 min-w-0">
-              <Image src={settings.restaurantLogo} alt="Logo" width={36} height={36} className="w-9 h-9 rounded-xl object-cover shrink-0" unoptimized />
+              <Image src={settings.restaurantLogo} alt="Logo" width={36} height={36} className="w-9 h-9 rounded-[var(--k-r)] object-cover shrink-0" unoptimized />
               <div className="min-w-0">
-                <h2 className="font-bold text-base text-white leading-tight truncate">{settings.restaurantName}</h2>
-                <span className="text-[11px] text-slate-400 font-semibold">{t('adminPanelLabel')}</span>
+                <h2 className="font-semibold text-[15px] text-[var(--k-text)] leading-tight truncate">{settings.restaurantName}</h2>
+                <span className="text-[11px] text-[var(--k-text-3)] font-medium">{t('adminPanelLabel')}</span>
               </div>
             </div>
           ) : (
             <div className="min-w-0">
               <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={110} height={17} className="h-4 w-auto object-contain mb-1" unoptimized />
-              <span className="text-[11px] text-slate-400 font-semibold truncate block">{settings.restaurantName ? `${settings.restaurantName} — ` : ''}{t('adminPanelLabel')}</span>
+              <span className="text-[11px] text-[var(--k-text-3)] font-medium truncate block">{settings.restaurantName ? `${settings.restaurantName} — ` : ''}{t('adminPanelLabel')}</span>
             </div>
           )
         }
         footer={
           <>
-            <LanguageSwitcher context="dark" profile={profile} className="w-full justify-center" />
-            <Link href="/staff" className="w-full flex items-center justify-center gap-2 py-2.5 text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-emerald-600 rounded-xl font-bold transition-all text-xs border border-emerald-500/20">
+            <LanguageToggle profile={profile} className="w-full justify-center" />
+            <Link href="/staff" className="w-full flex items-center justify-center gap-2 h-9 text-[var(--k-success)] hover:text-[var(--k-text)] bg-[var(--k-success-soft)] hover:bg-[var(--k-success)] rounded-[var(--k-r)] font-medium transition-colors text-xs">
               <UtensilsCrossed className="w-4 h-4" />
               <span>{t('staffPanelLink')}</span>
             </Link>
@@ -523,11 +521,11 @@ export function AdminApp() {
                 (see app/page.jsx) — link to this admin's own real menu when
                 the slug is known, falling back to the marketing home rather
                 than a dead link while it's still loading. */}
-            <Link href={restaurant?.slug ? `/menu/${restaurant.slug}` : '/'} className="w-full flex items-center justify-center gap-2 py-2.5 text-blue-400 hover:text-white bg-blue-500/10 hover:bg-blue-600 rounded-xl font-bold transition-all text-xs">
+            <Link href={restaurant?.slug ? `/menu/${restaurant.slug}` : '/'} className="w-full flex items-center justify-center gap-2 h-9 text-[var(--k-accent)] hover:text-[var(--k-accent-fg)] bg-[var(--k-accent-soft)] hover:bg-[var(--k-accent)] rounded-[var(--k-r)] font-medium transition-colors text-xs">
               <QrCode className="w-4 h-4" />
               <span>{t('customerMenuLink')}</span>
             </Link>
-            <button onClick={handleLogout} className="w-full py-2.5 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-xl font-bold transition-colors text-xs">
+            <button onClick={handleLogout} className="w-full h-9 text-[var(--k-text-2)] hover:text-[var(--k-text)] bg-[var(--k-surface-2)] border border-[var(--k-border)] hover:bg-[var(--k-surface-3)] rounded-[var(--k-r)] font-medium transition-colors text-xs">
               {t('logoutButton')}
             </button>
             <div className="flex items-center justify-center pt-2">
@@ -541,62 +539,62 @@ export function AdminApp() {
       <div className="flex-1 min-w-0 flex flex-col">
 
         {/* Topbar */}
-        <div className="h-20 shrink-0 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800 px-4 sm:px-8 flex items-center justify-between gap-4 sticky top-0 z-10">
-          <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-400 min-w-0">
+        <div className="h-16 shrink-0 bg-[var(--k-surface)]/90 backdrop-blur-xl border-b border-[var(--k-border)] px-4 sm:px-8 flex items-center justify-between gap-4 sticky top-0 z-10">
+          <div className="flex items-center gap-1.5 text-sm font-medium text-[var(--k-text-3)] min-w-0">
             <SidebarMenuButton breakpoint="md" onClick={() => setMobileNavOpen(true)} className="mr-1" />
             <span className="truncate">{t('adminBreadcrumb')}</span>
             <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-            <span className="text-white truncate">{PAGE_TITLES[activeTab]}</span>
+            <span className="text-[var(--k-text)] truncate">{PAGE_TITLES[activeTab]}</span>
           </div>
 
           <div className="flex items-center gap-3 sm:gap-5 shrink-0">
-            <LanguageSwitcher context="dark" profile={profile} className="hidden sm:inline-flex" />
+            <LanguageToggle profile={profile} className="hidden sm:inline-flex" />
             <Link
               href="/staff"
-              className="hidden sm:flex items-center gap-2 px-3.5 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all"
+              className="hidden sm:flex items-center gap-2 px-3.5 h-9 bg-[var(--k-success-soft)] hover:bg-[var(--k-success)]/25 text-[var(--k-success)] border border-[color:var(--k-success)]/30 rounded-[var(--k-r)] text-xs font-medium transition-colors"
               title={t('staffPanelLinkTitle')}
             >
               <UtensilsCrossed className="w-4 h-4" />
               <span>{t('staffPanelShort')}</span>
             </Link>
-            <div className="hidden lg:flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 w-64">
-              <Search className="w-4 h-4 text-slate-500" />
+            <div className="hidden lg:flex items-center gap-2 bg-[var(--k-surface-2)] border border-[var(--k-border)] rounded-[var(--k-r)] px-3.5 h-10 w-64">
+              <Search className="w-4 h-4 text-[var(--k-text-3)]" />
               <input
                 type="text"
                 placeholder={t('searchPlaceholder')}
-                className="bg-transparent outline-none text-sm text-white placeholder:text-slate-500 w-full"
+                className="bg-transparent outline-none text-sm text-[var(--k-text)] placeholder:text-[var(--k-text-3)] w-full"
               />
             </div>
-            <button className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 transition-colors text-slate-400">
-              <Bell className="w-4.5 h-4.5" />
-              <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-rose-500 border border-slate-950" />
+            <button className="relative w-9 h-9 flex items-center justify-center rounded-[var(--k-r)] bg-[var(--k-surface-2)] border border-[var(--k-border)] hover:bg-[var(--k-surface-3)] transition-colors text-[var(--k-text-2)]">
+              <Bell className="w-4 h-4" />
+              <span className="absolute top-2 right-2.5 w-1.5 h-1.5 rounded-full bg-[var(--k-danger)]" />
             </button>
-            <div className="flex items-center gap-2.5 pl-3 sm:border-l border-slate-800">
-              <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
+            <div className="flex items-center gap-2.5 pl-3 sm:border-l border-[var(--k-border)]">
+              <div className="w-8 h-8 rounded-full bg-[var(--k-accent)] text-[var(--k-accent-fg)] flex items-center justify-center font-semibold text-sm">
                 {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
               </div>
               <div className="hidden sm:block leading-tight">
-                <p className="text-sm font-bold text-white">{settings.restaurantName || 'MenuFlow'}</p>
-                <p className="text-[11px] text-slate-400 font-semibold">{t('adminBadge')}</p>
+                <p className="text-sm font-semibold text-[var(--k-text)]">{settings.restaurantName || 'MenuFlow'}</p>
+                <p className="text-[11px] text-[var(--k-text-3)] font-medium">{t('adminBadge')}</p>
               </div>
             </div>
           </div>
         </div>
 
         {showTrialBanner && (
-          <Alert
+          <Banner
             tone="warning"
-            className="mx-4 sm:mx-8 mt-4 justify-between"
+            className="mx-4 sm:mx-8 mt-4 justify-between items-center"
             action={
-              <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className="whitespace-nowrap text-xs font-bold bg-amber-500 hover:bg-amber-400 text-black px-4 py-1.5 rounded-lg transition-colors">
+              <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className="whitespace-nowrap text-xs font-semibold bg-[var(--k-warning)] hover:opacity-90 text-[var(--k-bg)] px-3.5 py-1.5 rounded-[var(--k-r-sm)] transition-opacity">
                 {t('upgradeToSubscription')}
               </a>
             }
           >
-            <p className="text-amber-300 text-sm font-bold">
+            <p className="text-sm font-medium">
               {trialDaysLeft === 0 ? t('trialEndsToday') : t('trialEndsInDays')(trialDaysLeft)}
             </p>
-          </Alert>
+          </Banner>
         )}
 
         {/* Products' and Categories' own action rows both moved into their
@@ -663,14 +661,13 @@ export function AdminApp() {
           {activeTab === 'products' && can[CAPABILITIES.PRODUCTS_VIEW] && (
             <div className="space-y-6">
               <PageHeader
-                context="dark"
                 title={t('titleProducts')}
                 description={t('productsSubtitle')}
                 actions={
                   <>
                     {can[CAPABILITIES.PRODUCTS_CREATE] && (
-                      <Button onClick={() => handleOpenProductModal()}>
-                        <Plus className="w-4 h-4" /> {t('newProduct')}
+                      <Button variant="primary" onClick={() => handleOpenProductModal()} icon={<Plus className="w-4 h-4" />}>
+                        {t('newProduct')}
                       </Button>
                     )}
                     <RealtimeStatusBadge />
@@ -679,7 +676,7 @@ export function AdminApp() {
               />
 
               {products.length > 0 ? (
-                <Card context="dark" variant="flat" className="overflow-hidden">
+                <Card variant="plain" className="overflow-hidden">
                   <Table>
                     <TableHead>
                       <TableHeaderCell>{t('colProduct')}</TableHeaderCell>
@@ -692,7 +689,7 @@ export function AdminApp() {
                         <TableRow key={product.id}>
                           <TableCell>
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-11 h-11 rounded-xl overflow-hidden bg-slate-800 shrink-0">
+                              <div className="w-11 h-11 rounded-[var(--k-r)] overflow-hidden bg-[var(--k-surface-3)] shrink-0">
                                 <Image
                                   src={product.image?.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80"}
                                   alt={product.name}
@@ -702,14 +699,14 @@ export function AdminApp() {
                                   unoptimized
                                 />
                               </div>
-                              <span className="font-bold text-white truncate">{product.name}</span>
+                              <span className="font-medium text-[var(--k-text)] truncate">{product.name}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="font-bold text-blue-400 whitespace-nowrap">{product.price} {settings.currencySymbol || '₼'}</TableCell>
+                          <TableCell className="font-semibold text-[var(--k-text)] whitespace-nowrap">{product.price} {settings.currencySymbol || '₼'}</TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1.5">
-                              {product.isPopular && <Badge tone="warning">{t('popularBadge')}</Badge>}
-                              {product.isChefChoice && <Badge tone="info">{t('chefChoiceBadge')}</Badge>}
+                              {product.isPopular && <Tag tone="warning">{t('popularBadge')}</Tag>}
+                              {product.isChefChoice && <Tag tone="info">{t('chefChoiceBadge')}</Tag>}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -717,7 +714,7 @@ export function AdminApp() {
                               {can[CAPABILITIES.PRODUCTS_EDIT] && (
                                 <button
                                   onClick={() => handleOpenProductModal(product)}
-                                  className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-colors"
+                                  className="p-2 rounded-[var(--k-r-sm)] bg-[var(--k-surface-2)] text-[var(--k-text-2)] hover:text-[var(--k-text)] transition-colors"
                                 >
                                   <Edit2 className="w-4 h-4" />
                                 </button>
@@ -725,7 +722,7 @@ export function AdminApp() {
                               {can[CAPABILITIES.PRODUCTS_DELETE] && (
                                 <button
                                   onClick={() => handleDeleteProduct(product.id)}
-                                  className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
+                                  className="p-2 rounded-[var(--k-r-sm)] bg-[var(--k-danger-soft)] text-[var(--k-danger)] hover:opacity-80 transition-opacity"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -757,7 +754,6 @@ export function AdminApp() {
           {activeTab === 'categories' && can[CAPABILITIES.PRODUCTS_VIEW] && (
             <div className="space-y-6">
               <PageHeader
-                context="dark"
                 title={t('titleCategories')}
                 description={t('categoriesSubtitle')}
                 actions={
@@ -766,8 +762,8 @@ export function AdminApp() {
                         capabilityService.js's note, category CRUD rides
                         products.* */}
                     {can[CAPABILITIES.PRODUCTS_CREATE] && (
-                      <Button onClick={() => handleOpenCategoryModal()}>
-                        <Plus className="w-4 h-4" /> {t('newCategory')}
+                      <Button variant="primary" onClick={() => handleOpenCategoryModal()} icon={<Plus className="w-4 h-4" />}>
+                        {t('newCategory')}
                       </Button>
                     )}
                     <RealtimeStatusBadge />
@@ -776,24 +772,24 @@ export function AdminApp() {
               />
 
               {categories.length > 0 ? (
-                <Card context="dark" variant="flat">
+                <Card variant="plain">
                   <CardBody className="space-y-3">
                     {categories.map(category => {
                       const productCount = products.filter(p => p.category === category.id).length;
                       return (
-                        <div key={category.id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-900/50 border border-slate-800">
+                        <div key={category.id} className="flex items-center justify-between p-4 rounded-[var(--k-r-lg)] bg-[var(--k-surface-2)] border border-[var(--k-border)]">
                           <div className="flex items-center gap-4 min-w-0">
-                            <span className="text-3xl bg-slate-800 p-3 rounded-xl shrink-0">{category.icon}</span>
+                            <span className="text-3xl bg-[var(--k-surface-3)] p-3 rounded-[var(--k-r)] shrink-0">{category.icon}</span>
                             <div className="min-w-0">
-                              <span className="text-white font-bold text-lg truncate block">{category.name}</span>
-                              <Badge tone="neutral" className="mt-1">{productCount} {t('itemsSuffix')}</Badge>
+                              <span className="text-[var(--k-text)] font-semibold text-base truncate block">{category.name}</span>
+                              <Tag tone="neutral" className="mt-1">{productCount} {t('itemsSuffix')}</Tag>
                             </div>
                           </div>
                           <div className="flex gap-2 shrink-0">
                             {can[CAPABILITIES.PRODUCTS_EDIT] && (
                               <button
                                 onClick={() => handleOpenCategoryModal(category)}
-                                className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-colors"
+                                className="p-2 rounded-[var(--k-r-sm)] bg-[var(--k-surface-3)] text-[var(--k-text-2)] hover:text-[var(--k-text)] transition-colors"
                               >
                                 <Edit2 className="w-4 h-4" />
                               </button>
@@ -801,7 +797,7 @@ export function AdminApp() {
                             {can[CAPABILITIES.PRODUCTS_DELETE] && (
                               <button
                                 onClick={() => handleDeleteCategory(category.id)}
-                                className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
+                                className="p-2 rounded-[var(--k-r-sm)] bg-[var(--k-danger-soft)] text-[var(--k-danger)] hover:opacity-80 transition-opacity"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -842,12 +838,11 @@ export function AdminApp() {
           {activeTab === 'qrcodes' && (
             <div className="space-y-6">
               <PageHeader
-                context="dark"
                 title={t('titleQrCodes')}
                 description={t('qrHelperText')}
                 actions={
-                  <Button onClick={() => window.print()} className="print:hidden">
-                    <Printer className="w-4 h-4" /> {t('qrPrintAllPdf')}
+                  <Button variant="primary" onClick={() => window.print()} className="print:hidden" icon={<Printer className="w-4 h-4" />}>
+                    {t('qrPrintAllPdf')}
                   </Button>
                 }
               />
@@ -861,13 +856,13 @@ export function AdminApp() {
                 }
               `}} />
 
-              <div className="text-xs text-slate-400 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5">
+              <div className="text-xs text-[var(--k-text-3)] bg-[var(--k-surface-2)] border border-[var(--k-border)] rounded-[var(--k-r)] px-4 py-2.5">
                 {t('qrTokenNotice')}
               </div>
 
               <div className="min-h-[360px]">
                 {tables.length > 0 ? (
-                  <Card context="dark" variant="flat" className="p-4 sm:p-6">
+                  <Card variant="plain" className="p-4 sm:p-6">
                     <div id="print-qr-area" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                       {tables.map(table => {
                         const tableToken = qrTokensByTableId?.[table.id];
@@ -901,7 +896,7 @@ export function AdminApp() {
                             </div>
 
                             {!tableToken && (
-                              <Badge tone="warning" className="print:hidden">{t('qrTokenMissingBadge')}</Badge>
+                              <Tag tone="warning" className="print:hidden">{t('qrTokenMissingBadge')}</Tag>
                             )}
 
                             {editingTableId === table.id ? (
@@ -958,7 +953,7 @@ export function AdminApp() {
                   </Card>
                 ) : (
                   <EmptyState
-                    icon={<QrCode className="w-8 h-8 text-blue-400" />}
+                    icon={<QrCode className="w-5 h-5" />}
                     title={t('qrNotFoundTitle')}
                     description={t('qrNotFoundDescription')}
                   />
@@ -1024,49 +1019,52 @@ function ProductOptionsEditor({ options, onChange }) {
     );
 
   return (
-    <div className="border-t border-slate-800 pt-4">
+    <div className="border-t border-[var(--k-border)] pt-4">
       <div className="flex items-center justify-between mb-2">
-        <label className="block text-sm font-bold text-slate-400">{t('optionsEditorLabel')}</label>
-        <button type="button" onClick={addGroup} className="text-xs font-bold text-blue-400 hover:text-blue-300">{t('optionsAddGroup')}</button>
+        <label className="block text-[13px] font-medium text-[var(--k-text-2)]">{t('optionsEditorLabel')}</label>
+        <button type="button" onClick={addGroup} className="text-xs font-medium text-[var(--k-accent)] hover:opacity-80">{t('optionsAddGroup')}</button>
       </div>
       {options.length === 0 && (
-        <p className="text-xs text-slate-500 mb-2">{t('optionsEmptyHint')}</p>
+        <p className="text-xs text-[var(--k-text-3)] mb-2">{t('optionsEmptyHint')}</p>
       )}
       <div className="space-y-3">
         {options.map((group, gi) => (
-          <div key={gi} className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+          <div key={gi} className="bg-[var(--k-surface-2)] border border-[var(--k-border)] rounded-[var(--k-r)] p-3 space-y-2">
             <div className="flex items-center gap-2">
-              <input
+              <Input
                 type="text"
+                size="sm"
                 value={group.title}
                 onChange={(e) => updateGroupTitle(gi, e.target.value)}
                 placeholder={t('optionsGroupNamePlaceholder')}
-                className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                className="flex-1"
               />
-              <button type="button" onClick={() => removeGroup(gi)} className="text-rose-400 hover:text-rose-300 p-1"><Trash2 className="w-4 h-4" /></button>
+              <button type="button" onClick={() => removeGroup(gi)} className="text-[var(--k-danger)] hover:opacity-80 p-1"><Trash2 className="w-4 h-4" /></button>
             </div>
             <div className="space-y-1.5">
               {group.choices.map((choice, ci) => (
                 <div key={ci} className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="text"
+                    size="sm"
                     value={choice.name}
                     onChange={(e) => updateChoice(gi, ci, 'name', e.target.value)}
                     placeholder={t('optionsChoicePlaceholder')}
-                    className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                    className="flex-1 text-xs"
                   />
-                  <input
+                  <Input
                     type="number"
+                    size="sm"
                     step="0.01"
                     value={choice.extraPrice}
                     onChange={(e) => updateChoice(gi, ci, 'extraPrice', e.target.value)}
                     placeholder="+₼"
-                    className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-2 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                    className="w-20 text-xs"
                   />
-                  <button type="button" onClick={() => removeChoice(gi, ci)} className="text-slate-500 hover:text-rose-400 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => removeChoice(gi, ci)} className="text-[var(--k-text-3)] hover:text-[var(--k-danger)] p-1"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
               ))}
-              <button type="button" onClick={() => addChoice(gi)} className="text-xs font-bold text-slate-400 hover:text-white">{t('optionsAddChoice')}</button>
+              <button type="button" onClick={() => addChoice(gi)} className="text-xs font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)]">{t('optionsAddChoice')}</button>
             </div>
           </div>
         ))}
@@ -1078,27 +1076,27 @@ function ProductOptionsEditor({ options, onChange }) {
 function ProductModal({ isOpen, onClose, onSave, productForm, setProductForm, isEditing, categories }) {
   const { t } = useAdminTranslation();
   const { t: tc } = useCommonTranslation();
+  if (!isOpen) return null;
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" ariaLabel={isEditing ? t('editProductTitle') : t('newProductTitle')}>
-      <h2 className="text-2xl font-serif-title font-bold text-white mb-6">
-        {isEditing ? t('editProductTitle') : t('newProductTitle')}
-      </h2>
+    <Sheet isOpen={isOpen} onClose={onClose} side="right" size="lg" ariaLabel={isEditing ? t('editProductTitle') : t('newProductTitle')}>
+      <SheetHeader title={isEditing ? t('editProductTitle') : t('newProductTitle')} onClose={onClose} />
 
-      <form onSubmit={onSave} className="space-y-4">
-          <Field context="dark" label={t('productNameLabel')} required>
+      <form onSubmit={onSave} className="flex flex-col min-h-0 flex-1">
+        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto">
+          <Field label={t('productNameLabel')} required>
             {(id, a11y) => (
               <Input
-                context="dark" id={id} type="text" value={productForm.name}
+                id={id} type="text" value={productForm.name}
                 onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
                 placeholder={t('productNamePlaceholder')} {...a11y}
               />
             )}
           </Field>
           <div className="grid grid-cols-2 gap-4">
-            <Field context="dark" label={t('categoryLabel')} required>
+            <Field label={t('categoryLabel')} required>
               {(id, a11y) => (
                 <Select
-                  context="dark" id={id} value={productForm.category}
+                  id={id} value={productForm.category}
                   onChange={(e) => setProductForm({ ...productForm, category: e.target.value })} {...a11y}
                 >
                   {categories.map(c => (
@@ -1107,45 +1105,47 @@ function ProductModal({ isOpen, onClose, onSave, productForm, setProductForm, is
                 </Select>
               )}
             </Field>
-            <Field context="dark" label={t('priceLabelAzn')} required>
+            <Field label={t('priceLabelAzn')} required>
               {(id, a11y) => (
                 <Input
-                  context="dark" id={id} type="number" step="0.01" value={productForm.price}
+                  id={id} type="number" step="0.01" value={productForm.price}
                   onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
                   placeholder={t('pricePlaceholder')} {...a11y}
                 />
               )}
             </Field>
           </div>
-          <Field context="dark" label={t('prepTimeLabel')} hint={t('prepTimeHint')}>
+          <Field label={t('prepTimeLabel')} hint={t('prepTimeHint')}>
             {(id, a11y) => (
               <Input
-                context="dark" id={id} type="number" min="0" step="1" value={productForm.prepTimeMinutes}
+                id={id} type="number" min="0" step="1" value={productForm.prepTimeMinutes}
                 onChange={(e) => setProductForm({ ...productForm, prepTimeMinutes: e.target.value })}
                 placeholder={t('prepTimePlaceholder')} {...a11y}
               />
             )}
           </Field>
-          <Field context="dark" label={t('imageUrlLabel')}>
+          <Field label={t('imageUrlLabel')}>
             {(id, a11y) => (
               <Input
-                context="dark" id={id} type="text" value={productForm.image}
+                id={id} type="text" value={productForm.image}
                 onChange={(e) => setProductForm({ ...productForm, image: e.target.value })}
                 placeholder={t('imageUrlPlaceholder')} {...a11y}
               />
             )}
           </Field>
-          <div>
-            <label className="block text-sm font-bold text-slate-400 mb-1">{t('descriptionLabel')}</label>
-            <textarea
-              value={productForm.description}
-              onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
-              placeholder={t('descriptionPlaceholder')}
-              rows={3}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-colors resize-none"
-            />
-          </div>
-          
+          <Field label={t('descriptionLabel')}>
+            {(id, a11y) => (
+              <Textarea
+                id={id}
+                value={productForm.description}
+                onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                placeholder={t('descriptionPlaceholder')}
+                rows={3}
+                {...a11y}
+              />
+            )}
+          </Field>
+
           {/* Variantlar (Ölçü, Əlavələr və s.) — qiymət avtomatik hesablanır */}
           <ProductOptionsEditor
             options={productForm.options || []}
@@ -1154,95 +1154,81 @@ function ProductModal({ isOpen, onClose, onSave, productForm, setProductForm, is
 
           {/* Tags / Badges */}
           <div className="grid grid-cols-2 gap-3 pt-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={productForm.isPopular || false} 
-                onChange={(e) => setProductForm({ ...productForm, isPopular: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-950 accent-amber-500"
-              />
-              <span className="text-sm font-bold text-slate-300">{t('tagPopular')}</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={productForm.isChefChoice || false}
-                onChange={(e) => setProductForm({ ...productForm, isChefChoice: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-950 accent-blue-500"
-              />
-              <span className="text-sm font-bold text-slate-300">{t('tagChefChoice')}</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={productForm.isSpicy || false}
-                onChange={(e) => setProductForm({ ...productForm, isSpicy: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-rose-500 focus:ring-offset-slate-950 accent-rose-500"
-              />
-              <span className="text-sm font-bold text-slate-300">{t('tagSpicy')}</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={productForm.isVegetarian || false}
-                onChange={(e) => setProductForm({ ...productForm, isVegetarian: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-950 accent-emerald-500"
-              />
-              <span className="text-sm font-bold text-slate-300">{t('tagVegetarian')}</span>
-            </label>
+            <Checkbox
+              checked={productForm.isPopular || false}
+              onChange={(e) => setProductForm({ ...productForm, isPopular: e.target.checked })}
+              label={t('tagPopular')}
+            />
+            <Checkbox
+              checked={productForm.isChefChoice || false}
+              onChange={(e) => setProductForm({ ...productForm, isChefChoice: e.target.checked })}
+              label={t('tagChefChoice')}
+            />
+            <Checkbox
+              checked={productForm.isSpicy || false}
+              onChange={(e) => setProductForm({ ...productForm, isSpicy: e.target.checked })}
+              label={t('tagSpicy')}
+            />
+            <Checkbox
+              checked={productForm.isVegetarian || false}
+              onChange={(e) => setProductForm({ ...productForm, isVegetarian: e.target.checked })}
+              label={t('tagVegetarian')}
+            />
           </div>
+        </div>
 
-          <div className="pt-4 flex gap-3">
-            <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
-              {tc('cancel')}
-            </Button>
-            <Button type="submit" className="flex-1">
-              {tc('save')}
-            </Button>
-          </div>
-        </form>
-    </Modal>
+        <SheetFooter className="flex gap-3">
+          <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
+            {tc('cancel')}
+          </Button>
+          <Button type="submit" variant="primary" className="flex-1">
+            {tc('save')}
+          </Button>
+        </SheetFooter>
+      </form>
+    </Sheet>
   );
 }
 
 function CategoryModal({ isOpen, onClose, onSave, categoryForm, setCategoryForm, isEditing }) {
   const { t } = useAdminTranslation();
   const { t: tc } = useCommonTranslation();
+  if (!isOpen) return null;
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="md" ariaLabel={isEditing ? t('editCategoryTitle') : t('newCategoryTitle')}>
-      <h2 className="text-2xl font-serif-title font-bold text-white mb-6">
-        {isEditing ? t('editCategoryTitle') : t('newCategoryTitle')}
-      </h2>
+    <Sheet isOpen={isOpen} onClose={onClose} side="center" size="md" ariaLabel={isEditing ? t('editCategoryTitle') : t('newCategoryTitle')}>
+      <SheetHeader title={isEditing ? t('editCategoryTitle') : t('newCategoryTitle')} onClose={onClose} />
 
-      <form onSubmit={onSave} className="space-y-4">
-          <Field context="dark" label={t('categoryNameLabel')} required>
+      <form onSubmit={onSave}>
+        <div className="p-4 sm:p-5 space-y-4">
+          <Field label={t('categoryNameLabel')} required>
             {(id, a11y) => (
               <Input
-                context="dark" id={id} type="text" value={categoryForm.name}
+                id={id} type="text" value={categoryForm.name}
                 onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
                 placeholder={t('categoryNamePlaceholder')} {...a11y}
               />
             )}
           </Field>
-          <Field context="dark" label={t('categoryIconLabel')} required>
+          <Field label={t('categoryIconLabel')} required>
             {(id, a11y) => (
               <Input
-                context="dark" id={id} type="text" value={categoryForm.icon}
+                id={id} type="text" value={categoryForm.icon}
                 onChange={(e) => setCategoryForm({ ...categoryForm, icon: e.target.value })}
                 placeholder={t('categoryIconPlaceholder')} {...a11y}
               />
             )}
           </Field>
-          <div className="pt-4 flex gap-3">
-            <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
-              {tc('cancel')}
-            </Button>
-            <Button type="submit" className="flex-1">
-              {tc('save')}
-            </Button>
-          </div>
-        </form>
-    </Modal>
+        </div>
+        <SheetFooter className="flex gap-3">
+          <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
+            {tc('cancel')}
+          </Button>
+          <Button type="submit" variant="primary" className="flex-1">
+            {tc('save')}
+          </Button>
+        </SheetFooter>
+      </form>
+    </Sheet>
   );
 }
 
@@ -1367,56 +1353,61 @@ function AnalyticsDashboard({ orders, tables }) {
     });
   }, [orders, tables]);
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
+  // Categorical palette drawn entirely from --k-* tokens (accent + the 4
+  // semantic tones + muted text) rather than hardcoded hex — recharts takes
+  // these as plain SVG attribute strings, and CSS custom properties resolve
+  // fine there as long as the chart is a descendant of .kit-dark (it is).
+  const COLORS = ['var(--k-accent)', 'var(--k-success)', 'var(--k-info)', 'var(--k-warning)', 'var(--k-danger)'];
+  const tooltipStyle = { backgroundColor: 'var(--k-surface-2)', border: '1px solid var(--k-border)', borderRadius: '10px', color: 'var(--k-text)' };
 
   return (
     <div className="space-y-6">
-      <PageHeader context="dark" title={t('titleReports')} description={t('reportsSubtitle')} />
+      <PageHeader title={t('titleReports')} description={t('reportsSubtitle')} />
 
-      <Tabs context="dark" className="w-fit">
-        <TabsTrigger context="dark" active={timeFilter === 'day'} onClick={() => setTimeFilter('day')}>
+      <Tabs className="w-fit">
+        <TabsTrigger active={timeFilter === 'day'} onClick={() => setTimeFilter('day')}>
           {t('filterToday')}
         </TabsTrigger>
-        <TabsTrigger context="dark" active={timeFilter === 'week'} onClick={() => setTimeFilter('week')}>
+        <TabsTrigger active={timeFilter === 'week'} onClick={() => setTimeFilter('week')}>
           {t('filterThisWeek')}
         </TabsTrigger>
-        <TabsTrigger context="dark" active={timeFilter === 'month'} onClick={() => setTimeFilter('month')}>
+        <TabsTrigger active={timeFilter === 'month'} onClick={() => setTimeFilter('month')}>
           {t('filterThisMonth')}
         </TabsTrigger>
       </Tabs>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label={timeFilter === 'day' ? t('kpiDailyRevenue') : timeFilter === 'week' ? t('kpiWeeklyRevenue') : t('kpiMonthlyRevenue')} value={`${stats.revenue.toFixed(2)} ₼`} icon={<TrendingUp className="w-5 h-5 text-emerald-400" />} tint="bg-emerald-500/10" />
-        <KpiCard label={timeFilter === 'day' ? t('kpiTodayOrders') : timeFilter === 'week' ? t('kpiWeeklyOrders') : t('kpiMonthlyOrders')} value={stats.count} icon={<Activity className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10" />
-        <KpiCard label={t('kpiAvgCheck')} value={`${stats.aov.toFixed(2)} ₼`} icon={<BarChart3 className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10" />
-        <KpiCard label={t('kpiActiveTables')} value={stats.activeTables} icon={<Users className="w-5 h-5 text-amber-400" />} tint="bg-amber-500/10" />
+        <KpiCard label={timeFilter === 'day' ? t('kpiDailyRevenue') : timeFilter === 'week' ? t('kpiWeeklyRevenue') : t('kpiMonthlyRevenue')} value={`${stats.revenue.toFixed(2)} ₼`} icon={<TrendingUp className="w-5 h-5 text-[var(--k-success)]" />} tint="bg-[var(--k-success-soft)]" />
+        <KpiCard label={timeFilter === 'day' ? t('kpiTodayOrders') : timeFilter === 'week' ? t('kpiWeeklyOrders') : t('kpiMonthlyOrders')} value={stats.count} icon={<Activity className="w-5 h-5 text-[var(--k-accent)]" />} tint="bg-[var(--k-accent-soft)]" />
+        <KpiCard label={t('kpiAvgCheck')} value={`${stats.aov.toFixed(2)} ₼`} icon={<BarChart3 className="w-5 h-5 text-[var(--k-info)]" />} tint="bg-[var(--k-info-soft)]" />
+        <KpiCard label={t('kpiActiveTables')} value={stats.activeTables} icon={<Users className="w-5 h-5 text-[var(--k-warning)]" />} tint="bg-[var(--k-warning-soft)]" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card context="dark" variant="flat" className="lg:col-span-2">
+        <Card variant="plain" className="lg:col-span-2">
           <CardHeader>
-            <h4 className="text-white font-bold flex items-center gap-2"><BarChart3 className="w-5 h-5 text-blue-400"/> {timeFilter === 'day' ? t('chartHourly') : timeFilter === 'week' ? t('chartWeekly') : t('chartMonthly')} {t('chartOrderDynamics')}</h4>
+            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><BarChart3 className="w-4 h-4 text-[var(--k-accent)]"/> {timeFilter === 'day' ? t('chartHourly') : timeFilter === 'week' ? t('chartWeekly') : t('chartMonthly')} {t('chartOrderDynamics')}</h4>
           </CardHeader>
           <CardBody>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="label" stroke="#475569" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#475569" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `₼${val}`} />
+                  <XAxis dataKey="label" stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `₼${val}`} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', color: '#f8fafc' }}
-                    itemStyle={{ color: '#e2e8f0', fontWeight: 'bold' }}
+                    contentStyle={tooltipStyle}
+                    itemStyle={{ color: 'var(--k-text)', fontWeight: 600 }}
                   />
-                  <Bar dataKey="sales" name={t('salesSeriesLabel')} fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="sales" name={t('salesSeriesLabel')} fill="var(--k-accent)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </CardBody>
         </Card>
 
-        <Card context="dark" variant="flat">
+        <Card variant="plain">
           <CardHeader>
-            <h4 className="text-white font-bold flex items-center gap-2"><PieChartIcon className="w-5 h-5 text-amber-400"/> {t('chartRevenueDistributionByTable')}</h4>
+            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><PieChartIcon className="w-4 h-4 text-[var(--k-warning)]"/> {t('chartRevenueDistributionByTable')}</h4>
           </CardHeader>
           <CardBody>
             <div className="h-56">
@@ -1439,22 +1430,22 @@ function AnalyticsDashboard({ orders, tables }) {
                     </Pie>
                     <Tooltip
                       formatter={(value) => `${value.toFixed(2)} ₼`}
-                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }}
+                      contentStyle={tooltipStyle}
                     />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full flex items-center justify-center text-slate-500 text-sm">{t('noData')}</div>
+                <div className="h-full flex items-center justify-center text-[var(--k-text-3)] text-sm">{t('noData')}</div>
               )}
             </div>
             <div className="mt-4 space-y-2">
               {stats.topTables.map((tableStat, i) => (
-                <div key={i} className="flex justify-between items-center text-xs font-bold">
+                <div key={i} className="flex justify-between items-center text-xs font-medium">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                    <span className="text-slate-300">{tableStat.name}</span>
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                    <span className="text-[var(--k-text-2)]">{tableStat.name}</span>
                   </div>
-                  <span className="text-white">{tableStat.value.toFixed(2)} ₼</span>
+                  <span className="text-[var(--k-text)]">{tableStat.value.toFixed(2)} ₼</span>
                 </div>
               ))}
             </div>
@@ -1463,28 +1454,28 @@ function AnalyticsDashboard({ orders, tables }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card context="dark" variant="flat">
+        <Card variant="plain">
           <CardHeader>
-            <h4 className="text-white font-bold flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-400"/> {t('topSellersTitle')}</h4>
+            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><TrendingUp className="w-4 h-4 text-[var(--k-success)]"/> {t('topSellersTitle')}</h4>
           </CardHeader>
           <CardBody>
             <div className="space-y-4">
               {stats.topDishes.length > 0 ? stats.topDishes.map((dish, i) => (
                 <div key={i} className="flex flex-col gap-1.5">
-                  <div className="flex justify-between text-sm font-bold">
-                    <span className="text-slate-200">{i + 1}. {dish.name}</span>
-                    <span className="text-emerald-400">{dish.count} {t('unitsSold')}</span>
+                  <div className="flex justify-between text-sm font-medium">
+                    <span className="text-[var(--k-text-2)]">{i + 1}. {dish.name}</span>
+                    <span className="text-[var(--k-success)]">{dish.count} {t('unitsSold')}</span>
                   </div>
-                  <div className="w-full bg-slate-800 rounded-full h-2">
+                  <div className="w-full bg-[var(--k-surface-3)] rounded-full h-1.5">
                     <div
-                      className="bg-emerald-500 h-2 rounded-full"
+                      className="bg-[var(--k-success)] h-1.5 rounded-full"
                       style={{ width: `${Math.max(5, (dish.count / (stats.totalItemsSold || 1)) * 100)}%` }}
                     />
                   </div>
                 </div>
               )) : (
                 <EmptyState
-                  icon={<TrendingUp className="w-8 h-8 text-emerald-400" />}
+                  icon={<TrendingUp className="w-5 h-5" />}
                   title={t('noSalesYetTitle')}
                   description={t('noSalesYetDescription')}
                 />
@@ -1493,31 +1484,31 @@ function AnalyticsDashboard({ orders, tables }) {
           </CardBody>
         </Card>
 
-        <Card context="dark" variant="flat" className="flex flex-col">
+        <Card variant="plain" className="flex flex-col">
           <CardHeader>
-            <h4 className="text-white font-bold flex items-center gap-2"><Clock className="w-5 h-5 text-purple-400"/> {t('recentOrdersLiveFeedTitle')}</h4>
+            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><Clock className="w-4 h-4 text-[var(--k-info)]"/> {t('recentOrdersLiveFeedTitle')}</h4>
           </CardHeader>
           <CardBody className="flex-1 flex flex-col min-h-0">
             <div className="space-y-3 flex-1 overflow-y-auto pr-2 no-scrollbar">
               {recentOrders.length > 0 ? recentOrders.map(order => (
-                <div key={order.id} className="bg-slate-950/50 border border-slate-800/80 p-3 rounded-2xl flex items-center justify-between">
+                <div key={order.id} className="bg-[var(--k-surface-2)] border border-[var(--k-border)] p-3 rounded-[var(--k-r-lg)] flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-white font-bold text-sm">{order.tableName}</span>
-                      <span className="text-slate-500 text-[10px]">{new Date(order.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      <span className="text-[var(--k-text)] font-semibold text-sm">{order.tableName}</span>
+                      <span className="text-[var(--k-text-3)] text-[10px]">{new Date(order.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
-                    <span className="text-slate-400 text-xs font-semibold">{order.items.length} {t('itemsSuffix')}</span>
+                    <span className="text-[var(--k-text-3)] text-xs font-medium">{order.items.length} {t('itemsSuffix')}</span>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <span className="text-blue-400 font-bold text-sm">{order.total ? order.total.toFixed(2) : "0.00"} ₼</span>
-                    <Badge tone={statusBadgeTone(order.status)}>
+                    <span className="text-[var(--k-text)] font-semibold text-sm">{order.total ? order.total.toFixed(2) : "0.00"} ₼</span>
+                    <Tag tone={statusBadgeTone(order.status)}>
                       {orderStatusLabels(t)[order.status] || t('statusPending')}
-                    </Badge>
+                    </Tag>
                   </div>
                 </div>
               )) : (
                 <EmptyState
-                  icon={<Clock className="w-8 h-8 text-purple-400" />}
+                  icon={<Clock className="w-5 h-5" />}
                   title={t('noRecentOrdersTitle')}
                   description={t('noRecentOrdersDescription')}
                 />
@@ -1542,25 +1533,24 @@ const orderStatusLabels = (t) => ({
   [ORDER_STATUS.CANCELLED]: t('statusCancelled'),
 });
 
-// Sources its color pairs from components/ui/variants.js's BADGE_TONE_CLASSES
-// — the same map that backs the Badge primitive's `tone` prop — so this and
-// any future <Badge tone="..."> render identical colors for the same
-// meaning. Kept as a bare color-pair string (not the full badgeVariants()
-// output) because its 4 call sites already supply their own padding/rounding
-// literals; returning badgeVariants()'s structural classes on top would
-// duplicate them.
+// Kept as a literal Tailwind color-pair string, now built directly from
+// --k-* tokens instead of components/ui's BADGE_TONE_CLASSES map — its one
+// remaining call site (DashboardHome's recent-orders table, see the "Known
+// mismatches" note in CLAUDE.md) renders a hand-styled <span>, not a <Tag>,
+// so it can't just take a `tone` prop.
 function statusBadgeClasses(status) {
-  if (status === ORDER_STATUS.SERVED || status === ORDER_STATUS.READY) return BADGE_TONE_CLASSES.success;
-  if (status === ORDER_STATUS.PREPARING || status === ORDER_STATUS.ACCEPTED) return BADGE_TONE_CLASSES.info;
-  if (status === ORDER_STATUS.CANCELLED) return BADGE_TONE_CLASSES.danger;
-  return BADGE_TONE_CLASSES.warning;
+  if (status === ORDER_STATUS.SERVED || status === ORDER_STATUS.READY) return 'bg-[var(--k-success-soft)] text-[var(--k-success)]';
+  if (status === ORDER_STATUS.PREPARING || status === ORDER_STATUS.ACCEPTED) return 'bg-[var(--k-info-soft)] text-[var(--k-info)]';
+  if (status === ORDER_STATUS.CANCELLED) return 'bg-[var(--k-danger-soft)] text-[var(--k-danger)]';
+  return 'bg-[var(--k-warning-soft)] text-[var(--k-warning)]';
 }
 
-// Same precedence as statusBadgeClasses above, but returns the Badge
+// Same precedence as statusBadgeClasses above, but returns the Tag
 // primitive's `tone` name instead of a literal class string — for call
-// sites (TablesManagement) that render an actual <Badge> rather than a
-// hand-styled <span>. Kept as a separate function rather than deriving one
-// from the other so neither has to know the other's return shape.
+// sites (TablesManagement, OrdersManagement, PaymentSchemaTable,
+// AnalyticsDashboard) that render an actual <Tag> rather than a hand-styled
+// <span>. Kept as a separate function rather than deriving one from the
+// other so neither has to know the other's return shape.
 function statusBadgeTone(status) {
   if (status === ORDER_STATUS.SERVED || status === ORDER_STATUS.READY) return 'success';
   if (status === ORDER_STATUS.PREPARING || status === ORDER_STATUS.ACCEPTED) return 'info';
@@ -1568,24 +1558,21 @@ function statusBadgeTone(status) {
   return 'warning';
 }
 
-// Dark-glass KPI card — used for every metric strip in the admin panel
-// (Dashboard, Hesabat/Analytics, Ödənişlər) so every tab shares the same
-// tinted-icon-well treatment instead of each rolling its own variant. Built
-// on the design-system Card/CardBody primitive (components/ui) rather than
-// the raw `bg-slate-900/60 border border-slate-800 rounded-3xl` literal it
-// used before — same reasoning Card's own doc comment gives for existing to
-// name exactly this pattern. Props/behavior unchanged, every call site
-// (Dashboard, AnalyticsManagement, PaymentsManagement) keeps working as-is.
+// KPI card — used for every metric strip in the admin panel (Dashboard,
+// Hesabat/Analytics, Ödənişlər) so every tab shares the same tinted-icon-well
+// treatment instead of each rolling its own variant. Props/behavior
+// unchanged, every call site keeps working as-is — only the underlying
+// Card/token layer changed.
 function KpiCard({ label, value, icon, tint }) {
   return (
-    <Card context="dark" variant="flat">
+    <Card variant="plain">
       <CardBody className="flex items-center gap-4">
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${tint}`}>
+        <div className={`w-11 h-11 rounded-[var(--k-r)] flex items-center justify-center shrink-0 ${tint}`}>
           {icon}
         </div>
         <div className="min-w-0">
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-1 truncate">{label}</p>
-          <h4 className="text-xl font-bold text-white truncate">{value}</h4>
+          <p className="text-[var(--k-text-3)] text-[11px] font-medium uppercase tracking-wide mb-1 truncate">{label}</p>
+          <h4 className="text-lg font-semibold text-[var(--k-text)] truncate">{value}</h4>
         </div>
       </CardBody>
     </Card>
@@ -1656,18 +1643,16 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
     });
   }, [orders, tables, t]);
 
-  const DONUT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+  const DONUT_COLORS = ['var(--k-accent)', 'var(--k-success)', 'var(--k-info)', 'var(--k-warning)', 'var(--k-danger)', 'var(--k-text-3)'];
+  const tooltipStyle = { backgroundColor: 'var(--k-surface-2)', border: '1px solid var(--k-border)', borderRadius: '10px' };
 
   return (
     <div className="space-y-6">
-      {/* PageHeader (components/ui/Navigation.jsx) — Dashboard had no
-          in-content heading at all before this; the topbar's breadcrumb
-          (AdminApp's own PAGE_TITLES strip, shared by every tab) already
-          names the page, so this adds what that strip can't: a subtitle and
-          an actions slot (the realtime badge, previously only shown on the
-          Products/Categories tabs). */}
+      {/* PageHeader — Dashboard had no in-content heading at all before this;
+          the topbar's breadcrumb (AdminApp's own PAGE_TITLES strip, shared by
+          every tab) already names the page, so this adds what that strip
+          can't: a subtitle and an actions slot (the realtime badge). */}
       <PageHeader
-        context="dark"
         title={t('titleDashboard')}
         description={t('dashboardSubtitle')}
         actions={<RealtimeStatusBadge />}
@@ -1675,41 +1660,41 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label={t('kpiTotalOrders')} value={orders.length} icon={<ListOrdered className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10" />
-        <KpiCard label={t('kpiTodayRevenue')} value={`${stats.todayRevenue.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-emerald-400" />} tint="bg-emerald-500/10" />
-        <KpiCard label={t('kpiActiveTable')} value={stats.activeTables} icon={<Table2 className="w-5 h-5 text-amber-400" />} tint="bg-amber-500/10" />
-        <KpiCard label={t('kpiProductCount')} value={products.length} icon={<Package className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10" />
+        <KpiCard label={t('kpiTotalOrders')} value={orders.length} icon={<ListOrdered className="w-5 h-5 text-[var(--k-accent)]" />} tint="bg-[var(--k-accent-soft)]" />
+        <KpiCard label={t('kpiTodayRevenue')} value={`${stats.todayRevenue.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-[var(--k-success)]" />} tint="bg-[var(--k-success-soft)]" />
+        <KpiCard label={t('kpiActiveTable')} value={stats.activeTables} icon={<Table2 className="w-5 h-5 text-[var(--k-warning)]" />} tint="bg-[var(--k-warning-soft)]" />
+        <KpiCard label={t('kpiProductCount')} value={products.length} icon={<Package className="w-5 h-5 text-[var(--k-info)]" />} tint="bg-[var(--k-info-soft)]" />
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card context="dark" variant="flat" className="lg:col-span-2">
+        <Card variant="plain" className="lg:col-span-2">
           <CardHeader>
-            <h4 className="text-white font-bold flex items-center gap-2"><TrendingUp className="w-4 h-4 text-blue-400" /> {t('revenueLast7Days')}</h4>
+            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><TrendingUp className="w-4 h-4 text-[var(--k-accent)]" /> {t('revenueLast7Days')}</h4>
           </CardHeader>
           <CardBody>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={stats.revenueByDay} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                  <XAxis dataKey="label" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${symbol}${v}`} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--k-border)" />
+                  <XAxis dataKey="label" stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${symbol}${v}`} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '14px', boxShadow: '0 4px 20px rgba(0,0,0,0.35)' }}
-                    labelStyle={{ color: '#e2e8f0' }}
-                    itemStyle={{ color: '#93c5fd' }}
+                    contentStyle={tooltipStyle}
+                    labelStyle={{ color: 'var(--k-text)' }}
+                    itemStyle={{ color: 'var(--k-accent)' }}
                     formatter={(value) => [`${Number(value).toFixed(2)} ${symbol}`, t('revenueLabel')]}
                   />
-                  <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6' }} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="revenue" stroke="var(--k-accent)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--k-accent)' }} activeDot={{ r: 6 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </CardBody>
         </Card>
 
-        <Card context="dark" variant="flat">
+        <Card variant="plain">
           <CardHeader>
-            <h4 className="text-white font-bold flex items-center gap-2"><PieChartIcon className="w-4 h-4 text-amber-400" /> {t('categoriesChartTitle')}</h4>
+            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><PieChartIcon className="w-4 h-4 text-[var(--k-warning)]" /> {t('categoriesChartTitle')}</h4>
           </CardHeader>
           <CardBody>
             <div className="h-48">
@@ -1721,21 +1706,21 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
                         <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '14px' }} labelStyle={{ color: '#e2e8f0' }} itemStyle={{ color: '#e2e8f0' }} />
+                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--k-text)' }} itemStyle={{ color: 'var(--k-text)' }} />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full flex items-center justify-center text-slate-500 text-sm">{t('noData')}</div>
+                <div className="h-full flex items-center justify-center text-[var(--k-text-3)] text-sm">{t('noData')}</div>
               )}
             </div>
             <div className="mt-3 space-y-1.5">
               {stats.categoryData.map((c, i) => (
-                <div key={i} className="flex justify-between items-center text-xs font-bold">
+                <div key={i} className="flex justify-between items-center text-xs font-medium">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-                    <span className="text-slate-300">{c.name}</span>
+                    <span className="text-[var(--k-text-2)]">{c.name}</span>
                   </div>
-                  <span className="text-white">{c.value}</span>
+                  <span className="text-[var(--k-text)]">{c.value}</span>
                 </div>
               ))}
             </div>
@@ -1743,33 +1728,33 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
         </Card>
       </div>
 
-      <Card context="dark" variant="flat">
+      <Card variant="plain">
         <CardHeader>
-          <h4 className="text-white font-bold flex items-center gap-2"><BarChart3 className="w-4 h-4 text-emerald-400" /> {t('topSellingTitle')}</h4>
+          <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><BarChart3 className="w-4 h-4 text-[var(--k-success)]" /> {t('topSellingTitle')}</h4>
         </CardHeader>
         <CardBody>
           <div className="h-64">
             {stats.bestSellers.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={stats.bestSellers} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                  <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} interval={0} tick={{ width: 100 }} />
-                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '14px' }} labelStyle={{ color: '#e2e8f0' }} itemStyle={{ color: '#6ee7b7' }} formatter={(v) => [`${v} ${t('unitsSold')}`, t('salesLabel')]} />
-                  <Bar dataKey="count" name={t('salesLabel')} fill="#10b981" radius={[8, 8, 0, 0]} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--k-border)" />
+                  <XAxis dataKey="name" stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} interval={0} tick={{ width: 100 }} />
+                  <YAxis stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--k-text)' }} itemStyle={{ color: 'var(--k-success)' }} formatter={(v) => [`${v} ${t('unitsSold')}`, t('salesLabel')]} />
+                  <Bar dataKey="count" name={t('salesLabel')} fill="var(--k-success)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-slate-500 text-sm">{t('noSalesYet')}</div>
+              <div className="h-full flex items-center justify-center text-[var(--k-text-3)] text-sm">{t('noSalesYet')}</div>
             )}
           </div>
         </CardBody>
       </Card>
 
       {/* Premium Table — Son Sifarişlər */}
-      <Card context="dark" variant="flat" className="overflow-hidden">
+      <Card variant="plain" className="overflow-hidden">
         <CardHeader>
-          <h4 className="text-white font-bold flex items-center gap-2"><Clock className="w-4 h-4 text-blue-400" /> {t('recentOrdersTitle')}</h4>
+          <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><Clock className="w-4 h-4 text-[var(--k-accent)]" /> {t('recentOrdersTitle')}</h4>
         </CardHeader>
         <Table>
           <TableHead>
@@ -1782,12 +1767,12 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
           <TableBody>
             {recentOrders.length > 0 ? recentOrders.map(order => (
               <TableRow key={order.id}>
-                <TableCell><span className="rounded-xl bg-slate-800 px-3 py-1.5 font-bold text-slate-200 inline-block">{order.tableName}</span></TableCell>
-                <TableCell className="text-slate-400">{new Date(order.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TableCell>
-                <TableCell className="text-slate-300">{order.items.length} {t('itemsSuffix')}</TableCell>
-                <TableCell className="font-bold text-white">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</TableCell>
+                <TableCell><span className="rounded-[var(--k-r)] bg-[var(--k-surface-3)] px-3 py-1.5 font-medium text-[var(--k-text-2)] inline-block">{order.tableName}</span></TableCell>
+                <TableCell className="text-[var(--k-text-3)]">{new Date(order.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TableCell>
+                <TableCell className="text-[var(--k-text-2)]">{order.items.length} {t('itemsSuffix')}</TableCell>
+                <TableCell className="font-semibold text-[var(--k-text)]">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</TableCell>
                 <TableCell>
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusBadgeClasses(order.status)}`}>
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusBadgeClasses(order.status)}`}>
                     {orderStatusLabels(t)[order.status] || t('statusPending')}
                   </span>
                 </TableCell>
@@ -1814,13 +1799,12 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
   return (
     <div className="space-y-6">
       <PageHeader
-        context="dark"
         title={t('titleTables')}
         description={t('tablesSubtitle')}
       />
 
       {tables.length > 0 ? (
-        <Card context="dark" variant="flat" className="overflow-hidden">
+        <Card variant="plain" className="overflow-hidden">
           <Table>
             <TableHead>
               <TableHeaderCell>{t('colTable')}</TableHeaderCell>
@@ -1836,14 +1820,15 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
                     <TableCell>
                       {isEditing ? (
                         <div className="flex items-center gap-2">
-                          <input
+                          <Input
                             type="text"
+                            size="sm"
                             value={editingTableName}
                             onChange={(e) => setEditingTableName(e.target.value)}
-                            className="w-full max-w-[200px] bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-white font-bold text-sm focus:outline-none focus:border-blue-500"
+                            className="w-full max-w-[200px]"
                             autoFocus
                           />
-                          <Button size="sm" onClick={() => { updateTableName(table.id, editingTableName); setEditingTableId(null); }}>
+                          <Button size="sm" variant="primary" onClick={() => { updateTableName(table.id, editingTableName); setEditingTableId(null); }}>
                             {tc('save')}
                           </Button>
                           <Button size="sm" variant="secondary" onClick={() => setEditingTableId(null)}>
@@ -1852,24 +1837,24 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
                         </div>
                       ) : (
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
+                          <div className="w-9 h-9 rounded-[var(--k-r)] bg-[var(--k-accent-soft)] text-[var(--k-accent)] flex items-center justify-center shrink-0">
                             <Table2 className="w-4 h-4" />
                           </div>
-                          <span className="font-bold text-white">{table.name}</span>
+                          <span className="font-medium text-[var(--k-text)]">{table.name}</span>
                         </div>
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge tone={status ? statusBadgeTone(status) : 'neutral'}>
+                      <Tag tone={status ? statusBadgeTone(status) : 'neutral'}>
                         {status ? orderStatusLabels(t)[status] : t('statusEmpty')}
-                      </Badge>
+                      </Tag>
                     </TableCell>
                     <TableCell>
                       {!isEditing && (
                         <div className="flex justify-end">
                           <button
                             onClick={() => { setEditingTableId(table.id); setEditingTableName(table.name); }}
-                            className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-colors"
+                            className="p-2 rounded-[var(--k-r-sm)] bg-[var(--k-surface-2)] text-[var(--k-text-2)] hover:text-[var(--k-text)] transition-colors"
                             title={t('renameTableTitle')}
                           >
                             <Edit2 className="w-4 h-4" />
@@ -1884,7 +1869,7 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
           </Table>
         </Card>
       ) : (
-        <EmptyState icon={<Table2 className="w-8 h-8 text-blue-400" />} title={t('tableNotFoundTitle')} description={t('tableNotFoundDescription')} />
+        <EmptyState icon={<Table2 className="w-5 h-5" />} title={t('tableNotFoundTitle')} description={t('tableNotFoundDescription')} />
       )}
     </div>
   );
@@ -1904,13 +1889,12 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        context="dark"
         title={t('titleOrders')}
         description={t('ordersSubtitle')}
       />
 
       {sorted.length > 0 ? (
-        <Card context="dark" variant="flat" className="overflow-hidden">
+        <Card variant="plain" className="overflow-hidden">
           <Table>
             <TableHead>
               <TableHeaderCell>{t('colTable')}</TableHeaderCell>
@@ -1923,17 +1907,17 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
             <TableBody>
               {sorted.map(order => (
                 <TableRow key={order.id}>
-                  <TableCell><span className="rounded-xl bg-slate-800 px-3 py-1.5 font-bold text-slate-200 inline-block">{order.tableName}</span></TableCell>
-                  <TableCell className="text-slate-400">{new Date(order.time).toLocaleString(LOCALE_TAGS[language] || 'az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</TableCell>
-                  <TableCell className="text-slate-300">{order.items.length} {t('itemsSuffix')}</TableCell>
-                  <TableCell className="max-w-[220px] truncate text-amber-300/90" title={order.note || ''}>
+                  <TableCell><span className="rounded-[var(--k-r)] bg-[var(--k-surface-3)] px-3 py-1.5 font-medium text-[var(--k-text-2)] inline-block">{order.tableName}</span></TableCell>
+                  <TableCell className="text-[var(--k-text-3)]">{new Date(order.time).toLocaleString(LOCALE_TAGS[language] || 'az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</TableCell>
+                  <TableCell className="text-[var(--k-text-2)]">{order.items.length} {t('itemsSuffix')}</TableCell>
+                  <TableCell className="max-w-[220px] truncate text-[var(--k-warning)]" title={order.note || ''}>
                     {order.note || '—'}
                   </TableCell>
-                  <TableCell className="font-bold text-white">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</TableCell>
+                  <TableCell className="font-semibold text-[var(--k-text)]">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</TableCell>
                   <TableCell>
-                    <Badge tone={statusBadgeTone(order.status)}>
+                    <Tag tone={statusBadgeTone(order.status)}>
                       {orderStatusLabels(t)[order.status] || t('statusPending')}
-                    </Badge>
+                    </Tag>
                   </TableCell>
                 </TableRow>
               ))}
@@ -1942,7 +1926,7 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
         </Card>
       ) : (
         <EmptyState
-          icon={<ListOrdered className="w-8 h-8 text-blue-400" />}
+          icon={<ListOrdered className="w-5 h-5" />}
           title={t('noOrdersYet')}
           description={t('ordersNotFoundDescription')}
         />
@@ -1960,15 +1944,15 @@ function PaymentSchemaTable({ title, icon, tint, rows, currencySymbol, emptyLabe
   const total = rows.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
   return (
-    <Card context="dark" variant="flat" className="overflow-hidden">
+    <Card variant="plain" className="overflow-hidden">
       <CardHeader className="flex items-center justify-between flex-wrap gap-3">
-        <h4 className="text-white font-bold flex items-center gap-2">
-          <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${tint}`}>{icon}</span>
+        <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm">
+          <span className={`w-9 h-9 rounded-[var(--k-r)] flex items-center justify-center ${tint}`}>{icon}</span>
           {title}
         </h4>
         <div className="flex items-center gap-4 text-sm">
-          <span className="text-slate-400">{t('countLabel')} <span className="text-white font-bold">{rows.length}</span></span>
-          <span className="text-slate-400">{t('totalLabel')} <span className="text-white font-bold">{total.toFixed(2)} {symbol}</span></span>
+          <span className="text-[var(--k-text-3)]">{t('countLabel')} <span className="text-[var(--k-text)] font-semibold">{rows.length}</span></span>
+          <span className="text-[var(--k-text-3)]">{t('totalLabel')} <span className="text-[var(--k-text)] font-semibold">{total.toFixed(2)} {symbol}</span></span>
         </div>
       </CardHeader>
       <Table>
@@ -1982,14 +1966,14 @@ function PaymentSchemaTable({ title, icon, tint, rows, currencySymbol, emptyLabe
         <TableBody>
           {rows.length > 0 ? rows.map(order => (
             <TableRow key={order.id}>
-              <TableCell><span className="rounded-xl bg-slate-800 px-3 py-1.5 font-bold text-slate-200 inline-block">{order.tableName}</span></TableCell>
-              <TableCell className="text-slate-400">{new Date(order.time).toLocaleString(LOCALE_TAGS[language] || 'az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</TableCell>
-              <TableCell className="text-slate-300">{order.items.length} {t('itemsSuffix')}</TableCell>
-              <TableCell className="font-bold text-white">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</TableCell>
+              <TableCell><span className="rounded-[var(--k-r)] bg-[var(--k-surface-3)] px-3 py-1.5 font-medium text-[var(--k-text-2)] inline-block">{order.tableName}</span></TableCell>
+              <TableCell className="text-[var(--k-text-3)]">{new Date(order.time).toLocaleString(LOCALE_TAGS[language] || 'az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</TableCell>
+              <TableCell className="text-[var(--k-text-2)]">{order.items.length} {t('itemsSuffix')}</TableCell>
+              <TableCell className="font-semibold text-[var(--k-text)]">{order.total ? order.total.toFixed(2) : '0.00'} {symbol}</TableCell>
               <TableCell>
-                <Badge tone={statusBadgeTone(order.status)}>
+                <Tag tone={statusBadgeTone(order.status)}>
                   {orderStatusLabels(t)[order.status] || t('statusPending')}
-                </Badge>
+                </Tag>
               </TableCell>
             </TableRow>
           )) : (
@@ -2024,30 +2008,30 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader context="dark" title={t('titlePayments')} description={t('paymentsSubtitle')} />
+      <PageHeader title={t('titlePayments')} description={t('paymentsSubtitle')} />
 
       {(!walletEnabled.google_pay || !walletEnabled.apple_pay) && (
-        <Alert tone="warning" icon={<span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 mt-1.5" />}>
-          <p className="text-xs font-semibold text-amber-300">
+        <Banner tone="warning" icon={<span className="w-2 h-2 rounded-full bg-[var(--k-warning)] shrink-0 mt-1.5" />}>
+          <p className="text-xs font-medium">
             {!walletEnabled.google_pay && !walletEnabled.apple_pay
               ? t('walletBothDisabled')
               : !walletEnabled.google_pay
                 ? t('walletGoogleDisabled')
                 : t('walletAppleDisabled')}
           </p>
-        </Alert>
+        </Banner>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label={t('kpiCash')} value={`${cashOrders.length}`} icon={<Wallet className="w-5 h-5 text-emerald-400" />} tint="bg-emerald-500/10" />
-        <KpiCard label={t('kpiPosTerminal')} value={`${cardOrders.length}`} icon={<CreditCard className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10" />
-        <KpiCard label={t('kpiWallet')} value={`${walletOrders.length}`} icon={<Smartphone className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10" />
-        <KpiCard label={t('kpiTotalPayments')} value={`${grandTotal.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-amber-400" />} tint="bg-amber-500/10" />
+        <KpiCard label={t('kpiCash')} value={`${cashOrders.length}`} icon={<Wallet className="w-5 h-5 text-[var(--k-success)]" />} tint="bg-[var(--k-success-soft)]" />
+        <KpiCard label={t('kpiPosTerminal')} value={`${cardOrders.length}`} icon={<CreditCard className="w-5 h-5 text-[var(--k-accent)]" />} tint="bg-[var(--k-accent-soft)]" />
+        <KpiCard label={t('kpiWallet')} value={`${walletOrders.length}`} icon={<Smartphone className="w-5 h-5 text-[var(--k-info)]" />} tint="bg-[var(--k-info-soft)]" />
+        <KpiCard label={t('kpiTotalPayments')} value={`${grandTotal.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-[var(--k-warning)]" />} tint="bg-[var(--k-warning-soft)]" />
       </div>
 
       <PaymentSchemaTable
         title={t('cashPaymentsTitle')}
-        icon={<Wallet className="w-4 h-4 text-emerald-400" />}
-        tint="bg-emerald-500/10"
+        icon={<Wallet className="w-4 h-4 text-[var(--k-success)]" />}
+        tint="bg-[var(--k-success-soft)]"
         rows={cashOrders}
         currencySymbol={symbol}
         emptyLabel={t('noCashPayments')}
@@ -2055,8 +2039,8 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
 
       <PaymentSchemaTable
         title={t('posPaymentsTitle')}
-        icon={<CreditCard className="w-4 h-4 text-blue-400" />}
-        tint="bg-blue-500/10"
+        icon={<CreditCard className="w-4 h-4 text-[var(--k-accent)]" />}
+        tint="bg-[var(--k-accent-soft)]"
         rows={cardOrders}
         currencySymbol={symbol}
         emptyLabel={t('noPosPayments')}
@@ -2064,15 +2048,15 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
 
       <PaymentSchemaTable
         title={t('walletPaymentsTitle')}
-        icon={<Smartphone className="w-4 h-4 text-purple-400" />}
-        tint="bg-purple-500/10"
+        icon={<Smartphone className="w-4 h-4 text-[var(--k-info)]" />}
+        tint="bg-[var(--k-info-soft)]"
         rows={walletOrders}
         currencySymbol={symbol}
         emptyLabel={t('noWalletPayments')}
       />
 
       {unspecifiedCount > 0 && (
-        <p className="text-xs text-slate-500 font-semibold px-1">
+        <p className="text-xs text-[var(--k-text-3)] font-medium px-1">
           {t('unspecifiedPaymentsNote')(unspecifiedCount)}
         </p>
       )}
@@ -2085,17 +2069,17 @@ function UsersPlaceholder({ profile, restaurant, settings }) {
   const { t } = useAdminTranslation();
   return (
     <div className="space-y-6">
-      <PageHeader context="dark" title={t('titleUsers')} description={t('usersSubtitle')} />
+      <PageHeader title={t('titleUsers')} description={t('usersSubtitle')} />
 
-      <Card context="dark" variant="flat">
+      <Card variant="plain">
         <CardBody className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold">
+            <div className="w-11 h-11 rounded-[var(--k-r)] bg-[var(--k-accent)] text-[var(--k-accent-fg)] flex items-center justify-center font-semibold">
               {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
             </div>
             <div>
-              <p className="font-bold text-white">{profile?.email || settings.restaurantName}</p>
-              <p className="text-xs text-emerald-400 font-bold uppercase tracking-wide">{t('restaurantAdminAndStaffRole')}</p>
+              <p className="font-semibold text-[var(--k-text)]">{profile?.email || settings.restaurantName}</p>
+              <p className="text-xs text-[var(--k-success)] font-medium uppercase tracking-wide">{t('restaurantAdminAndStaffRole')}</p>
             </div>
           </div>
           {/* Styled to match the other /staff links in this shell (sidebar
@@ -2104,7 +2088,7 @@ function UsersPlaceholder({ profile, restaurant, settings }) {
               stay visually consistent with each other. */}
           <Link
             href="/staff"
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+            className="px-4 h-10 bg-[var(--k-success)] hover:opacity-90 text-[var(--k-bg)] rounded-[var(--k-r)] font-medium text-xs flex items-center gap-2 transition-opacity"
           >
             <UtensilsCrossed className="w-4 h-4" />
             <span>{t('goToStaffPanel')}</span>
@@ -2113,7 +2097,7 @@ function UsersPlaceholder({ profile, restaurant, settings }) {
       </Card>
 
       <EmptyState
-        icon={<UserCircle2 className="w-8 h-8 text-blue-400" />}
+        icon={<UserCircle2 className="w-5 h-5" />}
         title={t('noStaffRegistrationTitle')}
         description={t('noStaffRegistrationDescription')}
       />
@@ -2144,24 +2128,24 @@ function SubscriptionLockedScreen({ restaurant, onLogout }) {
   };
   const { title, body } = copy[reason] || copy.canceled;
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-      <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
-        <div className="w-14 h-14 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/30 mx-auto mb-4">
-          <Lock className="w-7 h-7 text-amber-500" />
+    <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
+      <Card variant="plain" className="max-w-sm text-center p-8">
+        <div className="w-12 h-12 bg-[var(--k-warning-soft)] rounded-[var(--k-r)] flex items-center justify-center mx-auto mb-4">
+          <Lock className="w-6 h-6 text-[var(--k-warning)]" />
         </div>
-        <h2 className="text-xl font-bold text-white mb-2">{title}</h2>
-        <p className="text-slate-400 text-sm mb-6">{body}</p>
+        <h2 className="text-lg font-semibold text-[var(--k-text)] mb-2">{title}</h2>
+        <p className="text-[var(--k-text-3)] text-sm mb-6">{body}</p>
         <div className="flex flex-col gap-2">
           {reason !== 'deactivated' && (
-            <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className="py-2.5 bg-amber-500 hover:bg-amber-400 text-black rounded-xl font-bold text-sm">
+            <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className={buttonVariants({ variant: 'primary', size: 'block' })}>
               {t('upgradeToSubscription')}
             </a>
           )}
-          <button onClick={onLogout} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm">
+          <Button variant="secondary" onClick={onLogout} size="block">
             {t('logoutButton')}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -2179,10 +2163,10 @@ function RoleRedirect({ message, href }) {
   }, [router, href]);
 
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+    <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
       <div className="max-w-sm text-center">
-        <p className="text-slate-400 text-sm mb-4">{message}</p>
-        <Link href={href} className="text-blue-400 hover:text-blue-300 text-sm font-bold underline">
+        <p className="text-[var(--k-text-3)] text-sm mb-4">{message}</p>
+        <Link href={href} className="text-[var(--k-accent)] hover:opacity-80 text-sm font-medium underline">
           {t('redirectManualLink')}
         </Link>
       </div>
@@ -2193,17 +2177,17 @@ function RoleRedirect({ message, href }) {
 function UnassignedScreen({ onLogout }) {
   const { t } = useAdminTranslation();
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-      <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
-        <Lock className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">{t('unassignedTitle')}</h2>
-        <p className="text-slate-400 text-sm mb-6">
+    <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
+      <Card variant="plain" className="max-w-sm text-center p-8">
+        <Lock className="w-9 h-9 text-[var(--k-warning)] mx-auto mb-4" />
+        <h2 className="text-lg font-semibold text-[var(--k-text)] mb-2">{t('unassignedTitle')}</h2>
+        <p className="text-[var(--k-text-3)] text-sm mb-6">
           {t('unassignedBody')}
         </p>
-        <button onClick={onLogout} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm">
+        <Button variant="secondary" onClick={onLogout} size="block">
           {t('logoutButton')}
-        </button>
-      </div>
+        </Button>
+      </Card>
     </div>
   );
 }

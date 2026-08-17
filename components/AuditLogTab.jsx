@@ -5,9 +5,9 @@ import { ClipboardList } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { useAdminTranslation, LOCALE_TAGS } from "@/lib/i18n/dictionaries/admin";
 import {
-  PageHeader, Card, Badge, EmptyState,
+  PageHeader, Card, Tag, EmptyState,
   Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell,
-} from "@/components/ui";
+} from "@/components/kit";
 
 const formatWhen = (iso, localeTag) => {
   try {
@@ -44,12 +44,12 @@ export function AuditLogTab() {
 
   return (
     <div className="space-y-6">
-      <PageHeader context="dark" title={t('titleAudit')} description={t('auditSubtitle')} />
+      <PageHeader title={t('titleAudit')} description={t('auditSubtitle')} />
 
       {auditLogs.length === 0 ? (
-        <EmptyState icon={<ClipboardList className="w-8 h-8 text-blue-400" />} title={t('auditEmptyText')} description={t('auditNotFoundDescription')} />
+        <EmptyState icon={<ClipboardList className="w-5 h-5" />} title={t('auditEmptyText')} description={t('auditNotFoundDescription')} />
       ) : (
-        <Card context="dark" variant="flat" className="overflow-hidden">
+        <Card variant="plain" className="overflow-hidden">
           <Table>
             <TableHead>
               <TableHeaderCell>{t('auditColWho')}</TableHeaderCell>
@@ -63,12 +63,12 @@ export function AuditLogTab() {
                 const badgeText = { create: t('auditActionCreate'), update: t('auditActionUpdate'), delete: t('auditActionDelete') }[verb] || t('auditActionOther');
                 return (
                   <TableRow key={log.id}>
-                    <TableCell className="text-slate-300 whitespace-nowrap">{log.actor_email || t('auditUnknownActor')}</TableCell>
-                    <TableCell className="text-slate-500 whitespace-nowrap">{formatWhen(log.created_at, LOCALE_TAGS[language] || 'az-AZ')}</TableCell>
+                    <TableCell className="text-[var(--k-text-2)] whitespace-nowrap">{log.actor_email || t('auditUnknownActor')}</TableCell>
+                    <TableCell className="text-[var(--k-text-3)] whitespace-nowrap">{formatWhen(log.created_at, LOCALE_TAGS[language] || 'az-AZ')}</TableCell>
                     <TableCell>
-                      <Badge tone={ACTION_BADGE[verb] || 'neutral'}>{badgeText}</Badge>
+                      <Tag tone={ACTION_BADGE[verb] || 'neutral'}>{badgeText}</Tag>
                     </TableCell>
-                    <TableCell className="text-white">{log.summary || log.action}</TableCell>
+                    <TableCell className="text-[var(--k-text)]">{log.summary || log.action}</TableCell>
                   </TableRow>
                 );
               })}

@@ -8,13 +8,17 @@ import { subscribeOrders, subscribeProducts } from '@/lib/services/realtime';
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { CartDrawer } from "@/components/CartDrawer";
-import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, QrCode, Home, CreditCard, Loader2, AlertCircle, RefreshCw, ArrowUpRight } from "lucide-react";
+import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight } from "lucide-react";
 import { getLocalizedText, getLocalizedCategoryName, getLocalizedProduct } from "@/lib/translations";
 import { applyDiscounts } from "@/lib/services/promotionsService";
 import { requestWalletPayment } from "@/lib/services/paymentService";
 import { FEATURES, hasFeature } from "@/lib/services/entitlementService";
-import { Modal, LanguageSwitcher, Button } from "@/components/ui";
+import {
+  Sheet, Button, Tag, Pill, LanguageToggle,
+  EmptyState, LoadingState, ErrorState,
+} from "@/components/kit";
 import { useLanguage } from "@/hooks/useLanguage";
+import { cn } from "@/lib/utils";
 
 // Only ever render admin-supplied banner links as a real navigable <a href>
 // if they're http(s) — blocks javascript:/data: URI injection via a
@@ -298,133 +302,93 @@ export function CustomerApp() {
 
   const cartTotalQty = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
+  // Order status -> kit Tag tone + icon. Same five states, same labels; the
+  // hand-mixed hex pairs are gone in favour of the token tones.
   const statusMap = {
-    [ORDER_STATUS.PENDING]: { label: getLocalizedText("statusPending", lang), icon: <Clock className="w-4 h-4" />, cls: 'bg-[#FFB020]/12 text-[#B4790C]' },
-    [ORDER_STATUS.ACCEPTED]: { label: getLocalizedText("statusPreparing", lang), icon: <Clock className="w-4 h-4" />, cls: 'bg-[var(--theme-primary)]/10 text-[var(--theme-primary)]' },
-    [ORDER_STATUS.PREPARING]: { label: getLocalizedText("statusPreparing", lang), icon: <UtensilsCrossed className="w-4 h-4" />, cls: 'bg-[var(--theme-primary)]/10 text-[var(--theme-primary)]' },
-    [ORDER_STATUS.READY]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-4 h-4" />, cls: 'bg-[#34C759]/12 text-[#218838]' },
-    [ORDER_STATUS.SERVED]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-4 h-4" />, cls: 'bg-[#34C759]/12 text-[#218838]' },
-    [ORDER_STATUS.CANCELLED]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-4 h-4" />, cls: 'bg-rose-100 text-rose-600' },
+    [ORDER_STATUS.PENDING]: { label: getLocalizedText("statusPending", lang), icon: <Clock className="w-3.5 h-3.5" />, tone: 'warning' },
+    [ORDER_STATUS.ACCEPTED]: { label: getLocalizedText("statusPreparing", lang), icon: <Clock className="w-3.5 h-3.5" />, tone: 'accent' },
+    [ORDER_STATUS.PREPARING]: { label: getLocalizedText("statusPreparing", lang), icon: <UtensilsCrossed className="w-3.5 h-3.5" />, tone: 'accent' },
+    [ORDER_STATUS.READY]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-3.5 h-3.5" />, tone: 'success' },
+    [ORDER_STATUS.SERVED]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-3.5 h-3.5" />, tone: 'success' },
+    [ORDER_STATUS.CANCELLED]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-3.5 h-3.5" />, tone: 'danger' },
+  };
+
+  const themeStyle = {
+    '--theme-primary': restaurant?.theme_primary_color || '#6C4CFF',
+    '--theme-secondary': restaurant?.theme_secondary_color || '#14151A',
   };
 
   if (loading) {
     return (
-      <div className="customer-theme min-h-screen flex items-center justify-center px-4 py-8" style={{ background: '#F7F8FA' }}>
-        <div className="w-full max-w-md customer-card p-8 text-center">
-          <div className="mx-auto mb-5 w-16 h-16 rounded-full bg-[#F7F8FA] border border-[#E8E8E8] flex items-center justify-center text-[var(--theme-primary)] animate-spin">
-            <Loader2 className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-[#14151A] mb-2">Menyu yüklənir…</h2>
-          <p className="text-[#8A8F98] text-sm">Menyu və masa məlumatları hazırlanır</p>
-        </div>
+      <div className="kit-light min-h-screen bg-[var(--k-bg)]" style={themeStyle}>
+        <LoadingState title="Menyu yüklənir…" description="Menyu və masa məlumatları hazırlanır" />
       </div>
     );
   }
 
   if (loadError) {
     return (
-      <div className="customer-theme min-h-screen flex items-center justify-center px-4 py-8" style={{ background: '#F7F8FA' }}>
-        <div className="w-full max-w-md customer-card p-8 text-center">
-          <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500">
-            <AlertCircle className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-[#14151A] mb-2">Yükləmə xətası</h2>
-          <p className="text-[#8A8F98] text-sm mb-6">{loadError}</p>
-          <Button
-            type="button"
-            context="customer"
-            variant="primary"
-            onClick={() => window.location.reload()}
-            className="h-11"
-          >
-            <RefreshCw className="w-4 h-4" /> Təkrar cəhd et
-          </Button>
-        </div>
+      <div className="kit-light min-h-screen bg-[var(--k-bg)]" style={themeStyle}>
+        <ErrorState
+          title="Yükləmə xətası"
+          description={loadError}
+          actionLabel="Təkrar cəhd et"
+          onRetry={() => window.location.reload()}
+        />
       </div>
     );
   }
 
   return (
-    <div
-      className="customer-theme min-h-screen pb-28"
-      style={{
-        background: '#F7F8FA',
-        '--theme-primary': restaurant?.theme_primary_color || '#6C4CFF',
-        '--theme-secondary': restaurant?.theme_secondary_color || '#14151A',
-      }}
-    >
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-[#E8E8E8] px-4 py-3 sm:px-6">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+    <div className="kit-light min-h-screen bg-[var(--k-bg)] pb-24" style={themeStyle}>
 
-          {/* Brand */}
-          <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2.5 sm:gap-4">
-            <div
-              className="flex items-center gap-2.5 text-white px-4 py-2 rounded-2xl font-extrabold text-sm sm:text-base tracking-tight shrink-0"
-              style={{ background: 'linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%)', boxShadow: '0 8px 20px -6px rgba(108,76,255,.45)' }}
-            >
-              {settings.restaurantLogo ? (
-                <>
-                  <Image
-                    src={settings.restaurantLogo}
-                    alt="Logo"
-                    className="w-5 h-5 object-contain rounded-lg bg-white/15 p-0.5"
-                    width={20}
-                    height={20}
-                    unoptimized
-                  />
-                  <span className="truncate max-w-[140px] sm:max-w-none">{settings.restaurantName}</span>
-                </>
-              ) : (
-                <Image
-                  src="/brand/menuflow-logo-dark-bg-h48.png"
-                  alt="MenuFlow"
-                  width={90}
-                  height={14}
-                  className="h-4 w-auto object-contain"
-                  unoptimized
-                />
-              )}
-            </div>
-
-            {/* Language Switcher — extracted to components/ui/LanguageSwitcher.jsx
-                (same markup/styling, now backed by the shared persisted store) */}
-            <LanguageSwitcher context="customer" />
-
-            <div className="h-7 w-px bg-[#E8E8E8] hidden lg:block" />
-
-            {/* Active Table Badge */}
-            <div className="flex items-center gap-2.5 bg-[#F7F8FA] border border-[#E8E8E8] rounded-2xl px-3 py-1.5 shrink-0">
-              <div className="relative flex items-center justify-center">
-                <div className="w-8 h-8 bg-[var(--theme-primary)]/10 border border-[var(--theme-primary)]/25 rounded-xl flex items-center justify-center font-black text-xs text-[var(--theme-primary)]">
-                  {tableId}
-                </div>
-                <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34C759] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#34C759]" />
-                </span>
-              </div>
-              <div>
-                <p className="text-[#8A8F98] text-[10px] font-extrabold uppercase tracking-widest leading-none">{getLocalizedText("activeTable", lang)}</p>
-                <h1 className="font-bold text-xs sm:text-sm text-[#14151A] mt-0.5 leading-tight">{currentTable.name}</h1>
-              </div>
+      {/* Header. Reduced to what a seated customer actually needs: who you're
+          ordering from, which table you're at, and the language. The old
+          gradient logo chip and the pulsing green "live" dot are gone —
+          neither told the customer anything actionable. */}
+      <header className="sticky top-0 z-40 border-b border-[var(--k-border)] bg-[var(--k-surface)]/92 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {settings.restaurantLogo ? (
+              <Image
+                src={settings.restaurantLogo}
+                alt=""
+                className="h-8 w-8 shrink-0 rounded-[var(--k-r-sm)] border border-[var(--k-border)] object-cover"
+                width={32}
+                height={32}
+                unoptimized
+              />
+            ) : (
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--k-r-sm)] bg-[var(--k-accent)] text-[13px] font-semibold text-[var(--k-accent-fg)]">
+                {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
+              </span>
+            )}
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold leading-tight text-[var(--k-text)]">
+                {settings.restaurantName}
+              </p>
+              <p className="truncate text-[11px] leading-tight text-[var(--k-text-3)]">
+                {getLocalizedText("activeTable", lang)} · {currentTable.name}
+              </p>
             </div>
           </div>
+
+          <LanguageToggle />
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 pt-6 space-y-8">
+      <main className="mx-auto max-w-7xl space-y-8 px-4 pt-6 sm:px-6">
 
         {/* Banners (Banner sistemi) — SuperAdmin restoranın banner funksiyasını söndürsə heç göstərilmir, plan-dan asılı olmayaraq (bax: lib/services/entitlementService.js) */}
         {hasFeature(restaurant, FEATURES.BANNERS) && banners.filter((b) => b.is_active).length > 0 && (
-          <section className="flex gap-4 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
+          <section className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 no-scrollbar sm:-mx-6 sm:px-6">
             {banners.filter((b) => b.is_active).map((banner) => {
               const content = (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={banner.image_url}
                   alt={banner.title || 'banner'}
-                  className="w-full h-full object-cover"
+                  className="h-full w-full object-cover"
                 />
               );
 
@@ -456,12 +420,12 @@ export function CustomerApp() {
                 hrefAction = banner.link_url;
               }
               const isClickable = Boolean(onClickAction || hrefAction);
-              const interactiveClassName = "block w-full h-full text-left transition-transform duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)] focus-visible:ring-offset-2";
+              const interactiveClassName = "block h-full w-full text-left transition-transform duration-[var(--k-dur)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--k-focus)] focus-visible:ring-inset";
 
               return (
                 <div
                   key={banner.id}
-                  className="relative shrink-0 w-[280px] sm:w-[360px] h-32 sm:h-40 rounded-3xl overflow-hidden shadow-md border border-[#E8E8E8]"
+                  className="relative h-32 w-[280px] shrink-0 overflow-hidden rounded-[var(--k-r-lg)] border border-[var(--k-border)] sm:h-40 sm:w-[360px]"
                 >
                   {hrefAction ? (
                     <a
@@ -486,14 +450,14 @@ export function CustomerApp() {
                       only signal a customer gets that tapping does
                       something. */}
                   {isClickable && (
-                    <span className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center text-white pointer-events-none">
-                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    <span className="pointer-events-none absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-[var(--k-r-sm)] bg-[var(--k-text)]/70 text-[var(--k-surface)] backdrop-blur-sm">
+                      <ArrowUpRight className="w-3 h-3" />
                     </span>
                   )}
                   {(banner.title || banner.subtitle) && (
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 pointer-events-none">
-                      {banner.title && <p className="text-white font-bold text-sm leading-tight">{banner.title}</p>}
-                      {banner.subtitle && <p className="text-white/80 text-xs leading-tight">{banner.subtitle}</p>}
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-3">
+                      {banner.title && <p className="text-[13px] font-semibold leading-tight text-white">{banner.title}</p>}
+                      {banner.subtitle && <p className="mt-0.5 text-[11px] leading-tight text-white/75">{banner.subtitle}</p>}
                     </div>
                   )}
                 </div>
@@ -503,165 +467,162 @@ export function CustomerApp() {
         )}
 
         {/* Categories */}
-        <section id="menu-categories" className="scroll-mt-4">
-          <div className="flex overflow-x-auto no-scrollbar gap-2.5 pb-1">
-            <button
-              onClick={() => setSelectedCategory("all")}
-              className={`flex items-center gap-2 px-5 py-3 rounded-2xl whitespace-nowrap transition-all border ${
-                selectedCategory === "all"
-                  ? "text-white border-transparent shadow-md"
-                  : "bg-white border-[#E8E8E8] text-[#5A5F68] hover:border-[var(--theme-primary)]/40"
-              }`}
-              style={selectedCategory === "all" ? { background: 'linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%)', boxShadow: '0 8px 20px -6px rgba(108,76,255,.4)' } : undefined}
-            >
-              <span className="font-bold text-sm">{getLocalizedText("allMenu", lang)}</span>
-            </button>
+        <section id="menu-categories" className="scroll-mt-20">
+          <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 no-scrollbar sm:-mx-6 sm:px-6">
+            <Pill active={selectedCategory === "all"} onClick={() => setSelectedCategory("all")}>
+              {getLocalizedText("allMenu", lang)}
+            </Pill>
             {CATEGORIES.map(cat => (
-              <button
+              <Pill
                 key={cat.id}
+                active={selectedCategory === cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`flex items-center gap-2 px-5 py-3 rounded-2xl whitespace-nowrap transition-all border ${
-                  selectedCategory === cat.id
-                    ? "text-white border-transparent shadow-md"
-                    : "bg-white border-[#E8E8E8] text-[#5A5F68] hover:border-[var(--theme-primary)]/40"
-                }`}
-                style={selectedCategory === cat.id ? { background: 'linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%)', boxShadow: '0 8px 20px -6px rgba(108,76,255,.4)' } : undefined}
               >
-                <span>{cat.icon}</span>
-                <span className="font-bold text-sm">{getLocalizedCategoryName(cat, lang)}</span>
-              </button>
+                <span aria-hidden="true">{cat.icon}</span>
+                {getLocalizedCategoryName(cat, lang)}
+              </Pill>
             ))}
           </div>
         </section>
 
         {/* Products */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {filteredProducts.length > 0 ? filteredProducts.map(product => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              onOpenDetail={setSelectedProduct}
-              onAddToCart={handleAddToCart}
-              isFavorite={false}
-              onToggleFavorite={() => {}}
-              lang={lang}
-            />
-          )) : (
-            <div className="col-span-full">
-              <div className="w-full max-w-xl mx-auto customer-card p-8 text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#F7F8FA] border border-[#E8E8E8] text-[var(--theme-primary)]">
-                  <ShoppingCart className="w-8 h-8" />
-                </div>
-                <h3 className="text-lg font-bold text-[#14151A] mb-2">Məhsul tapılmadı</h3>
-                <p className="text-[#8A8F98] text-sm mb-6">Seçilmiş kateqoriyaya uyğun məhsul yoxdur. Daha geniş kateqoriya üçün bütün məhsullara qayıdın.</p>
-                <Button type="button" context="customer" variant="primary" onClick={() => setSelectedCategory('all')} className="h-11">
+        <section>
+          {filteredProducts.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+              {filteredProducts.map(product => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onOpenDetail={setSelectedProduct}
+                  onAddToCart={handleAddToCart}
+                  isFavorite={false}
+                  onToggleFavorite={() => {}}
+                  lang={lang}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<ShoppingCart className="w-5 h-5" />}
+              title="Məhsul tapılmadı"
+              description="Seçilmiş kateqoriyaya uyğun məhsul yoxdur. Daha geniş kateqoriya üçün bütün məhsullara qayıdın."
+              action={
+                <Button variant="secondary" onClick={() => setSelectedCategory('all')}>
                   Hamısına qayıt
                 </Button>
-              </div>
-            </div>
+              }
+            />
           )}
         </section>
 
         {/* Active Orders */}
-        {activeOrders.length > 0 ? (
-          <section className="pt-6 border-t border-[#E8E8E8]">
-            <h2 className="font-bold text-xl mb-4 text-[#14151A]">{getLocalizedText("activeOrders", lang)}</h2>
-            <div className="space-y-4">
-              {activeOrders.map(order => (
-                <div key={order.id} className="customer-card p-5 flex flex-col sm:flex-row gap-4 justify-between sm:items-center">
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-[#8A8F98] text-xs font-mono">
-                        {new Date(order.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <span className="text-[#D9DBE3] text-xs">•</span>
-                      <span className="font-bold text-sm text-[var(--theme-primary)]">{order.total} {settings.currencySymbol}</span>
+        <section className="border-t border-[var(--k-border)] pt-6">
+          <h2 className="mb-3.5 text-[15px] font-semibold text-[var(--k-text)]">
+            {getLocalizedText("activeOrders", lang)}
+          </h2>
+          {activeOrders.length > 0 ? (
+            <div className="space-y-2.5">
+              {activeOrders.map(order => {
+                const status = statusMap[order.status];
+                return (
+                  <div
+                    key={order.id}
+                    className="flex flex-col gap-3 rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="mb-2 flex items-center gap-2 text-[11px] text-[var(--k-text-3)]">
+                        <span className="k-nums">
+                          {new Date(order.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span className="k-nums font-semibold text-[var(--k-accent)]">
+                          {order.total} {settings.currencySymbol}
+                        </span>
+                      </div>
+                      <ul className="space-y-0.5">
+                        {order.items.map((item, idx) => {
+                          const locItem = getLocalizedProduct(item.product, lang);
+                          return (
+                            <li key={idx} className="text-[13px] text-[var(--k-text-2)]">
+                              <span className="k-nums mr-1.5 font-semibold text-[var(--k-text)]">{item.quantity}×</span>
+                              {locItem.name}
+                            </li>
+                          );
+                        })}
+                      </ul>
                     </div>
-                    <div className="space-y-1">
-                      {order.items.map((item, idx) => {
-                        const locItem = getLocalizedProduct(item.product, lang);
-                        return (
-                          <div key={idx} className="text-sm text-[#5A5F68]">
-                            <span className="font-bold text-[#14151A] mr-2">{item.quantity}x</span>
-                            {locItem.name}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <Tag tone={status?.tone || 'neutral'} className="h-8 self-start px-3 sm:self-center">
+                      {status?.icon}
+                      {status?.label}
+                    </Tag>
                   </div>
-                  <div className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold w-full sm:w-auto ${statusMap[order.status]?.cls || 'bg-[#F7F8FA] text-[#5A5F68]'}`}>
-                    {statusMap[order.status]?.icon}
-                    {statusMap[order.status]?.label}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </section>
-        ) : (
-          <div className="pt-6">
-            <div className="w-full customer-card p-8 text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#34C759]/10 border border-[#34C759]/20 text-[#218838]">
-                <CheckCircle2 className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-bold text-[#14151A] mb-2">Aktiv sifariş yoxdur</h3>
-              <p className="text-[#8A8F98] text-sm">Masanız üçün heç bir açıq sifariş yoxdur. Yeni sifariş verdikdə burada görünəcək.</p>
-            </div>
-          </div>
-        )}
-
+          ) : (
+            <EmptyState
+              icon={<CheckCircle2 className="w-5 h-5" />}
+              title="Aktiv sifariş yoxdur"
+              description="Masanız üçün heç bir açıq sifariş yoxdur. Yeni sifariş verdikdə burada görünəcək."
+            />
+          )}
+        </section>
       </main>
 
       {/* Footer */}
-      <footer className="mt-12 border-t border-[#E8E8E8] py-8 px-4 text-center">
-        <div className="max-w-7xl mx-auto flex flex-col items-center justify-center gap-2">
-          <div className="flex items-center gap-2 text-[#8A8F98]">
+      <footer className="mt-10 border-t border-[var(--k-border)] px-4 py-6 text-center">
+        <div className="mx-auto flex max-w-7xl flex-col items-center gap-1.5">
+          <div className="flex items-center gap-1.5 text-[11px] text-[var(--k-text-3)]">
             {settings.restaurantLogo ? (
               <>
                 <Image
                   src={settings.restaurantLogo}
-                  alt="Logo"
-                  className="w-4 h-4 object-contain rounded"
-                  width={16}
-                  height={16}
+                  alt=""
+                  className="h-3.5 w-3.5 rounded object-contain"
+                  width={14}
+                  height={14}
                   unoptimized
                 />
-                <span className="text-xs font-semibold tracking-wide">
-                  {getLocalizedText("poweredBy", lang)} <strong className="text-[#14151A] font-bold">{settings.restaurantName}</strong>
+                <span>
+                  {getLocalizedText("poweredBy", lang)}{' '}
+                  <strong className="font-semibold text-[var(--k-text-2)]">{settings.restaurantName}</strong>
                 </span>
               </>
             ) : (
-              <span className="text-xs font-semibold tracking-wide inline-flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1.5">
                 {getLocalizedText("poweredBy", lang)}
                 <Image
                   src="/brand/menuflow-logo-light-bg-h48.png"
                   alt="MenuFlow"
-                  width={72}
-                  height={12}
-                  className="h-3 w-auto object-contain"
+                  width={64}
+                  height={11}
+                  className="h-2.5 w-auto object-contain opacity-60"
                   unoptimized
                 />
               </span>
             )}
           </div>
-          <p className="text-[11px] text-[#B4B8C0] font-medium">
+          <p className="text-[11px] text-[var(--k-text-3)]">
             {settings.tagline || getLocalizedText("tagline", lang)}
           </p>
         </div>
       </footer>
 
-      {/* Bottom Navigation */}
-      <nav className="customer-bottom-nav fixed bottom-0 inset-x-0 z-50 px-3 pb-[env(safe-area-inset-bottom)]">
-        <div className="max-w-md mx-auto grid grid-cols-4 gap-1 py-2">
-          <BottomNavButton icon={<Home className="w-5 h-5" />} label="Menu" active onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
-          <BottomNavButton icon={<ShoppingCart className="w-5 h-5" />} label="Səbət" badge={cartTotalQty > 0 ? cartTotalQty : null} onClick={() => setIsCartOpen(true)} />
+      {/* Bottom Navigation. Solid surface + hairline top border instead of the
+          frosted-glass bar; on a scrolling photo grid the blur was reading as
+          smear rather than depth. */}
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--k-border)] bg-[var(--k-surface)] pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto grid max-w-md grid-cols-4">
+          <BottomNavButton icon={<Home className="w-[18px] h-[18px]" />} label="Menu" active onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
+          <BottomNavButton icon={<ShoppingCart className="w-[18px] h-[18px]" />} label="Səbət" badge={cartTotalQty > 0 ? cartTotalQty : null} onClick={() => setIsCartOpen(true)} />
           <BottomNavButton
-            icon={<Bell className="w-5 h-5" />}
+            icon={<Bell className="w-[18px] h-[18px]" />}
             label={waiterCooldownLeft > 0 ? `${waiterCooldownLeft}s` : 'Garson'}
             loading={waiterCalling}
             disabled={waiterCooldownLeft > 0}
             onClick={handleCallWaiter}
           />
-          <BottomNavButton icon={<CreditCard className="w-5 h-5" />} label="Hesab" onClick={() => setIsBillModalOpen(true)} />
+          <BottomNavButton icon={<CreditCard className="w-[18px] h-[18px]" />} label="Hesab" onClick={() => setIsBillModalOpen(true)} />
         </div>
       </nav>
 
@@ -691,86 +652,90 @@ export function CustomerApp() {
       />
 
       {/* Bill Modal */}
-      <Modal
+      <Sheet
         isOpen={isBillModalOpen}
         onClose={() => setIsBillModalOpen(false)}
-        context="customer"
+        side="bottom"
         size="sm"
         stacked
         ariaLabel={getLocalizedText("paymentType", lang)}
-        panelClassName="p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,.15)]"
+        theme={null}
+        panelClassName="kit-light sm:rounded-[var(--k-r-lg)] sm:border sm:max-w-sm sm:mx-auto sm:my-auto"
+        scrimClassName="sm:items-center sm:justify-center sm:p-4"
       >
-            <h2 className="text-xl font-bold text-[#14151A] mb-2">{getLocalizedText("paymentType", lang)}</h2>
-            <p className="text-[#8A8F98] mb-6 text-sm">{getLocalizedText("paymentPrompt", lang)}</p>
+        <div className="p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-center">
+          <h2 className="text-[15px] font-semibold text-[var(--k-text)]">
+            {getLocalizedText("paymentType", lang)}
+          </h2>
+          <p className="mt-1.5 text-[13px] text-[var(--k-text-3)]">
+            {getLocalizedText("paymentPrompt", lang)}
+          </p>
 
-            <div className="flex gap-3">
-              {/* Button's own customer/secondary recipe is bg-white (not this
-                  screen's bg-[#F7F8FA]) with a border-color hover instead of
-                  a bg change — className overrides restore the exact
-                  original colors/hover so the look stays pixel-identical. */}
-              <Button
-                type="button"
-                context="customer"
-                variant="secondary"
-                onClick={() => handleRequestBill('cash')}
-                disabled={billRequesting}
-                className="flex-1 py-3 bg-[#F7F8FA] hover:bg-[#EFEFF3] text-[#14151A] rounded-xl border-[#E8E8E8]"
-              >
-                {getLocalizedText("cash", lang)}
-              </Button>
-              <Button
-                type="button"
-                context="customer"
-                variant="primary"
-                onClick={() => handleRequestBill('card')}
-                disabled={billRequesting}
-                className="flex-1 h-auto py-3 text-sm"
-              >
-                {getLocalizedText("card", lang)}
-              </Button>
-            </div>
-            {/* Changing your mind here (cash -> card etc.) after already
-                requesting the bill updates the same staff-side alert in
-                place instead of sending a second, confusing notification. */}
-
-            {/* Always shown to customers — feature-detecting the wallet APIs
-                up front hid these buttons on browsers/webviews that report
-                PaymentRequest/ApplePaySession late or inconsistently.
-                Tapping is itself the capability check: requestWalletPayment
-                (lib/services/paymentService.js) returns a clear error if the
-                wallet genuinely isn't available on this device. */}
-            {(hasFeature(restaurant, FEATURES.GOOGLE_PAY) || hasFeature(restaurant, FEATURES.APPLE_PAY)) && (
-              <div className="flex gap-3 mt-3">
-                {hasFeature(restaurant, FEATURES.GOOGLE_PAY) && (
-                  <button
-                    type="button"
-                    disabled={walletPaying === 'google_pay'}
-                    onClick={() => handleWalletPay('google_pay')}
-                    className="flex-1 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
-                  >
-                    {walletPaying === 'google_pay' ? '...' : 'G Pay'}
-                  </button>
-                )}
-                {hasFeature(restaurant, FEATURES.APPLE_PAY) && (
-                  <button
-                    type="button"
-                    disabled={walletPaying === 'apple_pay'}
-                    onClick={() => handleWalletPay('apple_pay')}
-                    className="flex-1 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
-                  >
-                    {walletPaying === 'apple_pay' ? '...' : ' Pay'}
-                  </button>
-                )}
-              </div>
-            )}
-
-            <button
-              onClick={() => setIsBillModalOpen(false)}
-              className="mt-4 text-[#8A8F98] hover:text-[#14151A] text-sm font-semibold transition-colors"
+          <div className="mt-5 flex gap-2.5">
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => handleRequestBill('cash')}
+              disabled={billRequesting}
+              className="flex-1"
             >
-              {getLocalizedText("cancel", lang)}
-            </button>
-      </Modal>
+              {getLocalizedText("cash", lang)}
+            </Button>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => handleRequestBill('card')}
+              disabled={billRequesting}
+              className="flex-1"
+            >
+              {getLocalizedText("card", lang)}
+            </Button>
+          </div>
+          {/* Changing your mind here (cash -> card etc.) after already
+              requesting the bill updates the same staff-side alert in
+              place instead of sending a second, confusing notification. */}
+
+          {/* Always shown to customers — feature-detecting the wallet APIs
+              up front hid these buttons on browsers/webviews that report
+              PaymentRequest/ApplePaySession late or inconsistently.
+              Tapping is itself the capability check: requestWalletPayment
+              (lib/services/paymentService.js) returns a clear error if the
+              wallet genuinely isn't available on this device. */}
+          {(hasFeature(restaurant, FEATURES.GOOGLE_PAY) || hasFeature(restaurant, FEATURES.APPLE_PAY)) && (
+            <div className="mt-2.5 flex gap-2.5">
+              {hasFeature(restaurant, FEATURES.GOOGLE_PAY) && (
+                <Button
+                  size="lg"
+                  disabled={walletPaying === 'google_pay'}
+                  loading={walletPaying === 'google_pay'}
+                  onClick={() => handleWalletPay('google_pay')}
+                  className="flex-1 bg-[var(--k-text)] text-[var(--k-surface)] border-transparent hover:bg-[var(--k-text)]/90"
+                >
+                  G Pay
+                </Button>
+              )}
+              {hasFeature(restaurant, FEATURES.APPLE_PAY) && (
+                <Button
+                  size="lg"
+                  disabled={walletPaying === 'apple_pay'}
+                  loading={walletPaying === 'apple_pay'}
+                  onClick={() => handleWalletPay('apple_pay')}
+                  className="flex-1 bg-[var(--k-text)] text-[var(--k-surface)] border-transparent hover:bg-[var(--k-text)]/90"
+                >
+                   Pay
+                </Button>
+              )}
+            </div>
+          )}
+
+          <button
+            onClick={() => setIsBillModalOpen(false)}
+            className="mt-4 text-[13px] font-medium text-[var(--k-text-3)] transition-colors hover:text-[var(--k-text)] focus-visible:outline-none focus-visible:underline"
+          >
+            {getLocalizedText("cancel", lang)}
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 }
@@ -780,22 +745,21 @@ function BottomNavButton({ icon, label, active, badge, loading, disabled, onClic
     <button
       onClick={onClick}
       disabled={loading || disabled}
-      className="flex flex-col items-center justify-center gap-1 py-1.5 rounded-2xl transition-all active:scale-95 disabled:opacity-60"
+      className={cn(
+        'flex flex-col items-center justify-center gap-1 py-2.5 transition-colors duration-[var(--k-dur)]',
+        'disabled:opacity-45 focus-visible:outline-none focus-visible:bg-[var(--k-surface-2)]',
+        active ? 'text-[var(--k-accent)]' : 'text-[var(--k-text-3)]',
+      )}
     >
-      <div className="relative flex items-center justify-center">
-        <span className={active ? 'text-[var(--theme-primary)]' : 'text-[#8A8F98]'}>
-          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : icon}
-        </span>
+      <span className="relative flex items-center justify-center">
+        {loading ? <Loader2 className="w-[18px] h-[18px] animate-spin" /> : icon}
         {badge != null && (
-          <span
-            className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full text-white text-[9px] font-black flex items-center justify-center"
-            style={{ background: 'linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%)' }}
-          >
+          <span className="k-nums absolute -right-2.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--k-accent)] px-1 text-[9px] font-semibold text-[var(--k-accent-fg)]">
             {badge}
           </span>
         )}
-      </div>
-      <span className={`text-[10px] font-bold ${active ? 'text-[var(--theme-primary)]' : 'text-[#8A8F98]'}`}>{label}</span>
+      </span>
+      <span className="text-[10px] font-medium">{label}</span>
     </button>
   );
 }

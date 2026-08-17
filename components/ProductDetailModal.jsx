@@ -3,23 +3,16 @@
 import React, { useState } from "react";
 import Image from 'next/image';
 import {
-  Star,
-  Clock,
-  Flame,
-  Leaf,
-  Sparkles,
-  Plus,
-  Minus,
-  ShoppingBag,
-  Check,
-  Utensils,
-  Heart
+  Star, Clock, Flame, Leaf, Sparkles, Plus, Minus,
+  ShoppingBag, Check, Utensils, Heart,
 } from "lucide-react";
 import { getLocalizedProduct, getLocalizedText, getLocalizedCategoryName } from "@/lib/translations";
 import { useAppStore } from "@/lib/store";
-import { Modal, ModalCloseButton, Badge } from "@/components/ui";
+import { Sheet, SheetClose, Button, Tag, Textarea, Field } from "@/components/kit";
+import { cn } from "@/lib/utils";
 
-const GRADIENT = 'linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%)';
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80";
 
 export const ProductDetailModal = ({
   product: rawProduct,
@@ -57,10 +50,7 @@ export const ProductDetailModal = ({
   };
 
   const handleOptionSelect = (optionTitle, choice) => {
-    setSelectedOptions((prev) => ({
-      ...prev,
-      [optionTitle]: choice,
-    }));
+    setSelectedOptions((prev) => ({ ...prev, [optionTitle]: choice }));
   };
 
   const handleAdd = () => {
@@ -68,275 +58,260 @@ export const ProductDetailModal = ({
     onClose();
   };
 
+  const markers = [
+    product.isPopular && { key: 'pop', Icon: Star, label: getLocalizedText("popular", lang) },
+    product.isChefChoice && { key: 'chef', Icon: Sparkles, label: getLocalizedText("chefChoice", lang) },
+    product.isSpicy && { key: 'spicy', Icon: Flame, label: getLocalizedText("spicy", lang) },
+    product.isVegetarian && { key: 'veg', Icon: Leaf, label: getLocalizedText("vegetarian", lang) },
+  ].filter(Boolean);
+
   return (
-    <Modal
+    <Sheet
       isOpen={Boolean(rawProduct)}
       onClose={onClose}
-      context="customer"
+      /* Bottom sheet on phones, centred dialog from `sm` up — a full-height
+         centred modal on a 375px screen wastes the bottom third on scrim. */
+      side="bottom"
       size="xl"
       ariaLabel={product.name}
-      panelClassName="shadow-[0_24px_70px_rgba(0,0,0,.18)]"
+      /* theme={null} renders in place rather than portalling to <body>.
+         --theme-primary (the restaurant's brand colour) is set as an INLINE
+         style on CustomerApp's root div, so a portalled panel would escape it
+         and every accent in here would resolve to nothing. */
+      theme={null}
+      panelClassName="kit-light sm:rounded-[var(--k-r-lg)] sm:border sm:max-w-2xl sm:mx-auto sm:my-auto"
+      scrimClassName="sm:items-center sm:justify-center sm:p-4"
     >
-        {/* Close & Favorite top buttons */}
-        <div className="sticky top-0 z-20 flex items-center justify-between p-4 bg-white/90 backdrop-blur-md border-b border-[#E8E8E8]">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-[#8A8F98] uppercase tracking-wider">
-              {getLocalizedText("aboutProduct", lang)}
+      {/* Hero image with the close button floated over it — no separate header
+          bar stealing vertical space above the photo. */}
+      <div className="relative aspect-[16/10] sm:aspect-[2/1] w-full overflow-hidden bg-[var(--k-surface-2)]">
+        <Image
+          src={product.image?.trim() || FALLBACK_IMAGE}
+          alt={product.name}
+          className="object-cover"
+          fill
+          sizes="(max-width: 640px) 100vw, 640px"
+          unoptimized
+        />
+        <div className="absolute top-3 right-3 flex items-center gap-2">
+          <button
+            onClick={() => onToggleFavorite(product.id)}
+            aria-label={getLocalizedText("details", lang)}
+            className={cn(
+              'inline-flex h-8 w-8 items-center justify-center rounded-[var(--k-r-sm)] backdrop-blur-sm transition-colors duration-[var(--k-dur)]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--k-focus)]',
+              isFavorite
+                ? 'bg-[var(--k-danger)] text-white'
+                : 'bg-[var(--k-surface)]/92 text-[var(--k-text-3)] hover:text-[var(--k-danger)]',
+            )}
+          >
+            <Heart className={cn('w-4 h-4', isFavorite && 'fill-current')} />
+          </button>
+          <SheetClose onClick={onClose} id="modal-close-btn" className="bg-[var(--k-surface)]/92 backdrop-blur-sm hover:bg-[var(--k-surface)]" />
+        </div>
+      </div>
+
+      <div className="p-4 sm:p-6 space-y-6">
+
+        {/* Title + price */}
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--k-text-3)]">
+            {getLocalizedCategoryName({ id: product.category, name: product.category }, lang)}
+          </p>
+          <div className="mt-1.5 flex items-start justify-between gap-4">
+            <h2 className="text-[22px] sm:text-2xl font-semibold leading-tight tracking-[-0.02em] text-[var(--k-text)]">
+              {product.name}
+            </h2>
+            <span className="flex shrink-0 flex-col items-end leading-none">
+              {product.originalPrice ? (
+                <span className="k-nums text-xs text-[var(--k-text-3)] line-through">
+                  {product.originalPrice.toFixed(2)} {currencySymbol}
+                </span>
+              ) : null}
+              <span className="k-nums mt-1 text-[22px] sm:text-2xl font-semibold tracking-[-0.02em] text-[var(--k-text)]">
+                {product.price.toFixed(2)} {currencySymbol}
+              </span>
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onToggleFavorite(product.id)}
-              className={`p-2 rounded-full border transition-colors ${
-                isFavorite
-                  ? "bg-rose-500 text-white border-rose-500"
-                  : "bg-white text-[#8A8F98] border-[#E8E8E8] hover:text-rose-500"
-              }`}
-            >
-              <Heart className={`w-4 h-4 ${isFavorite ? "fill-white" : ""}`} />
-            </button>
-            <ModalCloseButton onClick={onClose} context="customer" id="modal-close-btn" />
-          </div>
-        </div>
-
-        {/* Hero Image */}
-        <div className="relative h-56 sm:h-72 w-full overflow-hidden">
-          <Image
-            src={product.image?.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80"}
-            alt={product.name}
-            className="object-cover"
-            fill
-            sizes="(max-width: 640px) 100vw, 50vw"
-            unoptimized
-          />
-
-          {/* Badges on image */}
-          <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center gap-2">
-            {/* Same badge set as ProductCard's image overlay, at the modal's
-                slightly larger size — tone is a closest-match placeholder,
-                className fully overrides colors/size for pixel parity. */}
-            {product.isPopular && (
-              <Badge tone="warning" className="bg-[#FFB020] text-[#14151A] font-black px-3 shadow-md">
-                <Star className="w-3.5 h-3.5 fill-[#14151A]" />
-                {getLocalizedText("popular", lang)}
-              </Badge>
-            )}
-            {product.isChefChoice && (
-              <Badge tone="brand" className="bg-[var(--theme-primary)] text-white px-3 shadow-md">
-                <Sparkles className="w-3.5 h-3.5 text-white" />
-                {getLocalizedText("chefChoice", lang)}
-              </Badge>
-            )}
-            {product.isSpicy && (
-              <Badge tone="danger" className="bg-rose-500 text-white px-3 shadow-md">
-                <Flame className="w-3.5 h-3.5 fill-white" />
-                {getLocalizedText("spicy", lang)}
-              </Badge>
-            )}
-            {product.isVegetarian && (
-              <Badge tone="success" className="bg-[#34C759] text-white px-3 shadow-md">
-                <Leaf className="w-3.5 h-3.5 fill-white" />
-                {getLocalizedText("vegetarian", lang)}
-              </Badge>
-            )}
-            {product.rating != null && (
-              <Badge tone="neutral" className="bg-white/90 backdrop-blur-md text-[#14151A] px-3 shadow-md">
-                <Star className="w-3.5 h-3.5 fill-[#FFB020] text-[#FFB020]" />
-                {Number(product.rating).toFixed(1)}
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {/* Modal Body */}
-        <div className="p-5 sm:p-8 space-y-6">
-
-          {/* Header & Price */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E8E8E8] pb-4">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#14151A]">
-                {product.name}
-              </h2>
-              <p className="text-[#8A8F98] text-xs mt-1">
-                {getLocalizedText("category", lang)} <span className="text-[var(--theme-primary)] font-semibold capitalize">{getLocalizedCategoryName({ id: product.category, name: product.category }, lang)}</span>
-              </p>
-            </div>
-            <div className="text-left sm:text-right">
-              {product.originalPrice ? (
-                <span className="block text-[#B4B8C0] text-xs sm:text-sm line-through">{product.originalPrice.toFixed(2)} {currencySymbol}</span>
-              ) : null}
-              <span className="text-2xl sm:text-3xl font-extrabold text-[#14151A]">
-                {product.price.toFixed(2)} {currencySymbol}
-              </span>
-            </div>
-          </div>
-
-          {/* Prep time & Calories bar */}
-          {(product.prepTime || product.calories) && (
-            <div className="flex items-center gap-4 bg-[#F7F8FA] p-3.5 rounded-2xl border border-[#E8E8E8] text-xs text-[#5A5F68]">
-              {product.prepTime && (
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-[var(--theme-primary)]" />
-                  <span>{getLocalizedText("prepTime", lang)} <strong className="text-[#14151A]">{product.prepTime}</strong></span>
-                </div>
+          {/* Markers as tonal tags, below the title where they read as
+              attributes rather than as stickers on the photo. */}
+          {(markers.length > 0 || product.rating != null) && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              {product.rating != null && (
+                <Tag tone="warning" size="sm">
+                  <Star className="w-3 h-3 fill-current" />
+                  <span className="k-nums">{Number(product.rating).toFixed(1)}</span>
+                </Tag>
               )}
-              {product.calories && (
-                <>
-                  <span className="text-[#D9DBE3]">•</span>
-                  <div className="flex items-center gap-2">
-                    <Utensils className="w-4 h-4 text-[#FFB020]" />
-                    <span>{getLocalizedText("energy", lang)} <strong className="text-[#14151A]">{product.calories}</strong></span>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Description */}
-          <div>
-            <h4 className="text-xs font-bold text-[#5A5F68] uppercase tracking-wider mb-2">
-              {getLocalizedText("description", lang)}
-            </h4>
-            <p className="text-[#5A5F68] text-sm leading-relaxed">
-              {product.description}
-            </p>
-          </div>
-
-          {/* Ingredients */}
-          {product.ingredients && product.ingredients.length > 0 && (
-            <div>
-              <h4 className="text-xs font-bold text-[#5A5F68] uppercase tracking-wider mb-2">
-                {getLocalizedText("ingredients", lang)}
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {/* rounded-xl overrides Badge's default rounded-full — these
-                    are tag-shaped chips, not pills, in the original design.
-                    font-normal cancels Badge's default font-bold (the
-                    original ingredient tags aren't bold). */}
-                {product.ingredients.map((ing, idx) => (
-                  <Badge
-                    key={idx}
-                    tone="neutral"
-                    className="bg-[#F7F8FA] border border-[#E8E8E8] text-[#5A5F68] px-3 py-1.5 rounded-xl font-normal gap-1.5"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--theme-primary)]" />
-                    {ing}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Custom Options if any */}
-          {product.options && product.options.length > 0 && (
-            <div className="space-y-4 pt-2 border-t border-[#E8E8E8]">
-              {product.options.map((optGroup) => (
-                <div key={optGroup.title}>
-                  <h4 className="text-xs font-bold text-[#5A5F68] uppercase tracking-wider mb-2.5">
-                    {optGroup.title}
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {optGroup.choices.map((choice) => {
-                      const isSelected =
-                        selectedOptionTitle(selectedOptions, optGroup.title) === choice.name;
-                      return (
-                        <button
-                          key={choice.name}
-                          type="button"
-                          onClick={() => handleOptionSelect(optGroup.title, choice)}
-                          className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 transition-all min-w-0 ${
-                            isSelected
-                              ? "bg-[var(--theme-primary)]/8 border-[var(--theme-primary)] text-[#14151A]"
-                              : "bg-[#F7F8FA] border-[#E8E8E8] text-[#5A5F68] hover:border-[#D9DBE3]"
-                          }`}
-                        >
-                          <span className="flex items-center gap-2 min-w-0 truncate">
-                            <span className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                              isSelected ? "border-[var(--theme-primary)] bg-[var(--theme-primary)] text-white" : "border-[#D9DBE3]"
-                            }`}>
-                              {isSelected && <Check className="w-3 h-3" />}
-                            </span>
-                            <span className="truncate">{choice.name}</span>
-                          </span>
-                          {choice.extraPrice > 0 ? (
-                            <span className="text-[var(--theme-primary)] font-bold shrink-0 whitespace-nowrap">
-                              +{choice.extraPrice.toFixed(2)} ₼
-                            </span>
-                          ) : (
-                            <span className="text-[#8A8F98] font-normal shrink-0 whitespace-nowrap">{getLocalizedText("freeOption", lang)}</span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              {markers.map(({ key, Icon, label }) => (
+                <Tag key={key} tone={key === 'chef' ? 'accent' : 'neutral'} size="sm">
+                  <Icon className="w-3 h-3" aria-hidden="true" />
+                  {label}
+                </Tag>
               ))}
             </div>
           )}
+        </div>
 
-          {/* Kitchen Note / Request */}
-          <div className="pt-2 border-t border-[#E8E8E8]">
-            <h4 className="text-xs font-bold text-[#5A5F68] uppercase tracking-wider mb-2">
-              {getLocalizedText("kitchenRequestLabel", lang)}
+        {/* Prep time / calories — a plain meta row, not a boxed panel. */}
+        {(product.prepTime || product.calories) && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-y border-[var(--k-border)] py-3 text-[13px] text-[var(--k-text-2)]">
+            {product.prepTime && (
+              <span className="inline-flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-[var(--k-text-3)]" aria-hidden="true" />
+                {getLocalizedText("prepTime", lang)}
+                <strong className="font-medium text-[var(--k-text)]">{product.prepTime}</strong>
+              </span>
+            )}
+            {product.calories && (
+              <span className="inline-flex items-center gap-2">
+                <Utensils className="w-3.5 h-3.5 text-[var(--k-text-3)]" aria-hidden="true" />
+                {getLocalizedText("energy", lang)}
+                <strong className="font-medium text-[var(--k-text)]">{product.calories}</strong>
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Description */}
+        {product.description && (
+          <p className="text-sm leading-relaxed text-[var(--k-text-2)]">{product.description}</p>
+        )}
+
+        {/* Ingredients */}
+        {product.ingredients && product.ingredients.length > 0 && (
+          <section>
+            <h4 className="mb-2.5 text-[11px] font-medium uppercase tracking-wider text-[var(--k-text-3)]">
+              {getLocalizedText("ingredients", lang)}
             </h4>
-            <textarea
+            <div className="flex flex-wrap gap-1.5">
+              {product.ingredients.map((ing, idx) => (
+                <Tag key={idx} tone="neutral" size="sm">{ing}</Tag>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Options. Rendered as a real radiogroup — the old version was a grid
+            of buttons with a fake radio circle and no group semantics, so a
+            screen reader announced four unrelated buttons. */}
+        {product.options && product.options.length > 0 && (
+          <div className="space-y-5">
+            {product.options.map((optGroup) => (
+              <section key={optGroup.title} role="radiogroup" aria-label={optGroup.title}>
+                <h4 className="mb-2.5 text-[11px] font-medium uppercase tracking-wider text-[var(--k-text-3)]">
+                  {optGroup.title}
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {optGroup.choices.map((choice) => {
+                    const isSelected = selectedOptionTitle(selectedOptions, optGroup.title) === choice.name;
+                    return (
+                      <button
+                        key={choice.name}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => handleOptionSelect(optGroup.title, choice)}
+                        className={cn(
+                          'flex min-w-0 items-center justify-between gap-2 rounded-[var(--k-r)] border px-3 py-2.5 text-[13px] transition-colors duration-[var(--k-dur)]',
+                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--k-focus)]',
+                          isSelected
+                            ? 'border-[var(--k-accent)] bg-[var(--k-accent-soft)] text-[var(--k-text)]'
+                            : 'border-[var(--k-border)] bg-[var(--k-surface)] text-[var(--k-text-2)] hover:border-[var(--k-border-2)]',
+                        )}
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors',
+                              isSelected
+                                ? 'border-[var(--k-accent)] bg-[var(--k-accent)] text-[var(--k-accent-fg)]'
+                                : 'border-[var(--k-border-2)]',
+                            )}
+                          >
+                            {isSelected && <Check className="w-2.5 h-2.5" />}
+                          </span>
+                          <span className="truncate font-medium">{choice.name}</span>
+                        </span>
+                        {choice.extraPrice > 0 ? (
+                          <span className="k-nums shrink-0 whitespace-nowrap font-medium text-[var(--k-accent)]">
+                            +{choice.extraPrice.toFixed(2)} {currencySymbol}
+                          </span>
+                        ) : (
+                          <span className="shrink-0 whitespace-nowrap text-[var(--k-text-3)]">
+                            {getLocalizedText("freeOption", lang)}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+
+        {/* Kitchen note */}
+        <Field label={getLocalizedText("kitchenRequestLabel", lang)}>
+          {(id, a11y) => (
+            <Textarea
+              id={id} {...a11y}
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={getLocalizedText("kitchenRequestPlaceholder", lang)}
-              className="w-full bg-[#F7F8FA] border border-[#E8E8E8] rounded-xl p-3 text-xs text-[#14151A] placeholder-[#B4B8C0] focus:outline-none focus:border-[var(--theme-primary)] transition-colors h-20 resize-none"
+              rows={2}
             />
-          </div>
+          )}
+        </Field>
+      </div>
 
-          {/* Footer controls: Quantity + Add Button */}
-          <div className="sticky bottom-0 bg-white p-4 rounded-2xl border border-[#E8E8E8] flex flex-col sm:flex-row items-center justify-between gap-4" style={{ boxShadow: '0 -8px 24px rgba(0,0,0,.05)' }}>
-
-            {/* Quantity Selector */}
-            <div className="flex items-center bg-[#F7F8FA] border border-[#E8E8E8] rounded-xl p-1.5 w-full sm:w-auto justify-between sm:justify-start gap-4">
-              <span className="text-xs text-[#8A8F98] pl-2 font-medium">{getLocalizedText("quantity", lang)}</span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  className="p-2 rounded-lg bg-white border border-[#E8E8E8] hover:border-[#D9DBE3] text-[#14151A] transition-colors"
-                  id="qty-minus-btn"
-                >
-                  <Minus className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-sm font-extrabold text-[#14151A] w-6 text-center">
-                  {quantity}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => q + 1)}
-                  className="p-2 rounded-lg bg-white border border-[#E8E8E8] hover:border-[#D9DBE3] text-[#14151A] transition-colors"
-                  id="qty-plus-btn"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Add Button with calculated total */}
-            <button
-              onClick={handleAdd}
-              className="customer-btn-primary w-full sm:w-auto flex-1 h-auto py-3.5 px-4 sm:px-6 text-xs sm:text-sm flex items-center justify-between gap-2 min-w-0"
-              id="modal-add-to-cart-btn"
-            >
-              <span className="flex items-center gap-2 truncate min-w-0">
-                <ShoppingBag className="w-4 h-4 shrink-0" />
-                <span className="truncate">{getLocalizedText("addToCart", lang)}</span>
-              </span>
-              <span className="bg-white/20 px-2.5 py-1 rounded-lg text-xs font-black shrink-0 whitespace-nowrap">
-                {calculateTotal()} {currencySymbol}
-              </span>
-            </button>
-
-          </div>
-
+      {/* Sticky action bar. Quantity and the add button on one line so the
+          primary action stays reachable with a thumb on mobile. */}
+      <div className="sticky bottom-0 z-10 flex items-center gap-3 border-t border-[var(--k-border)] bg-[var(--k-surface)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5">
+        <div className="flex h-12 shrink-0 items-center gap-1 rounded-[var(--k-r)] border border-[var(--k-border)] bg-[var(--k-surface-2)] px-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+            id="qty-minus-btn"
+            aria-label="-"
+            disabled={quantity <= 1}
+          >
+            <Minus className="w-3.5 h-3.5" />
+          </Button>
+          <span className="k-nums w-7 text-center text-sm font-semibold text-[var(--k-text)]" aria-live="polite">
+            {quantity}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setQuantity((q) => q + 1)}
+            id="qty-plus-btn"
+            aria-label="+"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
         </div>
 
-    </Modal>
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={handleAdd}
+          id="modal-add-to-cart-btn"
+          className="h-12 flex-1 justify-between gap-2 min-w-0"
+        >
+          <span className="flex min-w-0 items-center gap-2 truncate">
+            <ShoppingBag className="w-4 h-4 shrink-0" />
+            <span className="truncate">{getLocalizedText("addToCart", lang)}</span>
+          </span>
+          <span className="k-nums shrink-0 whitespace-nowrap font-semibold">
+            {calculateTotal()} {currencySymbol}
+          </span>
+        </Button>
+      </div>
+    </Sheet>
   );
 };
 
