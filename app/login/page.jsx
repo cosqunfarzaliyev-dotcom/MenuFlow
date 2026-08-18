@@ -21,17 +21,21 @@ const buildAuthOptions = (captchaToken = null, overrides = {}) => ({
   ...overrides,
 });
 
+// Login only — there is no public sign-up any more. An account exists only
+// because a super admin created it while creating the restaurant it belongs to
+// (SuperAdmin -> Restaurants -> Yeni restoran, which also sets the admin's
+// email + one-time password via the create-restaurant-user Edge Function). The
+// old "Qeydiyyat" tab used to create an `unassigned` login that could do
+// nothing until a super admin attached it to a restaurant anyway, so removing
+// it took away a dead end, not a capability. See CLAUDE.md -> Roles (D1).
 function LoginPageContent() {
   const { t } = useAuthTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get('next');
-  const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login';
 
-  const [mode, setMode] = useState(initialMode); // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -57,13 +61,6 @@ function LoginPageContent() {
       }
     });
   }, [routeAfterAuth]);
-
-  const switchMode = (newMode) => {
-    setMode(newMode);
-    setError('');
-    setInfo('');
-    setConfirmPassword('');
-  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -116,67 +113,6 @@ function LoginPageContent() {
     setInfo(t('resetLinkSent'));
   };
 
-  const handleSignUp = async (e) => {
-    e.preventDefault();
-    if (!supabaseReady) { setError(t('supabaseNotConnected')); return; }
-
-    const cleanEmail = email.trim();
-    if (!cleanEmail) {
-      setError(t('enterEmail'));
-      return;
-    }
-    if (!password) {
-      setError(t('enterPassword'));
-      return;
-    }
-    if (password.length < 8) {
-      setError(t('passwordTooShort'));
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError(t('passwordsDontMatch'));
-      return;
-    }
-
-    setSubmitting(true);
-    setError('');
-    setInfo('');
-
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email: cleanEmail,
-      password,
-      options: buildAuthOptions(undefined, {
-        emailRedirectTo: `${window.location.origin}/onboarding`,
-      }),
-    });
-
-    setSubmitting(false);
-
-    if (signUpError) {
-      if (/already registered|user_already_exists/i.test(signUpError.message || '')) {
-        setError(t('accountAlreadyExists'));
-      } else {
-        setError(t('signupFailed')(signUpError.message));
-      }
-      return;
-    }
-
-    // Check for existing user (Supabase returns empty identities array for existing user when email confirmation is enabled)
-    if (data?.user && data.user.identities && data.user.identities.length === 0) {
-      setError(t('accountAlreadyExists'));
-      return;
-    }
-
-    if (data?.session) {
-      // Email confirmation is OFF — proceed directly to onboarding
-      router.replace('/onboarding');
-      return;
-    }
-
-    // Email confirmation is ON — show verification instruction
-    setInfo(t('accountCreatedVerifyEmail'));
-  };
-
   if (checking) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
@@ -185,8 +121,10 @@ function LoginPageContent() {
     );
   }
 
+  // Still used: /staff gets its own title/subtitle and a distinct accent, the
+  // same way /superadmin does. This has nothing to do with signup — it's just
+  // which panel you're heading for.
   const isStaffLogin = next === '/staff';
-  const isLogin = isStaffLogin ? true : mode === 'login';
 
   return (
     <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-4">
@@ -194,29 +132,6 @@ function LoginPageContent() {
         <div className="flex justify-center mb-4">
           <LanguageSwitcher context="dark" />
         </div>
-        {/* Toggle Tabs (Only show if not logging into staff panel) */}
-        {!isStaffLogin && (
-          <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 mb-6">
-            <button
-              type="button"
-              onClick={() => switchMode('login')}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-                isLogin ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {t('loginTab')}
-            </button>
-            <button
-              type="button"
-              onClick={() => switchMode('signup')}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-                !isLogin ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {t('signupTab')}
-            </button>
-          </div>
-        )}
 
         <div className={`h-16 px-5 rounded-2xl mx-auto flex items-center justify-center border mb-6 ${
           next === '/superadmin' ? 'bg-amber-500/10 border-amber-500/25' :
@@ -227,17 +142,13 @@ function LoginPageContent() {
         </div>
 
         <h2 className="text-2xl font-bold text-white mb-2">
-          {isStaffLogin ? t('staffLoginTitle') : isLogin ? t('loginTitle') : t('signupTitle')}
+          {isStaffLogin ? t('staffLoginTitle') : t('loginTitle')}
         </h2>
         <p className="text-slate-400 text-sm mb-6">
-          {isStaffLogin
-            ? t('staffLoginSubtitle')
-            : isLogin
-            ? t('loginSubtitle')
-            : t('signupSubtitle')}
+          {isStaffLogin ? t('staffLoginSubtitle') : t('loginSubtitle')}
         </p>
 
-        <form onSubmit={isLogin ? handleLogin : handleSignUp}>
+        <form onSubmit={handleLogin}>
           <input
             type="email"
             value={email}
@@ -251,22 +162,12 @@ function LoginPageContent() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder={t('passwordPlaceholder')}
-            autoComplete={isLogin ? "current-password" : "new-password"}
+            autoComplete="current-password"
             className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white mb-3 focus:outline-none focus:border-blue-500 transition-colors text-sm"
           />
 
-          {!isLogin && (
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder={t('confirmPasswordPlaceholder')}
-              autoComplete="new-password"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white mb-4 focus:outline-none focus:border-blue-500 transition-colors text-sm"
-            />
-          )}
-
           {error && <p className="text-rose-500 text-xs mb-4 text-left font-bold">{error}</p>}
+          {/* `info` is still live — handleForgotPassword's success message. */}
           {info && <p className="text-emerald-400 text-xs mb-4 text-left font-bold">{info}</p>}
 
           <button
@@ -274,31 +175,18 @@ function LoginPageContent() {
             disabled={submitting}
             className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-xl font-bold transition-colors text-sm shadow-lg shadow-blue-600/20"
           >
-            {submitting ? t('checkingButton') : isLogin ? t('loginTab') : t('signupButton')}
+            {submitting ? t('checkingButton') : t('loginTab')}
           </button>
         </form>
 
-        {isLogin && (
-          <button
-            type="button"
-            onClick={handleForgotPassword}
-            disabled={submitting}
-            className="w-full mt-2 py-2 bg-transparent hover:bg-slate-900 disabled:opacity-60 text-slate-500 hover:text-slate-300 text-xs transition-colors"
-          >
-            {t('forgotPassword')}
-          </button>
-        )}
-
-        {!isStaffLogin && (
-          <button
-            type="button"
-            onClick={() => switchMode(isLogin ? 'signup' : 'login')}
-            disabled={submitting}
-            className="w-full mt-2 py-2.5 bg-transparent hover:bg-slate-900 disabled:opacity-60 text-slate-400 hover:text-white rounded-xl font-bold text-xs transition-colors"
-          >
-            {isLogin ? t('noAccountSignup') : t('haveAccountLogin')}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={handleForgotPassword}
+          disabled={submitting}
+          className="w-full mt-2 py-2 bg-transparent hover:bg-slate-900 disabled:opacity-60 text-slate-500 hover:text-slate-300 text-xs transition-colors"
+        >
+          {t('forgotPassword')}
+        </button>
 
         <Link href="/" className="block mt-4 text-xs text-slate-500 hover:text-slate-300">
           {t('backToCustomerMenu')}

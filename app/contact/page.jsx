@@ -1,8 +1,7 @@
 "use client";
 
 import React from 'react';
-import Link from 'next/link';
-import { MessageCircle, Mail, ArrowRight } from 'lucide-react';
+import { MessageCircle, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/variants';
 import { Card, CardBody, Badge } from '@/components/ui';
@@ -64,15 +63,9 @@ export default function ContactPage() {
         </Card>
       </section>
 
-      <section className="border-t border-slate-800/80 bg-slate-950/40">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
-          <h2 className="font-serif-title font-bold text-2xl sm:text-3xl text-white mb-3">{t('contactAlsoTitle')}</h2>
-          <p className="text-slate-400 mb-7">{t('contactAlsoSubtitle')}</p>
-          <Link href="/login?mode=signup" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'lg' }), 'gap-2')}>
-            {t('contactAlsoButton')} <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </section>
+      {/* The "haven't signed up yet? create a login" section that used to sit
+          here is gone along with public sign-up itself — this page IS the way
+          to get started now, so a CTA pointing back at it was circular. */}
 
       <MarketingFooter />
     </div>

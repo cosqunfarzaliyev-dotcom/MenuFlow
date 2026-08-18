@@ -15,8 +15,8 @@ const CURRENCIES = ['₼', '$', '€', '₺', '₽', '£'];
 
 // Post-activation setup wizard for a just-assigned restaurant_admin
 // (Master Plan D1's "Yol A" — see CLAUDE.md → Roles): the restaurant itself
-// already exists (a super admin created it and assigned this admin by
-// email, superAdminService.assignUserToRestaurant), including a name,
+// already exists (a super admin created it and this admin's account in the
+// same form, superAdminService.createOrAssignRestaurantUser), including a name,
 // currency, and a default batch of tables (superAdminService.createRestaurant
 // -> createDefaultTablesForRestaurant). This wizard doesn't create anything
 // from scratch — it lets the newly-activated admin confirm/fill in the rest

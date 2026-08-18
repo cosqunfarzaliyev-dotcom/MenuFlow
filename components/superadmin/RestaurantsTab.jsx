@@ -4,13 +4,13 @@ import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, Building2, Search, Users, Trash2, Edit2, ExternalLink, Copy,
-  X,
+  X, Eye, EyeOff, RefreshCw,
 } from 'lucide-react';
 import {
   createRestaurant, updateRestaurant, deleteRestaurant,
   markRestaurantActive, markRestaurantPastDue, cancelRestaurantSubscription,
   extendRestaurantTrial, setRestaurantActiveState, setRestaurantFeatureFlag, setRestaurantPlan,
-  fetchProfilesForRestaurant, assignUserToRestaurant, removeUserFromRestaurant,
+  fetchProfilesForRestaurant, createOrAssignRestaurantUser, removeUserFromRestaurant,
 } from '@/lib/services/superAdminService';
 import {
   fetchRestaurantSubscription, getEffectiveSubscriptionStatus, setSubscriptionBillingInterval,
@@ -41,6 +41,17 @@ const translatedFeatureMeta = (key, meta, t) => {
   const [labelKey, descKey] = FEATURE_LABEL_KEYS[key] || [];
   if (!labelKey) return meta;
   return { label: t(labelKey), description: t(descKey) };
+};
+
+// The super admin has to read this password off the screen and hand it to the
+// restaurant's admin, so the alphabet deliberately omits the characters that
+// get misread out loud or in a screenshot (0/O, 1/l/I). crypto.getRandomValues
+// rather than Math.random since this is a real credential, however short-lived.
+const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+const generatePassword = (length = 12) => {
+  const bytes = new Uint32Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => PASSWORD_ALPHABET[b % PASSWORD_ALPHABET.length]).join('');
 };
 
 export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestaurantId, onConsumeOpenId }) {
@@ -232,11 +243,34 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
             title={t('newRestaurantModalTitle')}
             onClose={() => setIsCreateOpen(false)}
             onSave={async (form) => {
-              const { error } = await createRestaurant(form);
+              // Two sequential calls behind one submit: the restaurant row is a
+              // plain RLS-permitted client insert (unchanged), the admin's auth
+              // account needs the Edge Function (service-role key). Ordered this
+              // way because the function needs a real restaurant id to attach to.
+              const { restaurant, error } = await createRestaurant(form);
               if (error) { notify(t('createFailedToast')(error.message), 'error'); return; }
+
+              const { error: adminError } = await createOrAssignRestaurantUser({
+                restaurantId: restaurant.id,
+                email: form.adminEmail.trim(),
+                password: form.adminPassword,
+              });
+
               setIsCreateOpen(false);
-              notify(t('restaurantCreatedToast'));
               refresh();
+
+              if (adminError) {
+                // Partial failure — the restaurant genuinely exists now, so the
+                // modal closes and the list refreshes rather than pretending
+                // nothing happened. Recovery is AdminsModal (the Users icon on
+                // that row), which can create the account too. Not rolled back:
+                // deleteRestaurant would also destroy the default tables just
+                // created, and the usual cause here is a fixable typo or a
+                // duplicate email.
+                notify(t('restaurantCreatedAdminFailedToast')(adminError.message), 'error');
+                return;
+              }
+              notify(t('restaurantAndAdminCreatedToast'));
             }}
           />
         )}
@@ -296,12 +330,29 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
     currencySymbol: initial?.currency_symbol || '₼',
     tableCount: initial?.table_count || 20,
     plan: initial?.plan && PLAN_ORDER.includes(initial.plan) ? initial.plan : 'basic',
+    // Create mode only — the restaurant's admin login is set up in the same
+    // step now that there's no public sign-up for them to go through first.
+    adminEmail: '',
+    adminPassword: '',
   });
   const [saving, setSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [validationError, setValidationError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim() || (!isEdit && !form.slug.trim())) return;
+    setValidationError('');
+
+    // Client-side only — the Edge Function re-validates both of these itself
+    // (it can't trust this form), but catching them here saves a round trip
+    // and, more importantly, avoids creating the restaurant and only then
+    // discovering the admin half can't succeed.
+    if (!isEdit) {
+      if (!form.adminEmail.trim()) { setValidationError(t('adminEmailRequired')); return; }
+      if (form.adminPassword.length < 8) { setValidationError(t('adminPasswordTooShort')); return; }
+    }
+
     setSaving(true);
     await onSave({
       ...form,
@@ -360,6 +411,64 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
           )}
         </div>
         {isEdit && <p className="text-[10px] text-[var(--k-text-3)] -mt-2">{t('planChangeResetHint')}</p>}
+
+        {/* Admin account — create mode only. Edit mode deliberately has no
+            equivalent: changing an existing admin's credentials is the
+            AdminsModal's job, not a side effect of editing restaurant details. */}
+        {!isEdit && (
+          <div className="space-y-4 border-t border-[var(--k-border)] pt-4">
+            <h4 className="text-[13px] font-semibold text-[var(--k-text)]">{t('adminAccountSectionTitle')}</h4>
+
+            <Field label={t('adminEmailFieldLabel')}>
+              {(id, a11y) => (
+                <Input
+                  id={id} {...a11y} type="email" autoComplete="off"
+                  value={form.adminEmail}
+                  onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
+                  placeholder={t('userEmailPlaceholder')}
+                  required
+                />
+              )}
+            </Field>
+
+            <Field label={t('adminPasswordFieldLabel')} hint={t('adminPasswordHint')}>
+              {(id, a11y) => (
+                <div className="flex items-center gap-2">
+                  {/* Reveal is a functional requirement here, not a convenience:
+                      the super admin has to read this password back to hand it
+                      over, so they must be able to see what they typed. */}
+                  <Input
+                    id={id} {...a11y}
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    value={form.adminPassword}
+                    onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
+                    className="flex-1"
+                    required
+                  />
+                  <Button
+                    type="button" variant="ghost" size="icon"
+                    onClick={() => setShowPassword((v) => !v)}
+                    title={t('togglePasswordTitle')}
+                    aria-label={t('togglePasswordTitle')}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                  <Button
+                    type="button" variant="ghost" size="icon"
+                    onClick={() => { setForm((f) => ({ ...f, adminPassword: generatePassword() })); setShowPassword(true); }}
+                    title={t('generatePasswordTitle')}
+                    aria-label={t('generatePasswordTitle')}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+            </Field>
+          </div>
+        )}
+
+        {validationError && <p className="text-[var(--k-danger)] text-xs font-medium">{validationError}</p>}
 
         <Button type="submit" variant="primary" loading={saving} size="block">
           {t('saveButton')}
@@ -618,13 +727,15 @@ function AdminsModal({ restaurant, onClose, onChange }) {
   // Formal capability layer (Master Plan Phase 6) — this modal only ever
   // renders inside SuperAdminApp (super_admin-only route), so this is always
   // true today; it's the one place users.manage's real implementation
-  // (assignUserToRestaurant/removeUserFromRestaurant) actually lives, per
+  // (createOrAssignRestaurantUser/removeUserFromRestaurant) actually lives, per
   // the D1-locked account model — see capabilityService.js.
   const canManageUsers = useCapability(CAPABILITIES.USERS_MANAGE);
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('restaurant_admin');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -637,18 +748,32 @@ function AdminsModal({ restaurant, onClose, onChange }) {
 
   React.useEffect(() => { refresh(); }, [refresh]);
 
+  // One handler covers both cases the Edge Function distinguishes: a brand-new
+  // email (account is created, password required) and an existing unassigned
+  // profile (just attached, password optional). Leaving the password blank for
+  // a new email comes back as PASSWORD_REQUIRED rather than failing silently.
+  // This is also the recovery path when the create-restaurant flow's admin half
+  // fails after the restaurant row already exists.
   const handleAssign = async (e) => {
     e.preventDefault();
     if (!newEmail.trim()) return;
+    if (newPassword && newPassword.length < 8) { setError(t('adminPasswordTooShort')); return; }
     setSubmitting(true);
     setError('');
-    const { error: err } = await assignUserToRestaurant({ email: newEmail.trim(), restaurantId: restaurant.id, role: newRole });
+    const { error: err } = await createOrAssignRestaurantUser({
+      restaurantId: restaurant.id,
+      email: newEmail.trim(),
+      password: newPassword,
+      role: newRole,
+    });
     setSubmitting(false);
     if (err) {
       setError(err.message || t('genericError'));
       return;
     }
     setNewEmail('');
+    setNewPassword('');
+    setShowPassword(false);
     notify(t('userAssignedToast'));
     refresh();
     onChange?.();
@@ -663,34 +788,66 @@ function AdminsModal({ restaurant, onClose, onChange }) {
         </div>
 
         {canManageUsers && (
-          <form onSubmit={handleAssign} className="flex flex-col sm:flex-row gap-2">
+          <form onSubmit={handleAssign} className="space-y-2">
             {/* Neither control had a visible <label> before — Field is used
                 unlabeled here (same treatment as the search input above)
                 purely for the Input/Select primitive, not to invent new
                 label text. */}
-            <Field className="flex-1">
-              {(id, a11y) => (
-                <Input
-                  id={id} {...a11y}
-                  type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder={t('userEmailPlaceholder')}
-                />
-              )}
-            </Field>
-            <Field>
-              {(id, a11y) => (
-                // w-auto overrides Select's own w-full — the original raw
-                // <select> had no w-full and stayed content-width; keeping
-                // that same compact sizing here.
-                <Select id={id} {...a11y} value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-auto">
-                  <option value="restaurant_admin">{t('roleFilterAdmin')}</option>
-                  <option value="staff">{t('staffRoleOption')}</option>
-                </Select>
-              )}
-            </Field>
-            <Button type="submit" variant="primary" disabled={submitting} className="whitespace-nowrap">
-              {submitting ? t('assigningButton') : t('assignButton')}
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Field className="flex-1">
+                {(id, a11y) => (
+                  <Input
+                    id={id} {...a11y}
+                    type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder={t('userEmailPlaceholder')}
+                  />
+                )}
+              </Field>
+              <Field>
+                {(id, a11y) => (
+                  // w-auto overrides Select's own w-full — the original raw
+                  // <select> had no w-full and stayed content-width; keeping
+                  // that same compact sizing here.
+                  <Select id={id} {...a11y} value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-auto">
+                    <option value="restaurant_admin">{t('roleFilterAdmin')}</option>
+                    <option value="staff">{t('staffRoleOption')}</option>
+                  </Select>
+                )}
+              </Field>
+            </div>
+            {/* Optional: blank is fine when the email already has an unassigned
+                account (it just gets attached). Required for a new email — the
+                function answers PASSWORD_REQUIRED and it surfaces below. */}
+            <div className="flex items-center gap-2">
+              <Field className="flex-1">
+                {(id, a11y) => (
+                  <Input
+                    id={id} {...a11y}
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder={t('assignPasswordPlaceholder')}
+                  />
+                )}
+              </Field>
+              <Button
+                type="button" variant="ghost" size="icon"
+                onClick={() => setShowPassword((v) => !v)}
+                title={t('togglePasswordTitle')} aria-label={t('togglePasswordTitle')}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </Button>
+              <Button
+                type="button" variant="ghost" size="icon"
+                onClick={() => { setNewPassword(generatePassword()); setShowPassword(true); }}
+                title={t('generatePasswordTitle')} aria-label={t('generatePasswordTitle')}
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+              <Button type="submit" variant="primary" disabled={submitting} className="whitespace-nowrap">
+                {submitting ? t('assigningButton') : t('assignButton')}
+              </Button>
+            </div>
           </form>
         )}
         {error && <p className="text-[var(--k-danger)] text-xs font-medium">{error}</p>}
