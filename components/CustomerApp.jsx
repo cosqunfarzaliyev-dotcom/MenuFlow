@@ -42,7 +42,7 @@ export function CustomerApp() {
     orders,
     createAlert,
     loadMenuData,
-    loadOrders,
+    loadTableOrders,
     loadAlerts,
     loadTables,
     tables,
@@ -131,7 +131,12 @@ export function CustomerApp() {
         // PLAN_FEATURE_DEFAULTS from the DB so hasFeature()/getEntitlements()
         // below reflect the live plans/plan_features tables. Safe to run in
         // parallel with the tenant-scoped loads.
-        await Promise.all([loadMenuData(), loadOrders(), loadAlerts(), loadTables(), loadBanners(), loadDiscounts(), loadPlans()]);
+        //
+        // Orders are deliberately NOT loaded here — loadOrders() (staff-only)
+        // would silently return [] for this anon session (orders RLS has no
+        // anon SELECT policy at all). They're loaded once `resolvedTable` is
+        // known, below, via the QR-token-gated loadTableOrders().
+        await Promise.all([loadMenuData(), loadAlerts(), loadTables(), loadBanners(), loadDiscounts(), loadPlans()]);
       } catch (err) {
         console.error('CustomerApp load error', err);
         setLoadError(err?.message || String(err));
@@ -141,11 +146,20 @@ export function CustomerApp() {
     };
 
     loadAppData();
-  }, [params, searchParams, loadMenuData, loadOrders, loadAlerts, loadTables, loadRestaurantBySlug, loadBanners, loadDiscounts, loadPlans]);
+  }, [params, searchParams, loadMenuData, loadAlerts, loadTables, loadRestaurantBySlug, loadBanners, loadDiscounts, loadPlans]);
 
   const resolvedTable = tables.find(
     (t) => t.table_number?.toString() === tableId?.toString() || t.id === tableId,
   );
+
+  // Initial orders load for this table — waits for `tables` to resolve the
+  // route's table number/id into a real DB table UUID (loadTableOrders
+  // needs that, not the route param). Re-runs if the resolved table changes
+  // (e.g. `tables` refetches after being empty).
+  useEffect(() => {
+    if (!resolvedTable?.id || !restaurant?.id) return;
+    loadTableOrders(resolvedTable.id);
+  }, [resolvedTable?.id, restaurant?.id, loadTableOrders]);
 
   useEffect(() => {
     let sub;
@@ -157,7 +171,7 @@ export function CustomerApp() {
           const recTableId = record?.table_id?.toString();
           const myTableId = resolvedTable?.id?.toString();
           if (recTableId && myTableId && recTableId === myTableId) {
-            loadOrders();
+            loadTableOrders(myTableId);
           }
         }, { restaurantId: restaurant?.id || null });
       } catch (err) {
@@ -172,7 +186,7 @@ export function CustomerApp() {
         sub.unsubscribe();
       }
     };
-  }, [tableId, resolvedTable?.id, loadOrders, restaurant?.id]);
+  }, [tableId, resolvedTable?.id, loadTableOrders, restaurant?.id]);
 
   useEffect(() => {
     let prodSub;
@@ -231,9 +245,23 @@ export function CustomerApp() {
 
   const currentTable = resolvedTable || { id: tableId, name: `Masa ${tableId}` };
 
+  // `orders` is already scoped to this table by get_table_orders() (server
+  // side, via the QR token) — no client-side table match needed here
+  // anymore. "Sifarişlərim" stays visible for anything not finished AND
+  // paid: still-in-progress orders (unchanged) plus served-but-unpaid ones,
+  // which used to vanish from the customer's screen the instant the kitchen
+  // marked them served, even though nothing had been paid yet.
   const activeOrders = orders.filter(
-    (o) => o.table === tableId && ![ORDER_STATUS.SERVED, ORDER_STATUS.CANCELLED].includes(o.status),
+    (o) => o.status !== ORDER_STATUS.CANCELLED && !(o.status === ORDER_STATUS.SERVED && o.paymentStatus === 'paid'),
   );
+
+  // Drives the "Hesab" modal: only orders still owed, regardless of kitchen
+  // status — a served order that hasn't been paid is exactly the "bitirdi,
+  // indi ödəyir" case this feature exists for.
+  const unpaidOrders = orders.filter(
+    (o) => o.status !== ORDER_STATUS.CANCELLED && o.paymentStatus === 'unpaid',
+  );
+  const unpaidTotal = unpaidOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
   // Cart Handlers
   const handleAddToCart = (product, quantity = 1, options = {}, note = "") => {
@@ -291,7 +319,6 @@ export function CustomerApp() {
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
   const [walletPaying, setWalletPaying] = useState(null); // 'google_pay' | 'apple_pay' | null
   const [billRequesting, setBillRequesting] = useState(false);
-  const billTotal = activeOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
   const handleRequestBill = async (methodKey) => {
     if (billRequesting) return;
@@ -323,7 +350,7 @@ export function CustomerApp() {
   // (Stripe etc.) wired in on the backend — see lib/services/paymentService.js.
   const handleWalletPay = async (methodKey) => {
     setWalletPaying(methodKey);
-    const { token, error } = await requestWalletPayment({ method: methodKey, amount: billTotal || 0 });
+    const { token, error } = await requestWalletPayment({ method: methodKey, amount: unpaidTotal || 0 });
     setWalletPaying(null);
     if (token) {
       await handleRequestBill(methodKey);
@@ -598,10 +625,19 @@ export function CustomerApp() {
                         })}
                       </ul>
                     </div>
-                    <Tag tone={status?.tone || 'neutral'} className="h-8 self-start px-3 sm:self-center">
-                      {status?.icon}
-                      {status?.label}
-                    </Tag>
+                    <div className="flex shrink-0 items-center gap-1.5 self-start sm:self-center">
+                      <Tag tone={status?.tone || 'neutral'} className="h-8 px-3">
+                        {status?.icon}
+                        {status?.label}
+                      </Tag>
+                      {/* Orthogonal to the status tag above — an order can be
+                          "Tamamlandı" (served) and still unpaid, which is
+                          exactly the "yeməyini bitirib sonra ödəyir"
+                          scenario this whole feature exists for. */}
+                      <Tag tone={order.paymentStatus === 'paid' ? 'success' : 'warning'} className="h-8 px-3">
+                        {order.paymentStatus === 'paid' ? getLocalizedText('paidStatus', lang) : getLocalizedText('unpaidStatus', lang)}
+                      </Tag>
+                    </div>
                   </div>
                 );
               })}
@@ -714,65 +750,87 @@ export function CustomerApp() {
           <h2 className="text-[15px] font-semibold text-[var(--k-text)]">
             {getLocalizedText("paymentType", lang)}
           </h2>
-          <p className="mt-1.5 text-[13px] text-[var(--k-text-3)]">
-            {getLocalizedText("paymentPrompt", lang)}
-          </p>
 
-          <div className="mt-5 flex gap-2.5">
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={() => handleRequestBill('cash')}
-              disabled={billRequesting}
-              className="flex-1"
-            >
-              {getLocalizedText("cash", lang)}
-            </Button>
-            <Button
-              variant="primary"
-              size="lg"
-              onClick={() => handleRequestBill('card')}
-              disabled={billRequesting}
-              className="flex-1"
-            >
-              {getLocalizedText("card", lang)}
-            </Button>
-          </div>
-          {/* Changing your mind here (cash -> card etc.) after already
-              requesting the bill updates the same staff-side alert in
-              place instead of sending a second, confusing notification. */}
+          {unpaidOrders.length > 0 ? (
+            <>
+              {/* Previously this amount only ever fed silently into the
+                  wallet sheet — the customer had no way to see what they
+                  actually owed before tapping a payment method. */}
+              <p className="mt-1.5 k-nums text-2xl font-semibold text-[var(--k-accent)]">
+                {unpaidTotal.toFixed(2)} {settings.currencySymbol}
+              </p>
+              <p className="mt-1 text-[13px] text-[var(--k-text-3)]">
+                {getLocalizedText("paymentPrompt", lang)}
+              </p>
 
-          {/* Always shown to customers — feature-detecting the wallet APIs
-              up front hid these buttons on browsers/webviews that report
-              PaymentRequest/ApplePaySession late or inconsistently.
-              Tapping is itself the capability check: requestWalletPayment
-              (lib/services/paymentService.js) returns a clear error if the
-              wallet genuinely isn't available on this device. */}
-          {(hasFeature(restaurant, FEATURES.GOOGLE_PAY) || hasFeature(restaurant, FEATURES.APPLE_PAY)) && (
-            <div className="mt-2.5 flex gap-2.5">
-              {hasFeature(restaurant, FEATURES.GOOGLE_PAY) && (
+              <div className="mt-5 flex gap-2.5">
                 <Button
+                  variant="secondary"
                   size="lg"
-                  disabled={walletPaying === 'google_pay'}
-                  loading={walletPaying === 'google_pay'}
-                  onClick={() => handleWalletPay('google_pay')}
-                  className="flex-1 bg-[var(--k-text)] text-[var(--k-surface)] border-transparent hover:bg-[var(--k-text)]/90"
+                  onClick={() => handleRequestBill('cash')}
+                  disabled={billRequesting}
+                  className="flex-1"
                 >
-                  G Pay
+                  {getLocalizedText("cash", lang)}
                 </Button>
-              )}
-              {hasFeature(restaurant, FEATURES.APPLE_PAY) && (
                 <Button
+                  variant="primary"
                   size="lg"
-                  disabled={walletPaying === 'apple_pay'}
-                  loading={walletPaying === 'apple_pay'}
-                  onClick={() => handleWalletPay('apple_pay')}
-                  className="flex-1 bg-[var(--k-text)] text-[var(--k-surface)] border-transparent hover:bg-[var(--k-text)]/90"
+                  onClick={() => handleRequestBill('card')}
+                  disabled={billRequesting}
+                  className="flex-1"
                 >
-                   Pay
+                  {getLocalizedText("card", lang)}
                 </Button>
+              </div>
+              {/* Changing your mind here (cash -> card etc.) after already
+                  requesting the bill updates the same staff-side alert in
+                  place instead of sending a second, confusing notification.
+                  The final method actually charged is still whatever staff
+                  confirms in settle_table_payment — this only records
+                  intent. */}
+
+              {/* Always shown to customers — feature-detecting the wallet APIs
+                  up front hid these buttons on browsers/webviews that report
+                  PaymentRequest/ApplePaySession late or inconsistently.
+                  Tapping is itself the capability check: requestWalletPayment
+                  (lib/services/paymentService.js) returns a clear error if the
+                  wallet genuinely isn't available on this device. */}
+              {(hasFeature(restaurant, FEATURES.GOOGLE_PAY) || hasFeature(restaurant, FEATURES.APPLE_PAY)) && (
+                <div className="mt-2.5 flex gap-2.5">
+                  {hasFeature(restaurant, FEATURES.GOOGLE_PAY) && (
+                    <Button
+                      size="lg"
+                      disabled={walletPaying === 'google_pay'}
+                      loading={walletPaying === 'google_pay'}
+                      onClick={() => handleWalletPay('google_pay')}
+                      className="flex-1 bg-[var(--k-text)] text-[var(--k-surface)] border-transparent hover:bg-[var(--k-text)]/90"
+                    >
+                      G Pay
+                    </Button>
+                  )}
+                  {hasFeature(restaurant, FEATURES.APPLE_PAY) && (
+                    <Button
+                      size="lg"
+                      disabled={walletPaying === 'apple_pay'}
+                      loading={walletPaying === 'apple_pay'}
+                      onClick={() => handleWalletPay('apple_pay')}
+                      className="flex-1 bg-[var(--k-text)] text-[var(--k-surface)] border-transparent hover:bg-[var(--k-text)]/90"
+                    >
+                       Pay
+                    </Button>
+                  )}
+                </div>
               )}
-            </div>
+            </>
+          ) : (
+            // Nothing owed — either no orders yet or staff already settled
+            // the table. Showing payment buttons here would let a customer
+            // "pay" a zero balance, which just confuses staff with a bill
+            // alert for nothing.
+            <p className="mt-3 text-[13px] text-[var(--k-text-3)]">
+              {getLocalizedText("nothingToPay", lang)}
+            </p>
           )}
 
           <button

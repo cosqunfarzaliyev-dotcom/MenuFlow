@@ -21,9 +21,20 @@ const FALLBACK_IMAGE =
 // (common in in-app webviews). Tapping the button is itself the capability
 // check: if the wallet genuinely isn't available, requestWalletPayment()
 // below returns a clear error instead of silently charging nothing.
+// 'later' first and default-selected: paying is now voluntary at order time
+// (0025_order_payment_status.sql / the customer-facing "Hesab" flow) — a
+// customer who never touches this radiogroup used to silently submit as
+// 'cash', which was a payment INTENT masquerading as a payment FACT. 'later'
+// sends no payment_method at all (see handleSendOrder), leaving the order
+// genuinely unspecified until staff settles it.
+// cash/card have NO separate icon here — lib/translations.js's `cash`/`card`
+// strings ("💵 Nəğd"/"💳 Kart") already carry their own emoji prefix, so an
+// icon field here would render it twice (confirmed live: "💵💵 Nəğd"). The
+// other three labels don't come from getLocalizedText, so they still need one.
 const PAYMENT_METHODS = [
-  { key: 'cash', labelKey: 'cash', icon: '💵' },
-  { key: 'card', labelKey: 'card', icon: '💳' },
+  { key: 'later', labelKey: 'payLater', icon: '🕒' },
+  { key: 'cash', labelKey: 'cash' },
+  { key: 'card', labelKey: 'card' },
   { key: 'google_pay', label: 'Google Pay', icon: '🅖' },
   { key: 'apple_pay', label: 'Apple Pay', icon: '' },
 ];
@@ -46,7 +57,7 @@ export const CartDrawer = ({
   const [orderSubmitted, setOrderSubmitted] = useState(false);
   const [kitchenNote, setKitchenNote] = useState("");
   const [submitError, setSubmitError] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('later');
   const [walletAuthorizing, setWalletAuthorizing] = useState(false);
 
   const currentTable = tables.find(t => t.table_number?.toString() === tableNumber?.toString() || t.id === tableNumber) || { id: tableNumber, name: getLocalizedText('tableFallbackName', lang)(tableNumber) };
@@ -64,15 +75,18 @@ export const CartDrawer = ({
       }),
     [restaurant],
   );
-  const PAYMENT_GRID_COLS = { 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' };
+  // 5 buttons in a row is too tight on a phone with icon+text — 3 columns
+  // wraps a 4th/5th button to a second row instead of shrinking every button.
+  const PAYMENT_GRID_COLS = { 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-3', 5: 'grid-cols-3' };
 
   if (!isOpen) return null;
 
   // If the previously selected method just got filtered out (e.g. the
   // restaurant's wallet entitlement resolved to off after mount), fall back
-  // to cash instead of silently submitting a method that's no longer offered.
-  if (!availablePaymentMethods.some((m) => m.key === paymentMethod) && paymentMethod !== 'cash') {
-    setPaymentMethod('cash');
+  // to 'later' (always present, like cash/card) instead of silently
+  // submitting a method that's no longer offered.
+  if (!availablePaymentMethods.some((m) => m.key === paymentMethod) && paymentMethod !== 'later') {
+    setPaymentMethod('later');
   }
 
   const calculateItemPrice = (item) => {
@@ -90,12 +104,13 @@ export const CartDrawer = ({
   const handleResetOrder = () => {
     setOrderSubmitted(false);
     setKitchenNote("");
-    setPaymentMethod('cash');
+    setPaymentMethod('later');
     if (typeof onClearCart === 'function') onClearCart();
     if (typeof onClose === 'function') onClose();
   };
 
   const paymentLabels = {
+    later: getLocalizedText('payLater', lang),
     cash: getLocalizedText('cash', lang),
     card: getLocalizedText('card', lang),
     google_pay: 'Google Pay',
@@ -146,13 +161,19 @@ export const CartDrawer = ({
         return;
       }
 
+      // 'later' means the customer genuinely hasn't decided yet — send no
+      // payment_method at all (place_order() stores whatever it's given
+      // verbatim) rather than a fake 'later' string that would leak into
+      // staff-side payment-method reporting downstream.
+      const isPayingLater = paymentMethod === 'later';
+
       const { order, error } = await createOrder({
         tableId: table.id,
         total: totalPrice,
         items,
         note: kitchenNote,
-        paymentMethod,
-        paymentMethodLabel: paymentLabels[paymentMethod] || paymentMethod,
+        paymentMethod: isPayingLater ? null : paymentMethod,
+        paymentMethodLabel: isPayingLater ? null : (paymentLabels[paymentMethod] || paymentMethod),
       });
 
       if (error) {

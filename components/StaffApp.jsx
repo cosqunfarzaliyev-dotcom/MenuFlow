@@ -24,6 +24,7 @@ export function StaffApp() {
   const {
     orders,
     updateOrderStatus,
+    settleTablePayment,
     alerts,
     resolveAlert,
     tables,
@@ -237,6 +238,38 @@ export function StaffApp() {
       title: t('cancelOrderConfirmTitle'),
       message: t('cancelOrderConfirmMessage'),
       onConfirm: () => updateOrderStatus(id, ORDER_STATUS.CANCELLED),
+    });
+  };
+
+  // 0025_order_payment_status.sql. A table's unpaid balance — used both to
+  // show staff what they're about to confirm and as the amount named in the
+  // confirm dialog below. `orders` here is the staff-wide fetchOrders() list
+  // (unlike CustomerApp's table-scoped one), so it's filtered by tableId.
+  const currencySymbol = restaurant?.currency_symbol || '₼';
+  const getTableUnpaidTotal = (tableId) =>
+    orders
+      .filter((o) => o.tableId === tableId && o.paymentStatus === 'unpaid' && o.status !== ORDER_STATUS.CANCELLED)
+      .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+
+  // Settles the WHOLE table's unpaid balance in one call (settle_table_payment
+  // RPC — see the migration), not just this one alert. The alert's own
+  // recorded payment_method is what staff already saw the customer request
+  // (cash/card icon in the card below); confirming here means "I actually
+  // received this amount", so it also resolves the bill alert server-side in
+  // the same transaction — no separate resolveAlert() call needed for bill
+  // alerts (unlike waiter alerts, which still use it below).
+  const handleSettlePayment = (alert) => {
+    const amount = getTableUnpaidTotal(alert.tableId);
+    confirmDialog.confirm({
+      title: t('settlePaymentConfirmTitle'),
+      message: t('settlePaymentConfirmMessage')(amount.toFixed(2), currencySymbol),
+      onConfirm: () =>
+        settleTablePayment({
+          tableId: alert.tableId,
+          paymentMethod: alert.paymentMethod,
+          paymentMethodLabel: alert.paymentMethodLabel,
+          paid: true,
+        }),
     });
   };
 
@@ -487,9 +520,13 @@ export function StaffApp() {
                         {isBill && (
                           <Banner tone={isCash ? 'success' : 'info'} className="mb-4 flex-col items-start gap-2">
                             <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-70">{t('paymentTypeLabel')}</span>
+                            {/* paymentLabel already carries its own emoji prefix
+                                (cashLabel/posLabel/cardLabel below, and every
+                                caller of createAlert's paymentMethodLabel) — a
+                                second hardcoded emoji here used to double it up
+                                whenever paymentMethodLabel was present. */}
                             <Tag tone={isCash ? 'success' : 'info'} size="md" className="px-2.5 py-1 h-auto">
-                              <span>{isCash ? '💵' : '💳'}</span>
-                              <span>{paymentLabel}</span>
+                              {paymentLabel}
                             </Tag>
                           </Banner>
                         )}
@@ -499,7 +536,25 @@ export function StaffApp() {
                         </div>
                         {/* Alert resolution is order-adjacent table service, so it
                             rides orders.manage too — see capabilityService.js. */}
-                        {canManageOrders && (
+                        {canManageOrders && isBill && (
+                          <>
+                            <div className="mb-3 flex items-center justify-between text-sm">
+                              <span className="text-[var(--k-text-3)]">{t('unpaidAmountLabel')}</span>
+                              <span className="k-nums font-semibold text-[var(--k-text)]">
+                                {getTableUnpaidTotal(alert.tableId).toFixed(2)} {currencySymbol}
+                              </span>
+                            </div>
+                            {/* Settles the table's whole unpaid balance AND
+                                resolves this alert server-side, in one RPC —
+                                see handleSettlePayment. A separate
+                                resolveAlert() call is only needed for waiter
+                                alerts (below), not bill ones. */}
+                            <Button variant="primary" onClick={() => handleSettlePayment(alert)} size="block" icon={<Check className="w-4 h-4" />}>
+                              {t('confirmPaymentButton')}
+                            </Button>
+                          </>
+                        )}
+                        {canManageOrders && !isBill && (
                           <Button variant="primary" onClick={() => resolveAlert(alert.id)} size="block" icon={<Check className="w-4 h-4" />}>
                             {t('resolvedButton')}
                           </Button>

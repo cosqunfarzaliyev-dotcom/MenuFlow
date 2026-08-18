@@ -1587,7 +1587,13 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
   const stats = useMemo(() => {
     const now = new Date();
     const today = orders.filter(o => new Date(o.time).toDateString() === now.toDateString());
-    const todayRevenue = today.reduce((sum, o) => sum + (o.total || 0), 0);
+    // Cancelled orders were counted into revenue here even though
+    // superAdminService.fetchRestaurantStats() already excludes them from
+    // its own revenue sum — this made "today's revenue" inconsistent with
+    // the platform-level number for the exact same data.
+    const todayRevenue = today
+      .filter(o => o.status !== ORDER_STATUS.CANCELLED)
+      .reduce((sum, o) => sum + (o.total || 0), 0);
     const activeTables = new Set(
       orders.filter(o => o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED).map(o => o.table)
     ).size;
@@ -1600,7 +1606,7 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
       days.push(d);
     }
     const revenueByDay = days.map(d => {
-      const dayOrders = orders.filter(o => new Date(o.time).toDateString() === d.toDateString());
+      const dayOrders = orders.filter(o => new Date(o.time).toDateString() === d.toDateString() && o.status !== ORDER_STATUS.CANCELLED);
       return {
         label: d.toLocaleDateString(LOCALE_TAGS[language] || 'az-AZ', { weekday: 'short' }),
         revenue: dayOrders.reduce((sum, o) => sum + (o.total || 0), 0),
@@ -1795,6 +1801,19 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
     const active = orders.find(o => o.table === tableId && o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED);
     return active ? active.status : null;
   };
+  // A served-but-unpaid table used to read as "Boş" here — tableStatus()
+  // above only tracks kitchen-pipeline status, so once the last order hit
+  // SERVED, the table looked completely free even with an open balance. This
+  // is a separate signal (payment_status, orthogonal to order status — see
+  // 0025_order_payment_status.sql) rendered as its own column below rather
+  // than folded into tableStatus(), so "what's cooking" and "who still owes
+  // money" stay independently readable instead of one silently masking the
+  // other.
+  const tablePaymentStatus = (tableId) => {
+    const relevant = orders.filter(o => o.table === tableId && o.status !== ORDER_STATUS.CANCELLED);
+    if (relevant.length === 0) return null;
+    return relevant.some(o => o.paymentStatus === 'unpaid') ? 'unpaid' : 'paid';
+  };
 
   return (
     <div className="space-y-6">
@@ -1809,11 +1828,13 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
             <TableHead>
               <TableHeaderCell>{t('colTable')}</TableHeaderCell>
               <TableHeaderCell>{t('colStatus')}</TableHeaderCell>
+              <TableHeaderCell>{t('colPayment')}</TableHeaderCell>
               <TableHeaderCell className="text-right">{t('colActions')}</TableHeaderCell>
             </TableHead>
             <TableBody>
               {tables.map(table => {
                 const status = tableStatus(table.id);
+                const paymentStatus = tablePaymentStatus(table.id);
                 const isEditing = editingTableId === table.id;
                 return (
                   <TableRow key={table.id}>
@@ -1848,6 +1869,15 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
                       <Tag tone={status ? statusBadgeTone(status) : 'neutral'}>
                         {status ? orderStatusLabels(t)[status] : t('statusEmpty')}
                       </Tag>
+                    </TableCell>
+                    <TableCell>
+                      {paymentStatus ? (
+                        <Tag tone={paymentStatus === 'paid' ? 'success' : 'warning'}>
+                          {paymentStatus === 'paid' ? t('paidStatus') : t('unpaidStatus')}
+                        </Tag>
+                      ) : (
+                        <span className="text-[var(--k-text-3)]">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {!isEditing && (
@@ -1903,6 +1933,7 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
               <TableHeaderCell>{t('colNote')}</TableHeaderCell>
               <TableHeaderCell>{t('colAmount')}</TableHeaderCell>
               <TableHeaderCell>{t('colStatus')}</TableHeaderCell>
+              <TableHeaderCell>{t('colPayment')}</TableHeaderCell>
             </TableHead>
             <TableBody>
               {sorted.map(order => (
@@ -1918,6 +1949,20 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
                     <Tag tone={statusBadgeTone(order.status)}>
                       {orderStatusLabels(t)[order.status] || t('statusPending')}
                     </Tag>
+                  </TableCell>
+                  {/* Orthogonal to the status column above — this is
+                      payment_status (0025_order_payment_status.sql), not
+                      order.status. A cancelled order never carries a
+                      meaningful payment state, so it's shown as a dash
+                      rather than "Ödənilməyib". */}
+                  <TableCell>
+                    {order.status === ORDER_STATUS.CANCELLED ? (
+                      <span className="text-[var(--k-text-3)]">—</span>
+                    ) : (
+                      <Tag tone={order.paymentStatus === 'paid' ? 'success' : 'warning'}>
+                        {order.paymentStatus === 'paid' ? t('paidStatus') : t('unpaidStatus')}
+                      </Tag>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -1962,6 +2007,12 @@ function PaymentSchemaTable({ title, icon, tint, rows, currencySymbol, emptyLabe
           <TableHeaderCell>{t('colProduct')}</TableHeaderCell>
           <TableHeaderCell>{t('colAmount')}</TableHeaderCell>
           <TableHeaderCell>{t('colStatus')}</TableHeaderCell>
+          {/* This column is what "Status" above is NOT — order.status is
+              kitchen progress (pending/preparing/served/…), payment_status
+              is whether this specific payment method actually collected the
+              money. The two were easy to conflate before there was a second
+              column to tell them apart. */}
+          <TableHeaderCell>{t('colPayment')}</TableHeaderCell>
         </TableHead>
         <TableBody>
           {rows.length > 0 ? rows.map(order => (
@@ -1975,9 +2026,14 @@ function PaymentSchemaTable({ title, icon, tint, rows, currencySymbol, emptyLabe
                   {orderStatusLabels(t)[order.status] || t('statusPending')}
                 </Tag>
               </TableCell>
+              <TableCell>
+                <Tag tone={order.paymentStatus === 'paid' ? 'success' : 'warning'}>
+                  {order.paymentStatus === 'paid' ? t('paidStatus') : t('unpaidStatus')}
+                </Tag>
+              </TableCell>
             </TableRow>
           )) : (
-            <TableEmptyRow colSpan={5}>{emptyLabel}</TableEmptyRow>
+            <TableEmptyRow colSpan={6}>{emptyLabel}</TableEmptyRow>
           )}
         </TableBody>
       </Table>
@@ -1997,14 +2053,29 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
     });
   }, [orders, tables, t]);
 
-  const cashOrders = useMemo(() => withTableName.filter(o => o.paymentMethod === 'cash'), [withTableName]);
-  const cardOrders = useMemo(() => withTableName.filter(o => o.paymentMethod === 'card'), [withTableName]);
-  const walletOrders = useMemo(() => withTableName.filter(o => ['google_pay', 'apple_pay'].includes(o.paymentMethod)), [withTableName]);
-  const unspecifiedCount = withTableName.length - cashOrders.length - cardOrders.length - walletOrders.length;
+  // Cancelled orders used to stay in these buckets (and in grandTotal below)
+  // just because they happened to carry a payment_method — a cancelled
+  // order was never actually paid and should never count as revenue, same
+  // rule superAdminService.fetchRestaurantStats() already applies at the
+  // platform level.
+  const payable = useMemo(() => withTableName.filter(o => o.status !== ORDER_STATUS.CANCELLED), [withTableName]);
+  const cashOrders = useMemo(() => payable.filter(o => o.paymentMethod === 'cash'), [payable]);
+  const cardOrders = useMemo(() => payable.filter(o => o.paymentMethod === 'card'), [payable]);
+  const walletOrders = useMemo(() => payable.filter(o => ['google_pay', 'apple_pay'].includes(o.paymentMethod)), [payable]);
+  const unspecifiedCount = payable.length - cashOrders.length - cardOrders.length - walletOrders.length;
+  // "Sonra ödəyəcəyəm" orders (payment_method null) plus any settled order
+  // whose method still didn't stick land here too — genuinely unpaid,
+  // regardless of which method bucket (if any) it's in above.
+  const unpaidOrders = useMemo(() => payable.filter(o => o.paymentStatus === 'unpaid'), [payable]);
 
-  const grandTotal = cashOrders.reduce((s, o) => s + (Number(o.total) || 0), 0)
-    + cardOrders.reduce((s, o) => s + (Number(o.total) || 0), 0)
-    + walletOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
+  // "Ümumi Ödəniş" (total payments) means money actually collected — before
+  // payment_status existed, this summed every non-cancelled order's total
+  // regardless of whether it was ever paid, which is exactly what a "Sonra
+  // ödəyəcəyəm" order would have overstated as already-received revenue.
+  const grandTotal = payable
+    .filter(o => o.paymentStatus === 'paid')
+    .reduce((s, o) => s + (Number(o.total) || 0), 0);
+  const unpaidTotal = unpaidOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -2021,11 +2092,14 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
           </p>
         </Banner>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard label={t('kpiCash')} value={`${cashOrders.length}`} icon={<Wallet className="w-5 h-5 text-[var(--k-success)]" />} tint="bg-[var(--k-success-soft)]" />
         <KpiCard label={t('kpiPosTerminal')} value={`${cardOrders.length}`} icon={<CreditCard className="w-5 h-5 text-[var(--k-accent)]" />} tint="bg-[var(--k-accent-soft)]" />
         <KpiCard label={t('kpiWallet')} value={`${walletOrders.length}`} icon={<Smartphone className="w-5 h-5 text-[var(--k-info)]" />} tint="bg-[var(--k-info-soft)]" />
         <KpiCard label={t('kpiTotalPayments')} value={`${grandTotal.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-[var(--k-warning)]" />} tint="bg-[var(--k-warning-soft)]" />
+        {/* New: what's still owed, across every payment method — the number
+            that didn't exist anywhere in this panel before 0025. */}
+        <KpiCard label={t('kpiUnpaid')} value={`${unpaidOrders.length} · ${unpaidTotal.toFixed(2)} ${symbol}`} icon={<Clock className="w-5 h-5 text-[var(--k-danger)]" />} tint="bg-[var(--k-danger-soft)]" />
       </div>
 
       <PaymentSchemaTable
