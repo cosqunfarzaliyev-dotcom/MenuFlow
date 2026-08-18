@@ -1,8 +1,9 @@
 import PropTypes from "prop-types";
+import { X } from "lucide-react";
 import { Card, CardHeader, CardBody, Button, Banner } from "@/components/kit";
 import { useStaffTranslation } from "@/lib/i18n/dictionaries/staff";
 
-export function OrderCard({ order, tableName, onStatusChange, nextStatus, nextLabel, isCompleted, readOnly }) {
+export function OrderCard({ order, tableName, onStatusChange, nextStatus, nextLabel, isCompleted, readOnly, onCancel }) {
   const { t } = useStaffTranslation();
   const timeStr = new Date(order.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   // `nextLabel` is always supplied by StaffApp's call sites today (each
@@ -42,9 +43,27 @@ export function OrderCard({ order, tableName, onStatusChange, nextStatus, nextLa
             the button in practice; it's here so a future view-only staff tier
             doesn't need a StaffApp rewrite, just a false in the role matrix. */}
         {!isCompleted && !readOnly && (
-          <Button variant="primary" onClick={() => onStatusChange(order.id, nextStatus)} size="block">
-            {resolvedNextLabel}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="primary" onClick={() => onStatusChange(order.id, nextStatus)} className="flex-1">
+              {resolvedNextLabel}
+            </Button>
+            {/* Cancellation is a separate, explicit action from the
+                pending -> accepted -> preparing -> ready -> served chain
+                above (never something a "next stage" tap should ever land
+                on by accident) — only offered while an order is still in
+                progress, gated on the same orders.manage capability. */}
+            {onCancel && (
+              <Button
+                variant="danger"
+                size="icon"
+                onClick={() => onCancel(order.id)}
+                aria-label={t('cancelButton')}
+                title={t('cancelButton')}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         )}
       </CardBody>
     </Card>
@@ -59,6 +78,7 @@ OrderCard.propTypes = {
   nextLabel: PropTypes.string,
   isCompleted: PropTypes.bool,
   readOnly: PropTypes.bool,
+  onCancel: PropTypes.func,
 };
 
 OrderCard.defaultProps = { nextStatus: undefined, isCompleted: false, readOnly: false };

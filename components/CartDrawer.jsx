@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Image from 'next/image';
 import { Trash2, Plus, Minus, ShoppingBag, Send, CheckCircle2, UtensilsCrossed } from "lucide-react";
 
@@ -8,6 +8,7 @@ import { useAppStore } from '@/lib/store';
 import { fetchTableByNumber } from '@/lib/services/supabaseService';
 import { getLocalizedProduct, getLocalizedText } from '@/lib/translations';
 import { requestWalletPayment } from '@/lib/services/paymentService';
+import { FEATURES, hasFeature } from '@/lib/services/entitlementService';
 import { Sheet, SheetHeader, Button, Input, Field, Tag, Banner, EmptyState } from '@/components/kit';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +41,7 @@ export const CartDrawer = ({
 }) => {
   const createOrder = useAppStore(state => state.createOrder);
   const tables = useAppStore(state => state.tables);
+  const restaurant = useAppStore(state => state.restaurant);
   const currencySymbol = useAppStore(state => state.settings?.currencySymbol) || '₼';
   const [orderSubmitted, setOrderSubmitted] = useState(false);
   const [kitchenNote, setKitchenNote] = useState("");
@@ -49,7 +51,29 @@ export const CartDrawer = ({
 
   const currentTable = tables.find(t => t.table_number?.toString() === tableNumber?.toString() || t.id === tableNumber) || { id: tableNumber, name: getLocalizedText('tableFallbackName', lang)(tableNumber) };
 
+  // Wallet methods ride the same entitlement gate as the "Hesab" bill modal
+  // in CustomerApp.jsx (hasFeature(restaurant, FEATURES.GOOGLE_PAY/APPLE_PAY))
+  // — cash/card are never gated. Without this, a restaurant with the wallet
+  // switches turned off in SuperAdmin still had them selectable at checkout.
+  const availablePaymentMethods = useMemo(
+    () =>
+      PAYMENT_METHODS.filter((m) => {
+        if (m.key === 'google_pay') return hasFeature(restaurant, FEATURES.GOOGLE_PAY);
+        if (m.key === 'apple_pay') return hasFeature(restaurant, FEATURES.APPLE_PAY);
+        return true;
+      }),
+    [restaurant],
+  );
+  const PAYMENT_GRID_COLS = { 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' };
+
   if (!isOpen) return null;
+
+  // If the previously selected method just got filtered out (e.g. the
+  // restaurant's wallet entitlement resolved to off after mount), fall back
+  // to cash instead of silently submitting a method that's no longer offered.
+  if (!availablePaymentMethods.some((m) => m.key === paymentMethod) && paymentMethod !== 'cash') {
+    setPaymentMethod('cash');
+  }
 
   const calculateItemPrice = (item) => {
     let base = Number(item.product.price || 0);
@@ -105,7 +129,11 @@ export const CartDrawer = ({
       const isFallback = table && (table.id === table.table_number?.toString() || !table.table_number);
 
       if (!table || isFallback) {
-        const dbTable = await fetchTableByNumber(tableNumber);
+        // restaurant.id MUST be passed here: table_number is only unique
+        // *within* a restaurant (every tenant's tables start at 1), so an
+        // unscoped lookup can throw once a second restaurant exists, or —
+        // worse — resolve to a different restaurant's table row entirely.
+        const dbTable = await fetchTableByNumber(tableNumber, restaurant?.id);
         if (dbTable) table = dbTable;
       }
 
@@ -342,8 +370,8 @@ export const CartDrawer = ({
             <p className="mb-1.5 text-[13px] font-medium text-[var(--k-text-2)]">
               {getLocalizedText("paymentType", lang)}
             </p>
-            <div className="grid grid-cols-4 gap-1.5">
-              {PAYMENT_METHODS.map((m) => {
+            <div className={cn('grid gap-1.5', PAYMENT_GRID_COLS[availablePaymentMethods.length] || 'grid-cols-4')}>
+              {availablePaymentMethods.map((m) => {
                 const active = paymentMethod === m.key;
                 return (
                   <button

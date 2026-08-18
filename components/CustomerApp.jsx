@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { ORDER_STATUS, useAppStore } from "@/lib/store";
@@ -8,7 +8,7 @@ import { subscribeOrders, subscribeProducts } from '@/lib/services/realtime';
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { CartDrawer } from "@/components/CartDrawer";
-import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight } from "lucide-react";
+import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight, XCircle } from "lucide-react";
 import { getLocalizedText, getLocalizedCategoryName, getLocalizedProduct } from "@/lib/translations";
 import { applyDiscounts } from "@/lib/services/promotionsService";
 import { requestWalletPayment } from "@/lib/services/paymentService";
@@ -90,6 +90,15 @@ export function CustomerApp() {
   const [tableId, setTableId] = useState(() => params?.table || searchParams?.get('table') || "1");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+
+  // Cart persistence: keyed by restaurant + table so a page refresh (or an
+  // accidental tab close/reopen in the same session) doesn't wipe an
+  // in-progress order — sessionStorage rather than localStorage on purpose,
+  // so a cart from a previous, unrelated visit never silently resurfaces.
+  // Null until the restaurant slug resolves, so nothing is read/written
+  // against a table id that hasn't been confirmed yet.
+  const cartStorageKey = restaurant?.slug && tableId ? `mf-cart:${restaurant.slug}:${tableId}` : null;
+  const cartRestoredKeyRef = useRef(null);
 
   useEffect(() => {
     const loadAppData = async () => {
@@ -181,6 +190,44 @@ export function CustomerApp() {
       if (prodSub && typeof prodSub.unsubscribe === 'function') prodSub.unsubscribe();
     };
   }, [loadMenuData, restaurant?.id]);
+
+  // Restore a persisted cart once we know which restaurant+table it belongs
+  // to (guards against restoring the wrong table's cart, and against
+  // restoring before the key is even known). Runs at most once per key.
+  useEffect(() => {
+    if (!cartStorageKey || cartRestoredKeyRef.current === cartStorageKey) return;
+    cartRestoredKeyRef.current = cartStorageKey;
+    try {
+      const raw = window.sessionStorage.getItem(cartStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setCartItems(parsed);
+        }
+      }
+    } catch {
+      // Corrupt/unavailable storage — cart just starts empty, same as today.
+    }
+  }, [cartStorageKey]);
+
+  // Persist on every cart change. sessionStorage (not localStorage) so a
+  // cart from a previous, unrelated visit to this table never resurfaces —
+  // it only survives a reload/accidental tab close within the same
+  // browser session.
+  useEffect(() => {
+    if (!cartStorageKey) return;
+    try {
+      if (cartItems.length > 0) {
+        window.sessionStorage.setItem(cartStorageKey, JSON.stringify(cartItems));
+      } else {
+        window.sessionStorage.removeItem(cartStorageKey);
+      }
+    } catch {
+      // Storage full/unavailable (e.g. private browsing) — cart still works
+      // in-memory for the rest of this visit, it just won't survive a reload.
+    }
+  }, [cartStorageKey, cartItems]);
 
   const currentTable = resolvedTable || { id: tableId, name: `Masa ${tableId}` };
 
@@ -310,7 +357,7 @@ export function CustomerApp() {
     [ORDER_STATUS.PREPARING]: { label: getLocalizedText("statusPreparing", lang), icon: <UtensilsCrossed className="w-3.5 h-3.5" />, tone: 'accent' },
     [ORDER_STATUS.READY]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-3.5 h-3.5" />, tone: 'success' },
     [ORDER_STATUS.SERVED]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-3.5 h-3.5" />, tone: 'success' },
-    [ORDER_STATUS.CANCELLED]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-3.5 h-3.5" />, tone: 'danger' },
+    [ORDER_STATUS.CANCELLED]: { label: getLocalizedText("statusCancelled", lang), icon: <XCircle className="w-3.5 h-3.5" />, tone: 'danger' },
   };
 
   const themeStyle = {

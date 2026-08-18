@@ -11,7 +11,7 @@ import { isAccessBlocked, accessBlockReason } from '@/lib/services/billingServic
 import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode, Lock, Shield } from 'lucide-react';
 import { OrderCard } from '@/components/staff/OrderCard';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
-import { LoadingState, ErrorState, EmptyState, PageSkeleton, Tabs, TabsTrigger, LanguageToggle, Card, CardHeader, CardBody, Tag, Button, PageHeader, Banner } from '@/components/kit';
+import { LoadingState, ErrorState, EmptyState, PageSkeleton, Tabs, TabsTrigger, LanguageToggle, Card, CardHeader, CardBody, Tag, Button, PageHeader, Banner, ConfirmDialog, useConfirmDialog } from '@/components/kit';
 import { buttonVariants } from '@/components/kit/variants';
 import { cn } from '@/lib/utils';
 import { CAPABILITIES } from '@/lib/services/capabilityService';
@@ -47,6 +47,11 @@ export function StaffApp() {
   // exists so a future view-only staff tier is a role-matrix edit, not a
   // StaffApp rewrite.
   const canManageOrders = useCapability(CAPABILITIES.ORDERS_MANAGE);
+  // Order cancellation — see OrderCard.jsx's `onCancel` prop. Confirmed
+  // before it fires (irreversible, and the customer-facing menu shows the
+  // order as cancelled immediately), same useConfirmDialog pattern
+  // AdminApp/DesignTab already use for delete flows.
+  const confirmDialog = useConfirmDialog();
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'alerts'
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -206,15 +211,33 @@ export function StaffApp() {
 
   const handleStatusChange = (id) => {
     const order = orders.find((currentOrder) => currentOrder.id === id);
+    // Forward-only progression. Cancellation is a distinct, explicit action
+    // (handleCancelOrder below) — it used to live as a [SERVED]: CANCELLED
+    // entry at the end of this map, but that transition was unreachable
+    // (OrderCard hides the "next stage" button once isCompleted is true,
+    // which is exactly when status === SERVED) and confusing dead code to
+    // anyone reading it as "how do I cancel an order?".
     const nextStatus = {
       [ORDER_STATUS.PENDING]: ORDER_STATUS.ACCEPTED,
       [ORDER_STATUS.ACCEPTED]: ORDER_STATUS.PREPARING,
       [ORDER_STATUS.PREPARING]: ORDER_STATUS.READY,
       [ORDER_STATUS.READY]: ORDER_STATUS.SERVED,
-      [ORDER_STATUS.SERVED]: ORDER_STATUS.CANCELLED,
     }[order?.status];
 
     if (nextStatus) updateOrderStatus(id, nextStatus);
+  };
+
+  // Previously there was no UI path anywhere (Staff or Admin) to ever set an
+  // order to `cancelled` — the status existed in the enum/labels/filters but
+  // was fully dead. Offered only while an order hasn't reached READY yet
+  // (see the two OrderCard columns below); once food is ready/served,
+  // cancelling from here no longer reflects reality in the kitchen.
+  const handleCancelOrder = (id) => {
+    confirmDialog.confirm({
+      title: t('cancelOrderConfirmTitle'),
+      message: t('cancelOrderConfirmMessage'),
+      onConfirm: () => updateOrderStatus(id, ORDER_STATUS.CANCELLED),
+    });
   };
 
   if (!isMounted || authChecking) return <PageSkeleton className="kit-dark" />;
@@ -380,7 +403,7 @@ export function StaffApp() {
                 {pendingOrders.length > 0 ? (
                   <div className="space-y-4">
                     {pendingOrders.map(order => (
-                      <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.ACCEPTED} nextLabel={t('acceptButton')} readOnly={!canManageOrders} />
+                      <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.ACCEPTED} nextLabel={t('acceptButton')} readOnly={!canManageOrders} onCancel={canManageOrders ? handleCancelOrder : undefined} />
                     ))}
                   </div>
                 ) : (
@@ -402,7 +425,7 @@ export function StaffApp() {
                 </div>
                 <div className="space-y-4">
                   {preparingOrders.map(order => (
-                    <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.READY} nextLabel={t('readyButton')} readOnly={!canManageOrders} />
+                    <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.READY} nextLabel={t('readyButton')} readOnly={!canManageOrders} onCancel={canManageOrders ? handleCancelOrder : undefined} />
                   ))}
                 </div>
               </div>
@@ -501,6 +524,8 @@ export function StaffApp() {
         </div>
 
       </div>
+
+      <ConfirmDialog {...confirmDialog.dialogProps} />
     </div>
   );
 }
