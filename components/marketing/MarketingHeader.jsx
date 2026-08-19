@@ -60,7 +60,7 @@ export function MarketingHeader() {
           <Link href="/login" className={cn(buttonVariants({ context: 'dark', variant: 'ghost', size: 'sm' }))}>
             {t('loginLink')}
           </Link>
-          <Link href="/login?mode=signup" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'sm' }))}>
+          <Link href="/contact" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'sm' }))}>
             {t('getStartedButton')}
           </Link>
         </div>
@@ -101,7 +101,7 @@ export function MarketingHeader() {
               <Link href="/login" className={cn(buttonVariants({ context: 'dark', variant: 'ghost', size: 'sm' }))}>
                 {t('loginLink')}
               </Link>
-              <Link href="/login?mode=signup" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'sm' }))}>
+              <Link href="/contact" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'sm' }))}>
                 {t('getStartedButton')}
               </Link>
             </div>

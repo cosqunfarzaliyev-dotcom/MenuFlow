@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Image from 'next/image';
 import { Trash2, Plus, Minus, ShoppingBag, Send, CheckCircle2, UtensilsCrossed } from "lucide-react";
 
@@ -8,6 +8,7 @@ import { useAppStore } from '@/lib/store';
 import { fetchTableByNumber } from '@/lib/services/supabaseService';
 import { getLocalizedProduct, getLocalizedText } from '@/lib/translations';
 import { requestWalletPayment } from '@/lib/services/paymentService';
+import { FEATURES, hasFeature } from '@/lib/services/entitlementService';
 import { Sheet, SheetHeader, Button, Input, Field, Tag, Banner, EmptyState } from '@/components/kit';
 import { cn } from '@/lib/utils';
 
@@ -20,9 +21,20 @@ const FALLBACK_IMAGE =
 // (common in in-app webviews). Tapping the button is itself the capability
 // check: if the wallet genuinely isn't available, requestWalletPayment()
 // below returns a clear error instead of silently charging nothing.
+// 'later' first and default-selected: paying is now voluntary at order time
+// (0025_order_payment_status.sql / the customer-facing "Hesab" flow) — a
+// customer who never touches this radiogroup used to silently submit as
+// 'cash', which was a payment INTENT masquerading as a payment FACT. 'later'
+// sends no payment_method at all (see handleSendOrder), leaving the order
+// genuinely unspecified until staff settles it.
+// cash/card have NO separate icon here — lib/translations.js's `cash`/`card`
+// strings ("💵 Nəğd"/"💳 Kart") already carry their own emoji prefix, so an
+// icon field here would render it twice (confirmed live: "💵💵 Nəğd"). The
+// other three labels don't come from getLocalizedText, so they still need one.
 const PAYMENT_METHODS = [
-  { key: 'cash', labelKey: 'cash', icon: '💵' },
-  { key: 'card', labelKey: 'card', icon: '💳' },
+  { key: 'later', labelKey: 'payLater', icon: '🕒' },
+  { key: 'cash', labelKey: 'cash' },
+  { key: 'card', labelKey: 'card' },
   { key: 'google_pay', label: 'Google Pay', icon: '🅖' },
   { key: 'apple_pay', label: 'Apple Pay', icon: '' },
 ];
@@ -40,16 +52,42 @@ export const CartDrawer = ({
 }) => {
   const createOrder = useAppStore(state => state.createOrder);
   const tables = useAppStore(state => state.tables);
+  const restaurant = useAppStore(state => state.restaurant);
   const currencySymbol = useAppStore(state => state.settings?.currencySymbol) || '₼';
   const [orderSubmitted, setOrderSubmitted] = useState(false);
   const [kitchenNote, setKitchenNote] = useState("");
   const [submitError, setSubmitError] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('later');
   const [walletAuthorizing, setWalletAuthorizing] = useState(false);
 
   const currentTable = tables.find(t => t.table_number?.toString() === tableNumber?.toString() || t.id === tableNumber) || { id: tableNumber, name: getLocalizedText('tableFallbackName', lang)(tableNumber) };
 
+  // Wallet methods ride the same entitlement gate as the "Hesab" bill modal
+  // in CustomerApp.jsx (hasFeature(restaurant, FEATURES.GOOGLE_PAY/APPLE_PAY))
+  // — cash/card are never gated. Without this, a restaurant with the wallet
+  // switches turned off in SuperAdmin still had them selectable at checkout.
+  const availablePaymentMethods = useMemo(
+    () =>
+      PAYMENT_METHODS.filter((m) => {
+        if (m.key === 'google_pay') return hasFeature(restaurant, FEATURES.GOOGLE_PAY);
+        if (m.key === 'apple_pay') return hasFeature(restaurant, FEATURES.APPLE_PAY);
+        return true;
+      }),
+    [restaurant],
+  );
+  // 5 buttons in a row is too tight on a phone with icon+text — 3 columns
+  // wraps a 4th/5th button to a second row instead of shrinking every button.
+  const PAYMENT_GRID_COLS = { 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-3', 5: 'grid-cols-3' };
+
   if (!isOpen) return null;
+
+  // If the previously selected method just got filtered out (e.g. the
+  // restaurant's wallet entitlement resolved to off after mount), fall back
+  // to 'later' (always present, like cash/card) instead of silently
+  // submitting a method that's no longer offered.
+  if (!availablePaymentMethods.some((m) => m.key === paymentMethod) && paymentMethod !== 'later') {
+    setPaymentMethod('later');
+  }
 
   const calculateItemPrice = (item) => {
     let base = Number(item.product.price || 0);
@@ -66,12 +104,13 @@ export const CartDrawer = ({
   const handleResetOrder = () => {
     setOrderSubmitted(false);
     setKitchenNote("");
-    setPaymentMethod('cash');
+    setPaymentMethod('later');
     if (typeof onClearCart === 'function') onClearCart();
     if (typeof onClose === 'function') onClose();
   };
 
   const paymentLabels = {
+    later: getLocalizedText('payLater', lang),
     cash: getLocalizedText('cash', lang),
     card: getLocalizedText('card', lang),
     google_pay: 'Google Pay',
@@ -105,7 +144,11 @@ export const CartDrawer = ({
       const isFallback = table && (table.id === table.table_number?.toString() || !table.table_number);
 
       if (!table || isFallback) {
-        const dbTable = await fetchTableByNumber(tableNumber);
+        // restaurant.id MUST be passed here: table_number is only unique
+        // *within* a restaurant (every tenant's tables start at 1), so an
+        // unscoped lookup can throw once a second restaurant exists, or —
+        // worse — resolve to a different restaurant's table row entirely.
+        const dbTable = await fetchTableByNumber(tableNumber, restaurant?.id);
         if (dbTable) table = dbTable;
       }
 
@@ -118,13 +161,19 @@ export const CartDrawer = ({
         return;
       }
 
+      // 'later' means the customer genuinely hasn't decided yet — send no
+      // payment_method at all (place_order() stores whatever it's given
+      // verbatim) rather than a fake 'later' string that would leak into
+      // staff-side payment-method reporting downstream.
+      const isPayingLater = paymentMethod === 'later';
+
       const { order, error } = await createOrder({
         tableId: table.id,
         total: totalPrice,
         items,
         note: kitchenNote,
-        paymentMethod,
-        paymentMethodLabel: paymentLabels[paymentMethod] || paymentMethod,
+        paymentMethod: isPayingLater ? null : paymentMethod,
+        paymentMethodLabel: isPayingLater ? null : (paymentLabels[paymentMethod] || paymentMethod),
       });
 
       if (error) {
@@ -342,8 +391,8 @@ export const CartDrawer = ({
             <p className="mb-1.5 text-[13px] font-medium text-[var(--k-text-2)]">
               {getLocalizedText("paymentType", lang)}
             </p>
-            <div className="grid grid-cols-4 gap-1.5">
-              {PAYMENT_METHODS.map((m) => {
+            <div className={cn('grid gap-1.5', PAYMENT_GRID_COLS[availablePaymentMethods.length] || 'grid-cols-4')}>
+              {availablePaymentMethods.map((m) => {
                 const active = paymentMethod === m.key;
                 return (
                   <button

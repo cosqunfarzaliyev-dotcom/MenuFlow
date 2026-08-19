@@ -44,7 +44,10 @@ export default function HomePage() {
             {t('heroSubtitle')}
           </p>
           <div className="flex flex-wrap items-center gap-3 mb-4">
-            <Link href="/login?mode=signup" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'lg' }), 'gap-2')}>
+            {/* Points at /contact, not a sign-up form: accounts are created by
+                a super admin when the restaurant is set up (see CLAUDE.md ->
+                Roles, D1), so "getting started" means reaching out to us. */}
+            <Link href="/contact" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'lg' }), 'gap-2')}>
               {t('heroCtaPrimary')} <ArrowRight className="w-4 h-4" />
             </Link>
             <Link href="/demo" className={cn(buttonVariants({ context: 'dark', variant: 'secondary', size: 'lg' }))}>

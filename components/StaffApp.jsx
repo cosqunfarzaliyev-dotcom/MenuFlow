@@ -11,7 +11,7 @@ import { isAccessBlocked, accessBlockReason } from '@/lib/services/billingServic
 import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode, Lock, Shield } from 'lucide-react';
 import { OrderCard } from '@/components/staff/OrderCard';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
-import { LoadingState, ErrorState, EmptyState, PageSkeleton, Tabs, TabsTrigger, LanguageToggle, Card, CardHeader, CardBody, Tag, Button, PageHeader, Banner } from '@/components/kit';
+import { LoadingState, ErrorState, EmptyState, PageSkeleton, Tabs, TabsTrigger, LanguageToggle, Card, CardHeader, CardBody, Tag, Button, PageHeader, Banner, ConfirmDialog, useConfirmDialog } from '@/components/kit';
 import { buttonVariants } from '@/components/kit/variants';
 import { cn } from '@/lib/utils';
 import { CAPABILITIES } from '@/lib/services/capabilityService';
@@ -24,6 +24,7 @@ export function StaffApp() {
   const {
     orders,
     updateOrderStatus,
+    settleTablePayment,
     alerts,
     resolveAlert,
     tables,
@@ -47,6 +48,11 @@ export function StaffApp() {
   // exists so a future view-only staff tier is a role-matrix edit, not a
   // StaffApp rewrite.
   const canManageOrders = useCapability(CAPABILITIES.ORDERS_MANAGE);
+  // Order cancellation — see OrderCard.jsx's `onCancel` prop. Confirmed
+  // before it fires (irreversible, and the customer-facing menu shows the
+  // order as cancelled immediately), same useConfirmDialog pattern
+  // AdminApp/DesignTab already use for delete flows.
+  const confirmDialog = useConfirmDialog();
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'alerts'
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -206,15 +212,65 @@ export function StaffApp() {
 
   const handleStatusChange = (id) => {
     const order = orders.find((currentOrder) => currentOrder.id === id);
+    // Forward-only progression. Cancellation is a distinct, explicit action
+    // (handleCancelOrder below) — it used to live as a [SERVED]: CANCELLED
+    // entry at the end of this map, but that transition was unreachable
+    // (OrderCard hides the "next stage" button once isCompleted is true,
+    // which is exactly when status === SERVED) and confusing dead code to
+    // anyone reading it as "how do I cancel an order?".
     const nextStatus = {
       [ORDER_STATUS.PENDING]: ORDER_STATUS.ACCEPTED,
       [ORDER_STATUS.ACCEPTED]: ORDER_STATUS.PREPARING,
       [ORDER_STATUS.PREPARING]: ORDER_STATUS.READY,
       [ORDER_STATUS.READY]: ORDER_STATUS.SERVED,
-      [ORDER_STATUS.SERVED]: ORDER_STATUS.CANCELLED,
     }[order?.status];
 
     if (nextStatus) updateOrderStatus(id, nextStatus);
+  };
+
+  // Previously there was no UI path anywhere (Staff or Admin) to ever set an
+  // order to `cancelled` — the status existed in the enum/labels/filters but
+  // was fully dead. Offered only while an order hasn't reached READY yet
+  // (see the two OrderCard columns below); once food is ready/served,
+  // cancelling from here no longer reflects reality in the kitchen.
+  const handleCancelOrder = (id) => {
+    confirmDialog.confirm({
+      title: t('cancelOrderConfirmTitle'),
+      message: t('cancelOrderConfirmMessage'),
+      onConfirm: () => updateOrderStatus(id, ORDER_STATUS.CANCELLED),
+    });
+  };
+
+  // 0025_order_payment_status.sql. A table's unpaid balance — used both to
+  // show staff what they're about to confirm and as the amount named in the
+  // confirm dialog below. `orders` here is the staff-wide fetchOrders() list
+  // (unlike CustomerApp's table-scoped one), so it's filtered by tableId.
+  const currencySymbol = restaurant?.currency_symbol || '₼';
+  const getTableUnpaidTotal = (tableId) =>
+    orders
+      .filter((o) => o.tableId === tableId && o.paymentStatus === 'unpaid' && o.status !== ORDER_STATUS.CANCELLED)
+      .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+
+  // Settles the WHOLE table's unpaid balance in one call (settle_table_payment
+  // RPC — see the migration), not just this one alert. The alert's own
+  // recorded payment_method is what staff already saw the customer request
+  // (cash/card icon in the card below); confirming here means "I actually
+  // received this amount", so it also resolves the bill alert server-side in
+  // the same transaction — no separate resolveAlert() call needed for bill
+  // alerts (unlike waiter alerts, which still use it below).
+  const handleSettlePayment = (alert) => {
+    const amount = getTableUnpaidTotal(alert.tableId);
+    confirmDialog.confirm({
+      title: t('settlePaymentConfirmTitle'),
+      message: t('settlePaymentConfirmMessage')(amount.toFixed(2), currencySymbol),
+      onConfirm: () =>
+        settleTablePayment({
+          tableId: alert.tableId,
+          paymentMethod: alert.paymentMethod,
+          paymentMethodLabel: alert.paymentMethodLabel,
+          paid: true,
+        }),
+    });
   };
 
   if (!isMounted || authChecking) return <PageSkeleton className="kit-dark" />;
@@ -380,7 +436,7 @@ export function StaffApp() {
                 {pendingOrders.length > 0 ? (
                   <div className="space-y-4">
                     {pendingOrders.map(order => (
-                      <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.ACCEPTED} nextLabel={t('acceptButton')} readOnly={!canManageOrders} />
+                      <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.ACCEPTED} nextLabel={t('acceptButton')} readOnly={!canManageOrders} onCancel={canManageOrders ? handleCancelOrder : undefined} />
                     ))}
                   </div>
                 ) : (
@@ -402,7 +458,7 @@ export function StaffApp() {
                 </div>
                 <div className="space-y-4">
                   {preparingOrders.map(order => (
-                    <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.READY} nextLabel={t('readyButton')} readOnly={!canManageOrders} />
+                    <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.READY} nextLabel={t('readyButton')} readOnly={!canManageOrders} onCancel={canManageOrders ? handleCancelOrder : undefined} />
                   ))}
                 </div>
               </div>
@@ -464,9 +520,13 @@ export function StaffApp() {
                         {isBill && (
                           <Banner tone={isCash ? 'success' : 'info'} className="mb-4 flex-col items-start gap-2">
                             <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-70">{t('paymentTypeLabel')}</span>
+                            {/* paymentLabel already carries its own emoji prefix
+                                (cashLabel/posLabel/cardLabel below, and every
+                                caller of createAlert's paymentMethodLabel) — a
+                                second hardcoded emoji here used to double it up
+                                whenever paymentMethodLabel was present. */}
                             <Tag tone={isCash ? 'success' : 'info'} size="md" className="px-2.5 py-1 h-auto">
-                              <span>{isCash ? '💵' : '💳'}</span>
-                              <span>{paymentLabel}</span>
+                              {paymentLabel}
                             </Tag>
                           </Banner>
                         )}
@@ -476,7 +536,25 @@ export function StaffApp() {
                         </div>
                         {/* Alert resolution is order-adjacent table service, so it
                             rides orders.manage too — see capabilityService.js. */}
-                        {canManageOrders && (
+                        {canManageOrders && isBill && (
+                          <>
+                            <div className="mb-3 flex items-center justify-between text-sm">
+                              <span className="text-[var(--k-text-3)]">{t('unpaidAmountLabel')}</span>
+                              <span className="k-nums font-semibold text-[var(--k-text)]">
+                                {getTableUnpaidTotal(alert.tableId).toFixed(2)} {currencySymbol}
+                              </span>
+                            </div>
+                            {/* Settles the table's whole unpaid balance AND
+                                resolves this alert server-side, in one RPC —
+                                see handleSettlePayment. A separate
+                                resolveAlert() call is only needed for waiter
+                                alerts (below), not bill ones. */}
+                            <Button variant="primary" onClick={() => handleSettlePayment(alert)} size="block" icon={<Check className="w-4 h-4" />}>
+                              {t('confirmPaymentButton')}
+                            </Button>
+                          </>
+                        )}
+                        {canManageOrders && !isBill && (
                           <Button variant="primary" onClick={() => resolveAlert(alert.id)} size="block" icon={<Check className="w-4 h-4" />}>
                             {t('resolvedButton')}
                           </Button>
@@ -501,6 +579,8 @@ export function StaffApp() {
         </div>
 
       </div>
+
+      <ConfirmDialog {...confirmDialog.dialogProps} />
     </div>
   );
 }

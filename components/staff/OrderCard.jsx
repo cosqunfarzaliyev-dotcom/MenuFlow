@@ -1,8 +1,9 @@
 import PropTypes from "prop-types";
-import { Card, CardHeader, CardBody, Button, Banner } from "@/components/kit";
+import { X } from "lucide-react";
+import { Card, CardHeader, CardBody, Button, Banner, Tag } from "@/components/kit";
 import { useStaffTranslation } from "@/lib/i18n/dictionaries/staff";
 
-export function OrderCard({ order, tableName, onStatusChange, nextStatus, nextLabel, isCompleted, readOnly }) {
+export function OrderCard({ order, tableName, onStatusChange, nextStatus, nextLabel, isCompleted, readOnly, onCancel }) {
   const { t } = useStaffTranslation();
   const timeStr = new Date(order.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   // `nextLabel` is always supplied by StaffApp's call sites today (each
@@ -37,14 +38,43 @@ export function OrderCard({ order, tableName, onStatusChange, nextStatus, nextLa
             <span className="text-xs italic">{order.note}</span>
           </Banner>
         )}
+        {/* Total wasn't shown anywhere on this card before — payment status
+            is meaningless without the amount it refers to. Orthogonal to
+            order.status: a served order can still be 'unpaid'. */}
+        {typeof order.total === 'number' && (
+          <div className="mb-4 flex items-center justify-between text-sm">
+            <span className="font-semibold text-[var(--k-text)]">{order.total.toFixed(2)} ₼</span>
+            <Tag tone={order.paymentStatus === 'paid' ? 'success' : 'warning'} size="sm">
+              {order.paymentStatus === 'paid' ? t('paidStatus') : t('unpaidStatus')}
+            </Tag>
+          </div>
+        )}
         {/* `readOnly` is the orders.manage capability gate (see StaffApp.jsx) —
             both roles that can reach /staff have it today, so this never hides
             the button in practice; it's here so a future view-only staff tier
             doesn't need a StaffApp rewrite, just a false in the role matrix. */}
         {!isCompleted && !readOnly && (
-          <Button variant="primary" onClick={() => onStatusChange(order.id, nextStatus)} size="block">
-            {resolvedNextLabel}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="primary" onClick={() => onStatusChange(order.id, nextStatus)} className="flex-1">
+              {resolvedNextLabel}
+            </Button>
+            {/* Cancellation is a separate, explicit action from the
+                pending -> accepted -> preparing -> ready -> served chain
+                above (never something a "next stage" tap should ever land
+                on by accident) — only offered while an order is still in
+                progress, gated on the same orders.manage capability. */}
+            {onCancel && (
+              <Button
+                variant="danger"
+                size="icon"
+                onClick={() => onCancel(order.id)}
+                aria-label={t('cancelButton')}
+                title={t('cancelButton')}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         )}
       </CardBody>
     </Card>
@@ -52,13 +82,21 @@ export function OrderCard({ order, tableName, onStatusChange, nextStatus, nextLa
 }
 
 OrderCard.propTypes = {
-  order: PropTypes.shape({ id: PropTypes.string.isRequired, time: PropTypes.string.isRequired, items: PropTypes.array.isRequired, note: PropTypes.string }).isRequired,
+  order: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    time: PropTypes.string.isRequired,
+    items: PropTypes.array.isRequired,
+    note: PropTypes.string,
+    total: PropTypes.number,
+    paymentStatus: PropTypes.oneOf(['paid', 'unpaid']),
+  }).isRequired,
   tableName: PropTypes.string.isRequired,
   onStatusChange: PropTypes.func.isRequired,
   nextStatus: PropTypes.string,
   nextLabel: PropTypes.string,
   isCompleted: PropTypes.bool,
   readOnly: PropTypes.bool,
+  onCancel: PropTypes.func,
 };
 
 OrderCard.defaultProps = { nextStatus: undefined, isCompleted: false, readOnly: false };

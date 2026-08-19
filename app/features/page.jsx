@@ -57,7 +57,7 @@ export default function FeaturesPage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
           <h2 className="font-serif-title font-bold text-3xl sm:text-4xl text-white mb-3">{t('featuresPageCtaTitle')}</h2>
           <p className="text-slate-400 max-w-xl mx-auto mb-7">{t('featuresPageCtaSubtitle')}</p>
-          <Link href="/login?mode=signup" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'lg' }), 'gap-2')}>
+          <Link href="/contact" className={cn(buttonVariants({ context: 'dark', variant: 'primary', size: 'lg' }), 'gap-2')}>
             {t('featuresPageCtaButton')} <ArrowRight className="w-4 h-4" />
           </Link>
         </div>

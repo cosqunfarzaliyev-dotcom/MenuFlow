@@ -154,7 +154,7 @@ export default function PricingPage() {
                     </ul>
 
                     <Link
-                      href="/login?mode=signup"
+                      href="/contact"
                       className={cn(buttonVariants({ variant: isFeatured ? 'primary' : 'secondary', size: 'block' }), 'mt-6')}
                     >
                       {t('getStartedButton')}
