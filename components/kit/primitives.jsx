@@ -179,9 +179,19 @@ export function Switch({ checked, onChange, disabled, label, description, classN
         <span
           aria-hidden="true"
           className={cn(
-            'absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white',
+            // `left-[3px]` is load-bearing, not decorative padding: with no
+            // left/right set at all, an absolutely positioned element falls
+            // back to its "static position", which measured out flush
+            // against the track's RIGHT edge in this browser rather than
+            // the left — confirmed live (off state rendered with a 23px gap
+            // on the left and 1px on the right, and the checked state's
+            // thumb overflowed 14px past the track entirely). Anchoring
+            // explicitly at the left and translating a fixed 18px from
+            // there removes that fallback ambiguity; 0/18 (not 3/18) since
+            // the 3px offset now lives in `left` itself.
+            'absolute left-[3px] top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white',
             'transition-transform duration-[var(--k-dur)] ease-[var(--k-ease)]',
-            checked ? 'translate-x-[18px]' : 'translate-x-[3px]',
+            checked ? 'translate-x-[18px]' : 'translate-x-0',
           )}
         />
       </button>
