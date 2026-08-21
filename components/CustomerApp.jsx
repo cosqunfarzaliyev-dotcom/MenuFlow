@@ -583,14 +583,21 @@ export function CustomerApp() {
           neither told the customer anything actionable. */}
       <header className="sticky top-0 z-40 border-b border-[var(--k-border)] bg-[var(--k-surface)]/92 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="flex min-w-0 items-center gap-2.5">
-            {/* Admin-chosen via logoDisplayMode (0035_restaurant_logo_
-                display_mode.sql, SettingsTab's "Tam logo göstər" switch):
-                'logo' shows the full, uncropped logo at its own aspect
-                ratio (bounded by height, never force-cropped into the old
-                32×32 object-cover square) — otherwise the initial-letter/
-                cropped-icon treatment below is unchanged. */}
-            {settings.restaurantLogo && settings.logoDisplayMode === 'logo' ? (
+          {/* Admin-chosen via logoDisplayMode (0035_restaurant_logo_
+              display_mode.sql, SettingsTab's "Tam logo göstər" switch):
+              'logo' shows the full, uncropped logo at its own aspect ratio
+              (never force-cropped into the old 32×32 object-cover square).
+              A wide wordmark logo sitting on the SAME row as "Masa N" left
+              the table indicator squeezed against LanguageToggle on the
+              right with nowhere left to truncate to on a narrow phone —
+              effectively invisible. Stacked vertically instead in this
+              mode: logo on top, table indicator directly under it, so it
+              always has the full header width to itself regardless of how
+              wide the logo is. Name+avatar mode (unchanged) keeps the
+              original side-by-side layout — that pairing was never the
+              problem, only the logo case was. */}
+          {settings.restaurantLogo && settings.logoDisplayMode === 'logo' ? (
+            <div className="flex min-w-0 flex-col gap-0.5">
               <Image
                 src={settings.restaurantLogo}
                 alt={settings.restaurantName}
@@ -599,34 +606,36 @@ export function CustomerApp() {
                 height={40}
                 unoptimized
               />
-            ) : settings.restaurantLogo ? (
-              <Image
-                src={settings.restaurantLogo}
-                alt=""
-                className="h-8 w-8 shrink-0 rounded-[var(--k-r-sm)] border border-[var(--k-border)] object-cover"
-                width={32}
-                height={32}
-                unoptimized
-              />
-            ) : (
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--k-r-sm)] bg-[var(--k-accent)] text-[13px] font-semibold text-[var(--k-accent-fg)]">
-                {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
-              </span>
-            )}
-            <div className="min-w-0">
-              {/* Redundant next to a full wordmark logo (that's exactly what
-                  "show full logo" means) — dropped only in that case. The
-                  table indicator below always stays regardless of mode. */}
-              {(settings.logoDisplayMode !== 'logo' || !settings.restaurantLogo) && (
-                <p className="truncate text-sm font-semibold leading-tight text-[var(--k-text)]">
-                  {settings.restaurantName}
-                </p>
-              )}
               <p className="truncate text-[11px] leading-tight text-[var(--k-text-3)]">
                 {getLocalizedText("activeTable", lang)} · {currentTable.name}
               </p>
             </div>
-          </div>
+          ) : (
+            <div className="flex min-w-0 items-center gap-2.5">
+              {settings.restaurantLogo ? (
+                <Image
+                  src={settings.restaurantLogo}
+                  alt=""
+                  className="h-8 w-8 shrink-0 rounded-[var(--k-r-sm)] border border-[var(--k-border)] object-cover"
+                  width={32}
+                  height={32}
+                  unoptimized
+                />
+              ) : (
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--k-r-sm)] bg-[var(--k-accent)] text-[13px] font-semibold text-[var(--k-accent-fg)]">
+                  {(settings.restaurantName || 'M').charAt(0).toUpperCase()}
+                </span>
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold leading-tight text-[var(--k-text)]">
+                  {settings.restaurantName}
+                </p>
+                <p className="truncate text-[11px] leading-tight text-[var(--k-text-3)]">
+                  {getLocalizedText("activeTable", lang)} · {currentTable.name}
+                </p>
+              </div>
+            </div>
+          )}
 
           <LanguageToggle />
         </div>
