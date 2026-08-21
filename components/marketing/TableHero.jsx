@@ -30,7 +30,18 @@ export function TableHero({ lang, tableLabel, ticketLines }) {
   const ticketY = useTransform(scrollYProgress, [0, 1], [0, reduceMotion ? 0 : -20]);
 
   return (
-    <div ref={ref} className="relative mx-auto max-w-[420px] pt-6 pb-16 sm:pb-24">
+    // overflow-hidden: the QR table-stand and order-ticket cards below are
+    // deliberately positioned to bleed slightly past this container's own
+    // edge (negative left/right + a rotation, for the "laid on a table"
+    // effect) — on mobile, where this component has no surrounding page
+    // padding of its own, that bleed reaches the true viewport edge and
+    // reads as a gap on the right (see globals.css's `html { overflow-x:
+    // hidden }` comment for the mobile-Safari-specific half of this fix).
+    // Safe against the vertical parallax below: the full upward
+    // `qrY`/`ticketY` translation only completes once this section is
+    // scrolling out of view at the TOP anyway, so there's nothing left to
+    // visibly clip by the time it would matter.
+    <div ref={ref} className="relative mx-auto max-w-[420px] overflow-hidden pt-6 pb-16 sm:pb-24">
       {/* The "table" itself — a soft radial pool of shadow under the
           composition, standing in for the surface everything sits on. */}
       <div
