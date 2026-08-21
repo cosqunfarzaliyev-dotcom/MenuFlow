@@ -10,12 +10,12 @@
 // no separate "publish" step.
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Edit2, X, Package, ChevronDown, ChevronUp } from 'lucide-react';
-import { createPlan, updatePlan, upsertPlanFeature } from '@/lib/services/planService';
+import { Plus, Edit2, Trash2, X, Package, ChevronDown, ChevronUp } from 'lucide-react';
+import { createPlan, updatePlan, deletePlan, upsertPlanFeature } from '@/lib/services/planService';
 import { FEATURE_REGISTRY, FEATURE_KEYS } from '@/lib/services/entitlementService';
 import { formatMoney } from './constants';
 import { useToast } from './Toast';
-import { Field, Input, Textarea, Checkbox, Switch, Button, Tag, EmptyState } from '@/components/kit';
+import { Field, Input, Textarea, Checkbox, Switch, Button, Tag, EmptyState, ConfirmDialog, useConfirmDialog } from '@/components/kit';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
 // Same override approach as RestaurantsTab.jsx — see that file's comment.
@@ -23,6 +23,8 @@ const FEATURE_LABEL_KEYS = {
   apple_pay: 'featureAppleyPayLabel',
   google_pay: 'featureGooglePayLabel',
   banners: 'featureBannersLabel',
+  pos_integration: 'featurePosIntegrationLabel',
+  push_notifications: 'featurePushNotificationsLabel',
 };
 const translatedFeatureLabel = (key, t) => t(FEATURE_LABEL_KEYS[key] || key);
 
@@ -202,15 +204,17 @@ function PlanFeatureToggles({ plan, planFeatures, onChange }) {
   );
 }
 
-export function PlansTab({ plans, planFeatures, loading, refresh }) {
+export function PlansTab({ plans, planFeatures, loading, refresh, onSaved, onDeleted }) {
   const { t } = useSuperAdminTranslation();
   const notify = useToast();
+  const confirmDialog = useConfirmDialog();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
   const [expandedPlanId, setExpandedPlanId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const handleSave = async (form) => {
-    const { error } = editingPlan ? await updatePlan({ id: editingPlan.id, ...form }) : await createPlan(form);
+    const { plan, error } = editingPlan ? await updatePlan({ id: editingPlan.id, ...form }) : await createPlan(form);
     if (error) {
       notify(t('saveFailedToast')(error.message), 'error');
       return;
@@ -218,7 +222,31 @@ export function PlansTab({ plans, planFeatures, loading, refresh }) {
     setIsCreateOpen(false);
     setEditingPlan(null);
     notify(editingPlan ? t('planUpdatedToast') : t('planCreatedToast'));
+    // Patches `plans` immediately with the just-saved row (createPlan/
+    // updatePlan already return it from .select('*').single()) so the card
+    // shows the new values the instant the modal closes, instead of
+    // whatever it held until refresh()'s refetch resolves.
+    onSaved?.(plan);
     refresh();
+  };
+
+  const handleDelete = (plan) => {
+    confirmDialog.confirm({
+      title: t('deletePlanConfirmTitle'),
+      message: t('deletePlanConfirmMessage')(plan.name),
+      onConfirm: async () => {
+        setDeletingId(plan.id);
+        const { error } = await deletePlan(plan.id);
+        setDeletingId(null);
+        if (error) {
+          notify(error.message, 'error');
+          return;
+        }
+        notify(t('planDeletedToast'));
+        onDeleted?.(plan.id);
+        refresh();
+      },
+    });
   };
 
   if (loading) {
@@ -266,9 +294,25 @@ export function PlansTab({ plans, planFeatures, loading, refresh }) {
                     </div>
                     <p className="text-[13px] text-[var(--k-text-3)]">{plan.key}</p>
                   </div>
-                  <button onClick={() => setEditingPlan(plan)} className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-surface-2)] text-[var(--k-text-3)] hover:text-[var(--k-text)] shrink-0" title={t('editTitle')}>
-                    <Edit2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => setEditingPlan(plan)} className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-surface-2)] text-[var(--k-text-3)] hover:text-[var(--k-text)]" title={t('editTitle')}>
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    {/* Always shown — an in-use plan isn't hidden from the
+                        option, deletePlan() itself rejects it (FK on
+                        restaurant_subscriptions.plan_id) with a clear
+                        message via the confirm dialog's error toast, same
+                        "let the DB decide, translate the error" shape as
+                        every other constraint-backed delete in this app. */}
+                    <button
+                      onClick={() => handleDelete(plan)}
+                      disabled={deletingId === plan.id}
+                      className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-danger-soft)] text-[var(--k-text-3)] hover:text-[var(--k-danger)] disabled:opacity-50"
+                      title={t('deleteTitle')}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {plan.description && <p className="text-xs text-[var(--k-text-3)] mb-3">{plan.description}</p>}
@@ -316,6 +360,8 @@ export function PlansTab({ plans, planFeatures, loading, refresh }) {
           <PlanModal title={t('editPlanModalTitle')} initial={editingPlan} onClose={() => setEditingPlan(null)} onSave={handleSave} />
         )}
       </AnimatePresence>
+
+      <ConfirmDialog {...confirmDialog.dialogProps} />
     </div>
   );
 }

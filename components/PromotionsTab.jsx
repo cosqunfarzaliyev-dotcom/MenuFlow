@@ -7,7 +7,7 @@ import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
 import { useCommonTranslation } from "@/lib/i18n/dictionaries/common";
 import {
   PageHeader, Card, CardHeader, CardBody, Field, Input, Select, Button, Tag, EmptyState, ConfirmDialog, useConfirmDialog,
-  Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell,
+  Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell, ImageUploadField,
 } from "@/components/kit";
 
 const emptyCampaign = { title: "", description: "", banner_image_url: "" };
@@ -22,7 +22,7 @@ export function PromotionsTab() {
   const {
     campaigns, loadCampaigns, createCampaign, updateCampaign, deleteCampaign,
     discounts, loadDiscounts, createDiscount, updateDiscount, deleteDiscount,
-    products,
+    products, restaurant,
   } = useAppStore();
   const confirmDialog = useConfirmDialog();
 
@@ -158,10 +158,15 @@ export function PromotionsTab() {
             </Field>
             <Field label={t('campaignBannerUrlFieldLabel')}>
               {(id, a11y) => (
-                <Input
-                  id={id} type="text" value={campaignForm.banner_image_url}
-                  onChange={(e) => setCampaignForm({ ...campaignForm, banner_image_url: e.target.value })}
-                  placeholder={t('campaignBannerUrlPlaceholder')} {...a11y}
+                <ImageUploadField
+                  id={id} value={campaignForm.banner_image_url}
+                  onChange={(url) => setCampaignForm({ ...campaignForm, banner_image_url: url })}
+                  restaurantId={restaurant?.id} folder="campaigns"
+                  urlPlaceholder={t('campaignBannerUrlPlaceholder')}
+                  uploadLabel={t('imageUploadButton')}
+                  previewAlt={t('imagePreviewAlt')}
+                  invalidLabel={t('logoInvalidBadge')}
+                  {...a11y}
                 />
               )}
             </Field>

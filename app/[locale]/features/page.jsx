@@ -18,7 +18,7 @@ import { supabaseServer } from '@/lib/supabase-server';
 // MenuList.jsx) — the same numbered dot-leader listing the homepage teaser
 // uses, not an icon-card grid.
 const FRONT_OF_HOUSE = ['featureQrMenu', 'featureLocalization', 'featurePayments', 'featurePromotions'];
-const BACK_OF_HOUSE = ['featureOrders', 'featureAdmin', 'featureAnalytics', 'featureMultiTenant'];
+const BACK_OF_HOUSE = ['featureOrders', 'featureAdmin', 'featureAnalytics'];
 
 export async function generateMetadata({ params }) {
   const { locale } = await params;

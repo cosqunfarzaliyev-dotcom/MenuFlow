@@ -1,19 +1,22 @@
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { MessageCircle, Mail } from 'lucide-react';
+import { MessageCircle, Mail, Instagram } from 'lucide-react';
 import { getMarketingDictionary } from '@/lib/i18n/server';
 
 // Shared footer for the public marketing site. No hooks, no interactivity,
 // no data-fetching of its own — a plain Server Component, resolved once per
 // request from `locale` (a route-param string, not the client
-// languageStore). `whatsappUrl`/`email` come from app/[locale]/layout.jsx,
-// which reads them from site_content (supabase/migrations/
-// 0032_site_content_cms.sql, keys contact.whatsapp_url/contact.email) —
-// the SAME values app/[locale]/contact/page.jsx renders, so a SuperAdmin
-// edit to either changes both places at once. Only links to pages that
-// actually exist (no placeholder legal-page links).
-export function MarketingFooter({ locale, whatsappUrl, email }) {
+// languageStore). `whatsappUrl`/`email`/`instagramUrl` come from
+// app/[locale]/layout.jsx, which reads them from site_content
+// (supabase/migrations/0032_site_content_cms.sql +
+// 0036_site_content_instagram.sql, keys contact.whatsapp_url/contact.email/
+// contact.instagram_url) — the SAME values app/[locale]/contact/page.jsx
+// renders, so a SuperAdmin edit to any of them changes both places at
+// once. Only links to pages that actually exist (no placeholder legal-page
+// links); instagramUrl may be blank (SuperAdmin hasn't set one yet) — that
+// row is skipped entirely rather than rendering a dead link.
+export function MarketingFooter({ locale, whatsappUrl, email, instagramUrl }) {
   const { t } = getMarketingDictionary(locale);
   const year = new Date().getFullYear();
   const href = (slug) => (slug ? `/${locale}/${slug}` : `/${locale}`);
@@ -57,6 +60,13 @@ export function MarketingFooter({ locale, whatsappUrl, email }) {
                 <Mail className="w-4 h-4 shrink-0" /> {t('footerEmailLabel')}
               </a>
             </li>
+            {instagramUrl && (
+              <li>
+                <a href={instagramUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-[var(--mkt-text-2)] hover:text-[var(--mkt-text)] transition-colors">
+                  <Instagram className="w-4 h-4 shrink-0" /> {t('footerInstagramLabel')}
+                </a>
+              </li>
+            )}
           </ul>
         </div>
       </div>

@@ -2,30 +2,32 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { CheckCircle2, Building2, Image as ImageIcon, DollarSign, Users2, Sparkles, RefreshCw } from "lucide-react";
+import { CheckCircle2, Building2, Image as ImageIcon, DollarSign, Sparkles, RefreshCw } from "lucide-react";
 import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
-import { PageHeader, Card, CardBody, Field, Input, Button, Banner, ImageUploadField } from "@/components/kit";
+import { PageHeader, Card, CardBody, Field, Input, Button, Banner, ImageUploadField, Switch } from "@/components/kit";
 
 const DEFAULT_SETTINGS = {
   restaurantName: "MenuFlow",
   restaurantLogo: "",
+  logoDisplayMode: "name",
   currencySymbol: "₼",
-  tableCount: 50,
   tagline: "Rəqəmsal QR Menyu və İdarəetmə Sistemi",
 };
 
 const CURRENCIES = ["₼", "$", "€", "₺", "₽", "£"];
 
-const normalizeTableCount = (value) => {
-  const count = Number(value);
-  return Number.isInteger(count) && count >= 1 && count <= 200 ? count : DEFAULT_SETTINGS.tableCount;
-};
-
+// Masa sayı bilərəkdən burada yoxdur — restaurant_tables sətirləri yalnız
+// restoran yaradılanda (superAdminService.js -> createDefaultTablesForRestaurant)
+// generasiya olunur, sonradan heç bir yerdə (bu forma daxil) sinxronlaşmır.
+// Admin bu ədədi dəyişəndə əvvəllər `restaurants.table_count` yazılırdı, amma
+// heç bir real masa sətri əlavə/silinmirdi — görünüşdə işləyən, əslində
+// pozulmuş bir sahə idi. Masa sayı yalnız SuperAdmin-in restoran yaratma
+// axınında təyin olunur (components/superadmin/RestaurantsTab.jsx).
 const createForm = (settings) => ({
   restaurantName: settings?.restaurantName?.trim() || DEFAULT_SETTINGS.restaurantName,
   restaurantLogo: settings?.restaurantLogo || DEFAULT_SETTINGS.restaurantLogo,
+  logoDisplayMode: settings?.logoDisplayMode || DEFAULT_SETTINGS.logoDisplayMode,
   currencySymbol: settings?.currencySymbol?.trim() || DEFAULT_SETTINGS.currencySymbol,
-  tableCount: normalizeTableCount(settings?.tableCount),
   tagline: settings?.tagline || DEFAULT_SETTINGS.tagline,
 });
 
@@ -68,8 +70,11 @@ export function SettingsTab({ settings, updateRestaurantProfile, restaurantId })
     const { error } = await updateRestaurantProfile({
       name: values.restaurantName.trim() || DEFAULT_SETTINGS.restaurantName,
       logo: values.restaurantLogo.trim(),
+      // No logo → force back to 'name' regardless of what the switch was
+      // left on, so a cleared logo can never leave the customer header
+      // pointed at an empty image src.
+      logoDisplayMode: values.restaurantLogo.trim() ? values.logoDisplayMode : 'name',
       currencySymbol: values.currencySymbol.trim() || DEFAULT_SETTINGS.currencySymbol,
-      tableCount: normalizeTableCount(values.tableCount),
       tagline: values.tagline.trim(),
     });
     setSaving(false);
@@ -94,7 +99,6 @@ export function SettingsTab({ settings, updateRestaurantProfile, restaurantId })
   const nameFieldLabel = <span className="flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('restaurantNameLabel')}</span>;
   const logoFieldLabel = <span className="flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('logoUrlLabel')}</span>;
   const currencyFieldLabel = <span className="flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('currencySymbolLabel')}</span>;
-  const tableCountFieldLabel = <span className="flex items-center gap-1.5"><Users2 className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('tableCountLabel')}</span>;
   const taglineFieldLabel = <span className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('taglineLabel')}</span>;
 
   return (
@@ -148,6 +152,22 @@ export function SettingsTab({ settings, updateRestaurantProfile, restaurantId })
               )}
             </Field>
 
+            {/* 0035_restaurant_logo_display_mode.sql — lets the customer
+                menu header show the full, uncropped logo instead of the
+                restaurant name. Disabled without a logo uploaded: "show
+                full logo" is meaningless with nothing to show, and leaving
+                it live-but-inert here would just read as broken. */}
+            <Field label={t('logoDisplayModeLabel')}>
+              {() => (
+                <Switch
+                  checked={form.logoDisplayMode === 'logo'}
+                  onChange={(checked) => updateForm("logoDisplayMode", checked ? 'logo' : 'name')}
+                  disabled={!form.restaurantLogo.trim()}
+                  description={!form.restaurantLogo.trim() ? t('logoDisplayModeDisabledHint') : t('logoDisplayModeHint')}
+                />
+              )}
+            </Field>
+
             <Field label={currencyFieldLabel} hint={t('currencyHint')}>
               {(id, a11y) => (
                 <div className="flex flex-wrap items-center gap-2">
@@ -165,13 +185,13 @@ export function SettingsTab({ settings, updateRestaurantProfile, restaurantId })
               )}
             </Field>
 
-            <Field label={tableCountFieldLabel} hint={t('tableCountHint')} required>
-              {(id, a11y) => (
-                <Input
-                  id={id} type="number" min="1" max="200" value={form.tableCount}
-                  onChange={(event) => updateForm("tableCount", normalizeTableCount(event.target.value))}
-                  className="font-medium" {...a11y}
-                />
+            {/* Read-only: masa sayı yalnız SuperAdmin tərəfindən (restoran
+                yaradılanda) təyin olunur, burada dəyişdirilə bilməz — dəyəri
+                dəyişmək əvvəllər real restaurant_tables sətirlərini
+                əlavə/silmirdi, sadəcə göstərici ədədi yazırdı. */}
+            <Field label={t('tableCountLabel')} hint={t('tableCountHint')}>
+              {(id) => (
+                <Input id={id} type="number" value={settings?.tableCount ?? ''} disabled className="font-medium" />
               )}
             </Field>
 
@@ -201,6 +221,7 @@ SettingsTab.propTypes = {
   settings: PropTypes.shape({
     restaurantName: PropTypes.string,
     restaurantLogo: PropTypes.string,
+    logoDisplayMode: PropTypes.string,
     currencySymbol: PropTypes.string,
     tableCount: PropTypes.number,
     tagline: PropTypes.string,

@@ -377,7 +377,17 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
 
   return (
     <motion.div {...modalMotion.overlay} className="kit-dark fixed inset-0 bg-[var(--k-scrim)] backdrop-blur-[2px] flex items-center justify-center p-4 z-50">
-      <motion.form {...modalMotion.panel} onSubmit={handleSubmit} className="w-full max-w-md bg-[var(--k-surface)] border border-[var(--k-border)] rounded-[var(--k-r-lg)] p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <motion.form
+        {...modalMotion.panel}
+        onSubmit={handleSubmit}
+        // A text/number input inside a <form> submits it on Enter by
+        // default — with several fields still to fill in (name, tagline,
+        // currency, plan...), hitting Enter after typing just the first one
+        // silently saved whatever was in the form so far and closed the
+        // modal. Scoped to <input> only so Enter/Space still submits
+        // normally when the actual Save button has keyboard focus.
+        onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); }}
+        className="w-full max-w-md bg-[var(--k-surface)] border border-[var(--k-border)] rounded-[var(--k-r-lg)] p-6 space-y-4 max-h-[90vh] overflow-y-auto"
         <div className="flex items-center justify-between">
           <h3 className="text-[15px] font-semibold text-[var(--k-text)]">{title}</h3>
           <button type="button" onClick={onClose} className="p-1.5 hover:bg-[var(--k-surface-2)] rounded-[var(--k-r-sm)]"><X className="w-4 h-4 text-[var(--k-text-3)]" /></button>

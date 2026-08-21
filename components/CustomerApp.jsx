@@ -61,6 +61,9 @@ export function CustomerApp() {
     ? {
         restaurantName: restaurant.name,
         restaurantLogo: restaurant.logo || '',
+        // 0035_restaurant_logo_display_mode.sql — 'name' | 'logo', lets the
+        // restaurant admin choose full-logo vs. text-name for this header.
+        logoDisplayMode: restaurant.logo_display_mode || 'name',
         currencySymbol: restaurant.currency_symbol || '₼',
         tableCount: restaurant.table_count || 50,
         tagline: restaurant.tagline || '',
@@ -68,6 +71,7 @@ export function CustomerApp() {
     : rawSettings || {
         restaurantName: 'MenuFlow',
         restaurantLogo: '',
+        logoDisplayMode: 'name',
         currencySymbol: '₼',
         tableCount: 50,
         tagline: 'Rəqəmsal QR Menyu və İdarəetmə Sistemi'
@@ -169,6 +173,16 @@ export function CustomerApp() {
 
     const startSub = async () => {
       try {
+        // Kept even though it's currently a no-op for this anon customer
+        // session: `orders` RLS has no anon SELECT policy (see store.js's
+        // loadOrders comment — every policy is `{authenticated} using
+        // (is_staff_of(...))`), and Realtime's postgres_changes filter runs
+        // the same RLS check per subscriber, so this channel never actually
+        // delivers an event here. Left in place as a free win the moment it
+        // *does* pass (e.g. a future signed-in customer session) — the
+        // polling effect right below is what actually keeps this table's
+        // order statuses live today, through the same QR-token-verified
+        // get_table_orders() RPC the initial load already uses.
         sub = await subscribeOrders(({ record }) => {
           const recTableId = record?.table_id?.toString();
           const myTableId = resolvedTable?.id?.toString();
@@ -189,6 +203,37 @@ export function CustomerApp() {
       }
     };
   }, [tableId, resolvedTable?.id, loadTableOrders, restaurant?.id]);
+
+  // Polling fallback for the gap above: staff changing an order's status
+  // (accept/prepare/ready/served, or cancel) never reaches this anon
+  // session over Realtime, so without this the customer's own order-status
+  // view would only ever update on a manual page reload. Deliberately a
+  // plain get_table_orders() re-fetch on an interval rather than an RLS
+  // policy change — the QR-token-gated RPC is the one sanctioned read path
+  // for a customer's orders (see CLAUDE.md's QR-token invariant), so this
+  // keeps that boundary intact instead of opening anon SELECT on `orders`.
+  // Paused while the tab is hidden (visibilitychange) so a customer who
+  // background-tabs the menu isn't quietly polling every 10s forever.
+  useEffect(() => {
+    if (!resolvedTable?.id) return undefined;
+
+    let iv = null;
+    const tick = () => loadTableOrders(resolvedTable.id);
+    const start = () => { if (!iv) iv = setInterval(tick, 10000); };
+    const stop = () => { if (iv) { clearInterval(iv); iv = null; } };
+
+    if (document.visibilityState === 'visible') start();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') { tick(); start(); }
+      else stop();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [resolvedTable?.id, loadTableOrders]);
 
   useEffect(() => {
     let prodSub;
@@ -343,25 +388,62 @@ export function CustomerApp() {
   // customer with an active order (placed, awaiting kitchen/payment) is
   // never cleared this way, however long the tab stays hidden — they still
   // need this screen to see their order/pay the bill when they come back.
+  //
+  // The `setTimeout` below only fires while this page's JS is still
+  // running — which an actually-*closed* tab, or a backgrounded one the OS
+  // kills for memory (routine on mobile, often well under 30s), never is.
+  // That silently defeated the whole feature: sessionStorage still holds
+  // the old cart (it's only cleared as a side effect of setCartItems([])
+  // running, via the persist effect below), so reopening the menu just
+  // restored it — indistinguishable from the clear never having happened.
+  // `hiddenAtKey` fixes that with a synchronous sessionStorage write (not a
+  // pending timer) the instant the tab goes hidden, checked against wall
+  // time the next moment JS *is* running again — on remount (a real close
+  // + reopen) or on the `visible` transition — so elapsed time is measured
+  // correctly even when nothing was alive to count it in the background.
+  const BACKGROUND_CLEAR_DELAY_MS = 30000;
   const backgroundClearTimeoutRef = useRef(null);
+  const hiddenAtKey = cartStorageKey ? `mf-hidden-at:${cartStorageKey}` : null;
+
   useEffect(() => {
-    const BACKGROUND_CLEAR_DELAY_MS = 30000;
+    if (!hiddenAtKey) return undefined;
+
+    const clearBackgroundedState = () => {
+      if (hasActiveOrderRef.current) return;
+      setCartItems([]);
+      setIsCartOpen(false);
+      setSelectedProduct(null);
+      setIsBillModalOpen(false);
+      setSelectedCategory("all");
+      setSearchQuery("");
+      setVegOnly(false);
+    };
+
+    // A stamp left over from a previous life of this tab (real close +
+    // reopen, or a hard reload) — resolve it against wall-clock time as
+    // soon as this effect can actually run, instead of trusting a timer
+    // that never got the chance to.
+    const staleHiddenAt = Number(window.sessionStorage.getItem(hiddenAtKey));
+    window.sessionStorage.removeItem(hiddenAtKey);
+    if (staleHiddenAt && Date.now() - staleHiddenAt >= BACKGROUND_CLEAR_DELAY_MS) {
+      clearBackgroundedState();
+    }
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        backgroundClearTimeoutRef.current = setTimeout(() => {
-          if (hasActiveOrderRef.current) return;
-          setCartItems([]);
-          setIsCartOpen(false);
-          setSelectedProduct(null);
-          setIsBillModalOpen(false);
-          setSelectedCategory("all");
-          setSearchQuery("");
-          setVegOnly(false);
-        }, BACKGROUND_CLEAR_DELAY_MS);
-      } else if (backgroundClearTimeoutRef.current) {
+        window.sessionStorage.setItem(hiddenAtKey, String(Date.now()));
+        backgroundClearTimeoutRef.current = setTimeout(clearBackgroundedState, BACKGROUND_CLEAR_DELAY_MS);
+        return;
+      }
+
+      if (backgroundClearTimeoutRef.current) {
         clearTimeout(backgroundClearTimeoutRef.current);
         backgroundClearTimeoutRef.current = null;
+      }
+      const hiddenAt = Number(window.sessionStorage.getItem(hiddenAtKey));
+      window.sessionStorage.removeItem(hiddenAtKey);
+      if (hiddenAt && Date.now() - hiddenAt >= BACKGROUND_CLEAR_DELAY_MS) {
+        clearBackgroundedState();
       }
     };
 
@@ -372,7 +454,7 @@ export function CustomerApp() {
         clearTimeout(backgroundClearTimeoutRef.current);
       }
     };
-  }, []);
+  }, [hiddenAtKey]);
 
   const handleRequestBill = async (methodKey) => {
     if (billRequesting) return;
@@ -502,7 +584,22 @@ export function CustomerApp() {
       <header className="sticky top-0 z-40 border-b border-[var(--k-border)] bg-[var(--k-surface)]/92 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2.5">
-            {settings.restaurantLogo ? (
+            {/* Admin-chosen via logoDisplayMode (0035_restaurant_logo_
+                display_mode.sql, SettingsTab's "Tam logo göstər" switch):
+                'logo' shows the full, uncropped logo at its own aspect
+                ratio (bounded by height, never force-cropped into the old
+                32×32 object-cover square) — otherwise the initial-letter/
+                cropped-icon treatment below is unchanged. */}
+            {settings.restaurantLogo && settings.logoDisplayMode === 'logo' ? (
+              <Image
+                src={settings.restaurantLogo}
+                alt={settings.restaurantName}
+                className="h-9 w-auto max-w-[160px] shrink-0 object-contain"
+                width={160}
+                height={36}
+                unoptimized
+              />
+            ) : settings.restaurantLogo ? (
               <Image
                 src={settings.restaurantLogo}
                 alt=""
@@ -517,9 +614,14 @@ export function CustomerApp() {
               </span>
             )}
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold leading-tight text-[var(--k-text)]">
-                {settings.restaurantName}
-              </p>
+              {/* Redundant next to a full wordmark logo (that's exactly what
+                  "show full logo" means) — dropped only in that case. The
+                  table indicator below always stays regardless of mode. */}
+              {(settings.logoDisplayMode !== 'logo' || !settings.restaurantLogo) && (
+                <p className="truncate text-sm font-semibold leading-tight text-[var(--k-text)]">
+                  {settings.restaurantName}
+                </p>
+              )}
               <p className="truncate text-[11px] leading-tight text-[var(--k-text-3)]">
                 {getLocalizedText("activeTable", lang)} · {currentTable.name}
               </p>
@@ -818,11 +920,20 @@ export function CustomerApp() {
           <div className="flex items-center gap-1.5 text-[11px] text-[var(--k-text-3)]">
             {settings.restaurantLogo ? (
               <>
+                {/* Same logoDisplayMode as the header: 'logo' lets this
+                    credit-line icon widen to its real aspect ratio instead
+                    of the old forced 14×14 square — still tiny either way,
+                    this is a footer credit line, not the main branding
+                    slot, so the name text always stays next to it here. */}
                 <Image
                   src={settings.restaurantLogo}
                   alt=""
-                  className="h-3.5 w-3.5 rounded object-contain"
-                  width={14}
+                  className={
+                    settings.logoDisplayMode === 'logo'
+                      ? "h-3.5 w-auto max-w-[60px] object-contain"
+                      : "h-3.5 w-3.5 rounded object-contain"
+                  }
+                  width={settings.logoDisplayMode === 'logo' ? 60 : 14}
                   height={14}
                   unoptimized
                 />

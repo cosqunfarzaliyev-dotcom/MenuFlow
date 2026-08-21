@@ -132,6 +132,20 @@ export function SuperAdminApp() {
     setPlansLoading(false);
   }, []);
 
+  // PlansTab still calls refreshPlans() after a create/update too (belt and
+  // suspenders, and the only way a NEW plan's row ever enters `plans` at
+  // all) — this is purely so the edited card shows the just-saved values
+  // the instant the modal closes, rather than whatever `plans` happened to
+  // hold until that refetch resolves. `updatePlan`/`createPlan` already
+  // return the saved row from `.select('*').single()`, so no extra request.
+  const applyPlanSaved = useCallback((savedPlan) => {
+    setPlans((prev) => {
+      const exists = prev.some((p) => p.id === savedPlan.id);
+      const next = exists ? prev.map((p) => (p.id === savedPlan.id ? savedPlan : p)) : [...prev, savedPlan];
+      return next.sort((a, b) => a.sort_order - b.sort_order);
+    });
+  }, []);
+
   // Website mode fetchers — browser `supabase` client (the default both
   // functions fall back to), same as every other SuperAdmin fetch above.
   // fetchFaqItems({publishedOnly:false}) intentionally includes drafts:
@@ -297,7 +311,11 @@ export function SuperAdminApp() {
                         />
                       )}
                       {activeTab === 'plans' && (
-                        <PlansTab plans={plans} planFeatures={planFeatures} loading={plansLoading} refresh={refreshPlans} />
+                        <PlansTab
+                          plans={plans} planFeatures={planFeatures} loading={plansLoading}
+                          refresh={refreshPlans} onSaved={applyPlanSaved}
+                          onDeleted={(planId) => setPlans((prev) => prev.filter((p) => p.id !== planId))}
+                        />
                       )}
                       {activeTab === 'subscriptions' && <SubscriptionsTab metrics={metrics} />}
                       {activeTab === 'analytics' && <AnalyticsTab metrics={metrics} />}

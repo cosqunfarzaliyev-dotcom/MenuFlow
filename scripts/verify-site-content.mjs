@@ -63,32 +63,45 @@ if (registryKeys.size !== registryGroupKeys.length + registryContactKeys.length)
 }
 
 // ---------------------------------------------------------------------------
-// 2. Seeded keys, from the migration's own site_content INSERT.
+// 2. Seeded keys, from every migration that inserts into site_content.
 // ---------------------------------------------------------------------------
-const migrationPath = path.join(ROOT, 'supabase/migrations/0032_site_content_cms.sql');
-const migrationSrc = readFileSync(migrationPath, 'utf8');
+// 0032 is the original seed; every later migration that adds a new registry
+// key (e.g. 0036 adding contact.instagram_url) gets its own small INSERT
+// rather than editing an already-applied historical migration file. Listed
+// explicitly (not glob-scanned) so a stray, unrelated site_content INSERT
+// elsewhere can never silently count toward this check.
+const SITE_CONTENT_SEED_MIGRATIONS = [
+  '0032_site_content_cms.sql',
+  '0036_site_content_instagram.sql',
+];
 
-const seedBlock = extractBlock(
-  migrationSrc,
-  'insert into public.site_content (key, value_az, translations) values',
-  "on conflict (key) do nothing;",
-);
-// First quoted string on each seed row is the key: `  ('key.name', 'value...', '{...}'::jsonb),`
-const SEED_ROW_KEY = /^ {2}\('([a-z0-9_.]+)',/gm;
-const seededKeys = new Set([...seedBlock.matchAll(SEED_ROW_KEY)].map((m) => m[1]));
+const seededKeys = new Set();
+for (const fileName of SITE_CONTENT_SEED_MIGRATIONS) {
+  const migrationSrc = readFileSync(path.join(ROOT, 'supabase/migrations', fileName), 'utf8');
+  const seedBlock = extractBlock(
+    migrationSrc,
+    'insert into public.site_content (key, value_az, translations) values',
+    'on conflict (key) do nothing;',
+  );
+  // First quoted string on each seed row is the key: `  ('key.name', 'value...', '{...}'::jsonb),`
+  const SEED_ROW_KEY = /^ {2}\('([a-z0-9_.]+)',/gm;
+  for (const m of seedBlock.matchAll(SEED_ROW_KEY)) {
+    seededKeys.add(m[1]);
+  }
+}
 
 const missingFromSeed = [...registryKeys].filter((k) => !seededKeys.has(k));
 const extraInSeed = [...seededKeys].filter((k) => !registryKeys.has(k));
 
 if (missingFromSeed.length) {
-  fail(`registry keys with no seed row in 0032_site_content_cms.sql: ${missingFromSeed.join(', ')}`);
+  fail(`registry keys with no seed row in any of [${SITE_CONTENT_SEED_MIGRATIONS.join(', ')}]: ${missingFromSeed.join(', ')}`);
 } else {
-  pass(`every registry key (${registryKeys.size}) has a seed row in 0032_site_content_cms.sql`);
+  pass(`every registry key (${registryKeys.size}) has a seed row across [${SITE_CONTENT_SEED_MIGRATIONS.join(', ')}]`);
 }
 if (extraInSeed.length) {
-  fail(`0032_site_content_cms.sql seeds a key not in the registry: ${extraInSeed.join(', ')}`);
+  fail(`a site_content seed migration inserts a key not in the registry: ${extraInSeed.join(', ')}`);
 } else {
-  pass('0032_site_content_cms.sql seeds no key outside the registry');
+  pass('no seed migration inserts a key outside the registry');
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +110,12 @@ if (extraInSeed.length) {
 const { SITE_CONTENT_DEFAULTS, SITE_FAQ_DEFAULTS } = await import('../lib/site-content/defaults.js');
 
 const LOCALES = ['az', 'en', 'ru'];
+// Seeded/defaulted blank on purpose — no real value exists yet (no address
+// in the source dictionaries when 0032 seeded contact.address; no Instagram
+// account linked yet when 0036 added contact.instagram_url). Empty string
+// is a valid default for these, not a gap; the marketing footer/contact
+// page both skip rendering while contact.instagram_url is blank.
+const OPTIONAL_BLANK_KEYS = new Set(['contact.address', 'contact.instagram_url']);
 const missingDefaults = [];
 for (const key of registryKeys) {
   const entry = SITE_CONTENT_DEFAULTS[key];
@@ -104,18 +123,15 @@ for (const key of registryKeys) {
     missingDefaults.push(`${key}: no entry at all`);
     continue;
   }
+  if (OPTIONAL_BLANK_KEYS.has(key)) continue;
   for (const l of LOCALES) {
-    // contact.address is seeded blank on purpose (no address exists in the
-    // source dictionaries — see 0032's seed comment) — empty string is a
-    // valid default for it, not a gap.
-    if (key === 'contact.address') continue;
     if (typeof entry[l] !== 'string' || !entry[l]) missingDefaults.push(`${key}.${l}`);
   }
 }
 if (missingDefaults.length) {
   fail(`lib/site-content/defaults.js missing/empty values: ${missingDefaults.join(', ')}`);
 } else {
-  pass(`lib/site-content/defaults.js has az/en/ru for every registry key (contact.address exempt)`);
+  pass(`lib/site-content/defaults.js has az/en/ru for every registry key (${[...OPTIONAL_BLANK_KEYS].join(', ')} exempt)`);
 }
 
 const extraDefaults = Object.keys(SITE_CONTENT_DEFAULTS).filter((k) => !registryKeys.has(k));
@@ -131,8 +147,10 @@ if (extraDefaults.length) {
 //    unique constraint would reject a duplicate at apply time, but a gap or
 //    a wrong step is a silent ordering bug this catches instead).
 // ---------------------------------------------------------------------------
+// FAQ rows are still seeded only in the original migration — untouched by
+// the incremental contact.instagram_url addition above.
 const faqSeedBlock = extractBlock(
-  migrationSrc,
+  readFileSync(path.join(ROOT, 'supabase/migrations/0032_site_content_cms.sql'), 'utf8'),
   'insert into public.site_faq_items (sort_order, question_az, answer_az, translations) values',
   'on conflict (sort_order) do nothing;',
 );

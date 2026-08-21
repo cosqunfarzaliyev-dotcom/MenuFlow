@@ -1,4 +1,4 @@
-import { MessageCircle, Mail } from 'lucide-react';
+import { MessageCircle, Mail, Instagram } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/mkt/variants';
 import { Card, CardBody, Badge } from '@/components/mkt';
@@ -83,6 +83,30 @@ export default async function ContactPage({ params }) {
           </CardBody>
         </Card>
         </Reveal>
+
+        {/* SuperAdmin-optional — no dead link before one is set (see
+            SiteContactTab.jsx / contact.instagram_url). */}
+        {content['contact.instagram_url'] && (
+          <Reveal delay={0.2}>
+          <Card variant="elevated">
+            <CardBody className="text-center py-10">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-[var(--mkt-sage-soft)] text-[var(--mkt-sage)] flex items-center justify-center mb-4">
+                <Instagram className="w-6 h-6" />
+              </div>
+              <h2 className="text-[var(--mkt-text)] font-bold text-lg mb-1.5">{t('contactInstagramTitle')}</h2>
+              <p className="text-[var(--mkt-text-2)] text-sm mb-6">{t('contactInstagramDescription')}</p>
+              <a
+                href={content['contact.instagram_url']}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(buttonVariants({ variant: 'secondary', size: 'md' }))}
+              >
+                {t('contactInstagramButton')}
+              </a>
+            </CardBody>
+          </Card>
+          </Reveal>
+        )}
       </section>
 
       {/* The "haven't signed up yet? create a login" section that used to sit

@@ -15,6 +15,7 @@ import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
 const WHATSAPP_RE = /^https:\/\/wa\.me\/\d+$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const INSTAGRAM_RE = /^https:\/\/(www\.)?instagram\.com\/.+$/;
 
 const rowsToForm = (content) => {
   const byKey = new Map(content.map((r) => [r.key, r]));
@@ -22,6 +23,7 @@ const rowsToForm = (content) => {
     'contact.whatsapp_url': byKey.get('contact.whatsapp_url')?.value_az || '',
     'contact.email': byKey.get('contact.email')?.value_az || '',
     'contact.address': byKey.get('contact.address')?.value_az || '',
+    'contact.instagram_url': byKey.get('contact.instagram_url')?.value_az || '',
   };
 };
 
@@ -45,10 +47,11 @@ export function SiteContactTab({ content, loading, refresh }) {
 
   const whatsappInvalid = form['contact.whatsapp_url'] !== '' && !WHATSAPP_RE.test(form['contact.whatsapp_url']);
   const emailInvalid = form['contact.email'] !== '' && !EMAIL_RE.test(form['contact.email']);
+  const instagramInvalid = form['contact.instagram_url'] !== '' && !INSTAGRAM_RE.test(form['contact.instagram_url']);
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (whatsappInvalid || emailInvalid) return;
+    if (whatsappInvalid || emailInvalid || instagramInvalid) return;
     setSaving(true);
     for (const key of CONTACT_DETAIL_KEYS) {
       const { error } = await upsertSiteContent({ key, valueAz: form[key], translations: {} });
@@ -115,7 +118,24 @@ export function SiteContactTab({ content, loading, refresh }) {
             )}
           </Field>
 
-          <Button type="submit" variant="primary" loading={saving} disabled={whatsappInvalid || emailInvalid} icon={<Save className="w-3.5 h-3.5" />}>
+          {/* Optional — left blank, the marketing footer/contact page both
+              skip the Instagram card entirely rather than showing a dead
+              link (see MarketingFooter.jsx / app/[locale]/contact/page.jsx). */}
+          <Field label={t('siteInstagramUrlLabel')} hint={t('siteInstagramUrlHint')}>
+            {(id, a11y) => (
+              <Input
+                id={id} {...a11y}
+                type="url"
+                value={form['contact.instagram_url']}
+                onChange={(e) => setForm({ ...form, 'contact.instagram_url': e.target.value })}
+                invalid={instagramInvalid}
+                placeholder="https://instagram.com/menuflow"
+              />
+            )}
+          </Field>
+          {instagramInvalid && <p className="text-[12px] text-[var(--k-danger)] -mt-2.5">{t('siteInstagramUrlInvalid')}</p>}
+
+          <Button type="submit" variant="primary" loading={saving} disabled={whatsappInvalid || emailInvalid || instagramInvalid} icon={<Save className="w-3.5 h-3.5" />}>
             {t('saveButton')}
           </Button>
         </form>

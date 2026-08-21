@@ -54,6 +54,9 @@ export function AdminApp() {
     ? {
         restaurantName: restaurant.name,
         restaurantLogo: restaurant.logo || '',
+        // 0035_restaurant_logo_display_mode.sql — read here so SettingsTab
+        // can prefill its "Tam logo göstər" switch with the saved mode.
+        logoDisplayMode: restaurant.logo_display_mode || 'name',
         currencySymbol: restaurant.currency_symbol || '₼',
         tableCount: restaurant.table_count || 50,
         tagline: restaurant.tagline || '',
@@ -61,6 +64,7 @@ export function AdminApp() {
     : rawSettings || {
         restaurantName: 'MenuFlow',
         restaurantLogo: '',
+        logoDisplayMode: 'name',
         currencySymbol: '₼',
         tableCount: 50,
         tagline: 'Rəqəmsal QR Menyu və İdarəetmə Sistemi'
@@ -118,7 +122,11 @@ export function AdminApp() {
 
   const handleSaveCategory = async (e) => {
     e.preventDefault();
-    if (!categoryForm.name.trim() || !categoryForm.icon.trim()) return;
+    // Icon (emoji) is decorative only — istəyə bağlı, ad kimi məcburi deyil.
+    // Boş buraxılsa customer menyusunda sadəcə ikonsuz çip göstərilir
+    // (bax CustomerApp.jsx-in kateqoriya çipi, ProductOptionsEditor-un
+    // seçim ikonu ilə eyni "boş = neytral" davranışı).
+    if (!categoryForm.name.trim()) return;
 
     if (editingCategoryId) {
       await updateCategory({ id: editingCategoryId, ...categoryForm });
@@ -1383,7 +1391,7 @@ function CategoryModal({ isOpen, onClose, onSave, categoryForm, setCategoryForm,
               />
             )}
           </Field>
-          <Field label={t('categoryIconLabel')} required>
+          <Field label={t('categoryIconLabel')}>
             {(id, a11y) => (
               <Input
                 id={id} type="text" value={categoryForm.icon}

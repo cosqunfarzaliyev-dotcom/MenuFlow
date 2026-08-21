@@ -62,10 +62,10 @@ export default async function LocaleLayout({ children, params }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
-  // Footer needs exactly two site_content values (contact.whatsapp_url,
-  // contact.email) — fetched here rather than inside MarketingFooter itself
-  // so the component stays a plain, props-only Server Component with no
-  // data-fetching of its own.
+  // Footer needs exactly three site_content values (contact.whatsapp_url,
+  // contact.email, contact.instagram_url) — fetched here rather than inside
+  // MarketingFooter itself so the component stays a plain, props-only
+  // Server Component with no data-fetching of its own.
   const contentRows = await fetchSiteContent(supabaseServer);
   const content = buildSiteContentMap(contentRows, locale);
 
@@ -77,6 +77,7 @@ export default async function LocaleLayout({ children, params }) {
         locale={locale}
         whatsappUrl={content['contact.whatsapp_url']}
         email={content['contact.email']}
+        instagramUrl={content['contact.instagram_url']}
       />
     </div>
   );

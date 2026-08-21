@@ -7,7 +7,7 @@ import { FEATURES } from "@/lib/services/entitlementService";
 import { useFeature } from "@/hooks/useEntitlement";
 import { CAPABILITIES } from "@/lib/services/capabilityService";
 import { useCapability } from "@/hooks/useCapability";
-import { PageHeader, Card, CardHeader, CardBody, Button, Input, Select, Field, Banner, EmptyState, ConfirmDialog, useConfirmDialog } from "@/components/kit";
+import { PageHeader, Card, CardHeader, CardBody, Button, Input, Select, Field, Banner, EmptyState, ConfirmDialog, useConfirmDialog, ImageUploadField } from "@/components/kit";
 import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
 import { useCommonTranslation } from "@/lib/i18n/dictionaries/common";
 
@@ -206,7 +206,16 @@ export function DesignTab() {
           <form onSubmit={handleSaveBanner} className="grid sm:grid-cols-2 gap-3 mb-5">
             <Input type="text" value={bannerForm.title} onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })} placeholder={t('bannerTitlePlaceholder')} />
             <Input type="text" value={bannerForm.subtitle} onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })} placeholder={t('bannerSubtitlePlaceholder')} />
-            <Input type="text" value={bannerForm.image_url} onChange={(e) => setBannerForm({ ...bannerForm, image_url: e.target.value })} placeholder={t('bannerImageUrlPlaceholder')} required className="sm:col-span-2" />
+            <ImageUploadField
+              value={bannerForm.image_url}
+              onChange={(url) => setBannerForm({ ...bannerForm, image_url: url })}
+              restaurantId={restaurant?.id} folder="banners"
+              urlPlaceholder={t('bannerImageUrlPlaceholder')}
+              uploadLabel={t('imageUploadButton')}
+              previewAlt={t('imagePreviewAlt')}
+              invalidLabel={t('logoInvalidBadge')}
+              required className="sm:col-span-2"
+            />
 
             <Field label={t('bannerActionFieldLabel')} className="sm:col-span-2">
               {(id) => (

@@ -224,7 +224,16 @@ export function StaffApp() {
 
   const pendingOrders = orders.filter(o => o.status === ORDER_STATUS.PENDING);
   const preparingOrders = orders.filter(o => [ORDER_STATUS.ACCEPTED, ORDER_STATUS.PREPARING].includes(o.status));
-  const finishedOrders = orders.filter(o => [ORDER_STATUS.READY, ORDER_STATUS.SERVED].includes(o.status));
+  // A SERVED order drops off this column once its bill is actually paid —
+  // staff has nothing left to do with it, keeping it around just pads the
+  // list. While unpaid, though, it stays exactly as before: it's still the
+  // reminder that this table's payment hasn't been settled yet. READY orders
+  // always stay regardless of payment (food not yet handed over is never
+  // "done"), so only SERVED is gated on paymentStatus.
+  const finishedOrders = orders.filter(o =>
+    [ORDER_STATUS.READY, ORDER_STATUS.SERVED].includes(o.status) &&
+    !(o.status === ORDER_STATUS.SERVED && o.paymentStatus === 'paid')
+  );
 
   const activeAlerts = alerts.filter(a => a.status === 'active');
 
