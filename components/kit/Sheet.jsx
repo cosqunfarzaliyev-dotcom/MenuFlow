@@ -41,6 +41,18 @@ export function Sheet({
   const [entered, setEntered] = useState(false);
   const id = useId();
 
+  // Callers routinely pass an inline `onClose={() => ...}` — a fresh
+  // function identity on every parent render, including every keystroke in
+  // a form field inside the sheet (setState in the parent re-renders it).
+  // Keeping the latest one in a ref lets the focus-trap effect below skip
+  // onClose in its dependency array, so it doesn't tear down and rebuild
+  // (yanking focus back to the pre-open element, then to the panel's first
+  // focusable node) on every character typed.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   // Two-phase mount so the transition has something to animate between,
   // instead of the panel painting already at its end state. Deferred via
   // rAF/timer in both branches — a synchronous setState in an effect body
@@ -67,7 +79,7 @@ export function Sheet({
     }, 0);
 
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') { onClose?.(); return; }
+      if (e.key === 'Escape') { onCloseRef.current?.(); return; }
       if (e.key !== 'Tab') return;
       const f = panelRef.current?.querySelectorAll(FOCUSABLE);
       if (!f || f.length === 0) return;
@@ -84,7 +96,7 @@ export function Sheet({
       document.body.style.overflow = originalOverflow;
       if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

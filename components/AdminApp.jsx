@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ORDER_STATUS, useAppStore } from '@/lib/store';
 import { supabase, supabaseReady } from '@/lib/supabase';
-import { subscribeProducts, subscribeCategories, subscribeTables, subscribeOrders } from '@/lib/services/realtime';
+import { subscribeProducts, subscribeCategories, subscribeTables, subscribeOrders, subscribeAlerts } from '@/lib/services/realtime';
 import {
   Settings, Plus, Edit2, Trash2, QrCode, Lock, BarChart3, Users, Download, Printer,
   TrendingUp, Clock, Activity, CheckCircle2, LayoutDashboard, Table2, ListOrdered, FileBarChart2,
@@ -24,6 +24,7 @@ import { buttonVariants } from '@/components/kit/variants';
 import { QRCodeSVG } from 'qrcode.react';
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { SettingsTab } from '@/components/SettingsTab';
+import { SalesReportView } from '@/components/admin/SalesReportView';
 import { IntegrationsTab } from '@/components/IntegrationsTab';
 import { PromotionsTab } from '@/components/PromotionsTab';
 import { DesignTab } from '@/components/DesignTab';
@@ -85,6 +86,12 @@ export function AdminApp() {
   const can = useCapabilities();
   const [authChecking, setAuthChecking] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
+  // Which sub-view the "Hesabat" tab shows — the existing AnalyticsDashboard
+  // (unchanged) or the new Z/X sales report (components/admin/
+  // SalesReportView.jsx). Kept as a second sub-view of the existing nav
+  // item rather than a new sidebar entry, since "Hesabat" is already the
+  // right semantic home for both.
+  const [reportsSubTab, setReportsSubTab] = useState('analytics');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [editingTableId, setEditingTableId] = useState(null);
   const [editingTableName, setEditingTableName] = useState('');
@@ -352,7 +359,7 @@ export function AdminApp() {
   }, [activeTab, isAdminAuthenticated, restaurantResolved, loadQrTokens]);
 
   useEffect(() => {
-    let prodSub, catSub, tableSub, orderSub;
+    let prodSub, catSub, tableSub, orderSub, alertSub;
     const restaurantId = profile?.restaurant_id || restaurant?.id || null;
 
     const start = async () => {
@@ -372,6 +379,13 @@ export function AdminApp() {
         orderSub = await subscribeOrders(({ event }) => {
           loadOrders();
         }, { restaurantId });
+
+        // Ofisiant/hesab çağırışları — StaffApp bunu artıq dinləyir, admin
+        // paneli isə heç vaxt abunə olmurdu, ona görə "Sifarişlər" tabındakı
+        // zəng bildirişləri yalnız əl ilə yeniləməklə görünürdü.
+        alertSub = await subscribeAlerts(() => {
+          loadAlerts();
+        }, { restaurantId });
       } catch (err) {
         console.warn('Admin realtime subscribe error', err);
       }
@@ -384,8 +398,9 @@ export function AdminApp() {
       if (catSub && typeof catSub.unsubscribe === 'function') catSub.unsubscribe();
       if (tableSub && typeof tableSub.unsubscribe === 'function') tableSub.unsubscribe();
       if (orderSub && typeof orderSub.unsubscribe === 'function') orderSub.unsubscribe();
+      if (alertSub && typeof alertSub.unsubscribe === 'function') alertSub.unsubscribe();
     };
-  }, [loadMenuData, loadTables, loadOrders, profile?.restaurant_id, restaurant?.id]);
+  }, [loadMenuData, loadTables, loadOrders, loadAlerts, profile?.restaurant_id, restaurant?.id]);
 
   if (!isMounted) return null;
 
@@ -551,7 +566,13 @@ export function AdminApp() {
           </div>
 
           <div className="flex items-center gap-3 sm:gap-5 shrink-0">
-            <LanguageToggle profile={profile} className="hidden sm:inline-flex" />
+            {/* Persistent Sidebar (md:flex, see Sidebar.jsx) already carries its
+                own LanguageToggle in the footer at md+ — showing this one too
+                left two live az/en/ru switchers on screen at once on desktop.
+                This one now only bridges the sm..md gap, where the sidebar is
+                still off-canvas and reaching the drawer just to change
+                language would be an extra step. */}
+            <LanguageToggle profile={profile} className="hidden sm:inline-flex md:hidden" />
             <Link
               href="/staff"
               className="hidden sm:flex items-center gap-2 px-3.5 h-9 bg-[var(--k-success-soft)] hover:bg-[var(--k-success)]/25 text-[var(--k-success)] border border-[color:var(--k-success)]/30 rounded-[var(--k-r)] text-xs font-medium transition-colors"
@@ -635,9 +656,21 @@ export function AdminApp() {
             <PaymentsManagement orders={orders} tables={tables} currencySymbol={settings.currencySymbol} restaurant={restaurant} />
           )}
 
-          {/* Hesabat */}
+          {/* Hesabat — Analitika (mövcud) + yeni Z/X Hesabatları alt-görünüşü,
+              eyni nav bölməsi altında (ikisi də "hesabat"dır, ayrıca sidebar
+              girişi əlavə etməyə ehtiyac yoxdur). */}
           {activeTab === 'reports' && can[CAPABILITIES.ANALYTICS_VIEW] && (
-            <AnalyticsDashboard orders={orders} tables={tables} />
+            <div className="space-y-6">
+              <Tabs>
+                <TabsTrigger active={reportsSubTab === 'analytics'} onClick={() => setReportsSubTab('analytics')}>{t('reportsSubTabAnalytics')}</TabsTrigger>
+                <TabsTrigger active={reportsSubTab === 'zx'} onClick={() => setReportsSubTab('zx')}>{t('reportsSubTabZX')}</TabsTrigger>
+              </Tabs>
+              {reportsSubTab === 'analytics' ? (
+                <AnalyticsDashboard orders={orders} tables={tables} />
+              ) : (
+                <SalesReportView orders={orders} tables={tables} restaurantName={restaurant?.name} currencySymbol={settings.currencySymbol} />
+              )}
+            </div>
           )}
 
           {activeTab === 'promotions' && (

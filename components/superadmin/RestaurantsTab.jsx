@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, Building2, Search, Users, Trash2, Edit2, ExternalLink, Copy,
-  X, Eye, EyeOff, RefreshCw,
+  X, Eye, EyeOff, RefreshCw, Receipt,
 } from 'lucide-react';
 import {
   createRestaurant, updateRestaurant, deleteRestaurant,
@@ -12,6 +12,8 @@ import {
   extendRestaurantTrial, setRestaurantActiveState, setRestaurantFeatureFlag, setRestaurantPlan,
   fetchProfilesForRestaurant, createOrAssignRestaurantUser, removeUserFromRestaurant,
 } from '@/lib/services/superAdminService';
+import { fetchOrders, fetchTables } from '@/lib/services/supabaseService';
+import { SalesReportView } from '@/components/admin/SalesReportView';
 import {
   fetchRestaurantSubscription, getEffectiveSubscriptionStatus, setSubscriptionBillingInterval,
   setSubscriptionAutoRenew, markSubscriptionExpired, touchSubscriptionCancelledAt, renewSubscription,
@@ -63,6 +65,7 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingRestaurant, setEditingRestaurant] = useState(null);
   const [adminsModalRestaurant, setAdminsModalRestaurant] = useState(null);
+  const [reportsModalRestaurant, setReportsModalRestaurant] = useState(null);
 
   React.useEffect(() => {
     if (!openRestaurantId) return;
@@ -205,6 +208,13 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
                           <Users className="w-3.5 h-3.5" />
                         </button>
                         <button
+                          onClick={() => setReportsModalRestaurant(r)}
+                          title={t('reportsTitle')}
+                          className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-surface-2)] text-[var(--k-text-3)] hover:text-[var(--k-text)]"
+                        >
+                          <Receipt className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => setEditingRestaurant(r)}
                           title={t('editTitle')}
                           className="p-2 rounded-[var(--k-r-sm)] hover:bg-[var(--k-surface-2)] text-[var(--k-text-3)] hover:text-[var(--k-text)]"
@@ -301,6 +311,9 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
         )}
         {adminsModalRestaurant && (
           <AdminsModal restaurant={adminsModalRestaurant} onClose={() => setAdminsModalRestaurant(null)} onChange={refresh} />
+        )}
+        {reportsModalRestaurant && (
+          <RestaurantReportsModal restaurant={reportsModalRestaurant} onClose={() => setReportsModalRestaurant(null)} />
         )}
       </AnimatePresence>
       <ConfirmDialog {...confirmDialog.dialogProps} />
@@ -891,6 +904,56 @@ function AdminsModal({ restaurant, onClose, onChange }) {
         </div>
       </motion.div>
       <ConfirmDialog {...confirmDialog.dialogProps} />
+    </motion.div>
+  );
+}
+
+// Z/X sales report drill-down for one restaurant — reuses the exact same
+// components/admin/SalesReportView.jsx AdminApp.jsx's own "Hesabat" tab
+// renders, fed this restaurant's data instead of the signed-in admin's own.
+// orders_tenant_read RLS (0001_multi_tenant_saas.sql) is gated by
+// is_staff_of(), which already includes is_super_admin() — so fetchOrders/
+// fetchTables (lib/services/supabaseService.js, the same functions
+// AdminApp.jsx calls) work unmodified for any restaurant id here, no new
+// service function or RPC needed.
+function RestaurantReportsModal({ restaurant, onClose }) {
+  const { t } = useSuperAdminTranslation();
+  const [orders, setOrders] = useState([]);
+  const [tables, setTables] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Same "async loader defined and invoked entirely inside the effect"
+  // shape as RestaurantSubscriptionPanel above (see its own comment for why
+  // this is the one data-loading pattern in this file that doesn't trip
+  // react-hooks/set-state-in-effect).
+  React.useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const [orderRows, tableRows] = await Promise.all([
+        fetchOrders(restaurant.id),
+        fetchTables(restaurant.id),
+      ]);
+      setOrders(orderRows);
+      setTables(tableRows);
+      setLoading(false);
+    };
+    load();
+  }, [restaurant.id]);
+
+  return (
+    <motion.div {...modalMotion.overlay} className="kit-dark fixed inset-0 bg-[var(--k-scrim)] backdrop-blur-[2px] flex items-center justify-center p-4 z-50">
+      <motion.div {...modalMotion.panel} className="w-full max-w-2xl bg-[var(--k-surface)] border border-[var(--k-border)] rounded-[var(--k-r-lg)] p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h3 className="text-[15px] font-semibold text-[var(--k-text)]">{t('reportsModalTitle')(restaurant.name)}</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-[var(--k-surface-2)] rounded-[var(--k-r-sm)] print:hidden"><X className="w-4 h-4 text-[var(--k-text-3)]" /></button>
+        </div>
+
+        {loading ? (
+          <p className="text-[var(--k-text-3)] text-sm text-center py-8">{t('loadingText')}</p>
+        ) : (
+          <SalesReportView orders={orders} tables={tables} restaurantName={restaurant.name} currencySymbol={restaurant.currency_symbol} />
+        )}
+      </motion.div>
     </motion.div>
   );
 }
