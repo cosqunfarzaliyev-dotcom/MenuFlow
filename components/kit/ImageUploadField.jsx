@@ -89,7 +89,23 @@ export function ImageUploadField({
               width={40}
               height={40}
               unoptimized
-              className="w-10 h-10 object-contain rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-3)]"
+              className="w-10 h-10 object-contain rounded-[var(--k-r-sm)] border border-[var(--k-border)]"
+              // A solid --k-surface-3 fill here used to make every preview
+              // look "fine" regardless of whether the uploaded PNG actually
+              // had a transparent background — an admin had no way to tell
+              // the difference from this thumbnail alone, and this panel's
+              // own dark theme isn't representative of the (often light)
+              // customer menu the logo actually renders on anyway. A
+              // checkerboard is the standard "this is really transparent"
+              // tell — a logo with a baked-in white/colored background
+              // shows a solid square here; a truly transparent one shows
+              // the checker pattern through it.
+              style={{
+                backgroundImage:
+                  'conic-gradient(#8886 25%, transparent 0 50%, #8886 0 75%, transparent 0)',
+                backgroundSize: '8px 8px',
+                backgroundColor: 'var(--k-surface-3)',
+              }}
               onError={() => setPreviewValid(false)}
             />
           ) : (

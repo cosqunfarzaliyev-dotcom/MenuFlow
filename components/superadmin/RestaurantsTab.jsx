@@ -4,12 +4,12 @@ import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, Building2, Search, Users, Trash2, Edit2, ExternalLink, Copy,
-  X, Eye, EyeOff, RefreshCw, Receipt,
+  X, Eye, EyeOff, RefreshCw, Receipt, Save,
 } from 'lucide-react';
 import {
   createRestaurant, updateRestaurant, deleteRestaurant,
   markRestaurantActive, markRestaurantPastDue, cancelRestaurantSubscription,
-  extendRestaurantTrial, setRestaurantActiveState, setRestaurantFeatureFlag, setRestaurantPlan,
+  extendRestaurantTrial, setRestaurantActiveState, setRestaurantPlan, resizeRestaurantTables,
   fetchProfilesForRestaurant, createOrAssignRestaurantUser, removeUserFromRestaurant,
 } from '@/lib/services/superAdminService';
 import { fetchOrders, fetchTables } from '@/lib/services/supabaseService';
@@ -296,8 +296,24 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
               const { error } = planChanged
                 ? await setRestaurantPlan(editingRestaurant.id, form.plan)
                 : { error: null };
+
+              // Resized BEFORE the generic update below, and its own error
+              // returned early on — a rejected resize (order/alert history
+              // on a to-be-removed table) must never silently update
+              // table_count to a number the real restaurant_tables rows
+              // don't match.
+              const tableCountChanged = form.tableCount !== editingRestaurant.table_count;
+              const { error: resizeError } = tableCountChanged
+                ? await resizeRestaurantTables(editingRestaurant.id, form.tableCount)
+                : { error: null };
+              if (resizeError) {
+                notify(t('saveFailedToast')(resizeError.message), 'error');
+                return;
+              }
+
               const { error: err2 } = await updateRestaurant({
                 id: editingRestaurant.id, name: form.name, tagline: form.tagline, currencySymbol: form.currencySymbol,
+                tableCount: form.tableCount,
               });
               if (error || err2) {
                 notify(t('saveFailedToast')((error || err2).message), 'error');
@@ -418,22 +434,29 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
               <Input id={id} {...a11y} value={form.currencySymbol} onChange={(e) => setForm({ ...form, currencySymbol: e.target.value })} />
             )}
           </Field>
-          {!isEdit ? (
-            <Field label={t('tableCountFieldLabel')}>
-              {(id, a11y) => (
-                <Input id={id} {...a11y} type="number" min="1" max="200" value={form.tableCount} onChange={(e) => setForm({ ...form, tableCount: e.target.value })} />
-              )}
-            </Field>
-          ) : (
-            <Field label={t('packageFieldLabel')}>
-              {(id, a11y) => (
-                <Select id={id} {...a11y} value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })}>
-                  {PLAN_ORDER.map((p) => <option key={p} value={p}>{planMeta(p, t).label}</option>)}
-                </Select>
-              )}
-            </Field>
-          )}
+          {/* Edit mode: growing adds real restaurant_tables rows, shrinking
+              removes the highest-numbered ones — but only if none of them
+              have order/alert history (resizeRestaurantTables refuses and
+              explains rather than silently orphaning old orders' table_id,
+              see that function's own comment). Previously hidden in edit
+              mode entirely (replaced by Plan below) because table_count
+              used to be a display-only number nothing kept in sync with
+              the real table rows — this is the real thing now. */}
+          <Field label={t('tableCountFieldLabel')} hint={isEdit ? t('tableCountEditHint') : undefined}>
+            {(id, a11y) => (
+              <Input id={id} {...a11y} type="number" min="1" max="200" value={form.tableCount} onChange={(e) => setForm({ ...form, tableCount: e.target.value })} />
+            )}
+          </Field>
         </div>
+        {isEdit && (
+          <Field label={t('packageFieldLabel')}>
+            {(id, a11y) => (
+              <Select id={id} {...a11y} value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })}>
+                {PLAN_ORDER.map((p) => <option key={p} value={p}>{planMeta(p, t).label}</option>)}
+              </Select>
+            )}
+          </Field>
+        )}
         {isEdit && <p className="text-[10px] text-[var(--k-text-3)] -mt-2">{t('planChangeResetHint')}</p>}
 
         {/* Admin account — create mode only. Edit mode deliberately has no
@@ -535,6 +558,46 @@ function RestaurantControlsPanel({ restaurant, onRefresh }) {
 
   const flags = featureFlags(local);
 
+  // Funksiyalar (Apple Pay / Google Pay / Banners / ...) — unlike the
+  // account/billing switches above, these are staged locally and only
+  // written on an explicit Save. They used to apply per-click like the
+  // rest of this panel, but for a multi-switch checklist like this one
+  // that reads as "did my earlier click even take?" every time — there's
+  // no single moment that confirms the whole set is now correct.
+  const [pendingFlags, setPendingFlags] = useState(() => featureFlags(restaurant));
+  const [flagsDirty, setFlagsDirty] = useState(false);
+  const [savingFlags, setSavingFlags] = useState(false);
+  // `restaurant` prop -> pendingFlags sync, done the same way
+  // SiteContactTab.jsx's hasHydrated does it: a conditional setState call
+  // during the render body (React's own documented "adjust state when a
+  // prop changes" pattern), not a useEffect — a plain useEffect here would
+  // re-run and clobber whatever the admin is mid-toggling every time
+  // onRefresh() resolves a NEW `restaurant` object, same failure mode that
+  // pattern was already written to avoid.
+  const [syncedRestaurant, setSyncedRestaurant] = useState(restaurant);
+  if (!flagsDirty && restaurant !== syncedRestaurant) {
+    setSyncedRestaurant(restaurant);
+    setPendingFlags(featureFlags(restaurant));
+  }
+
+  const handleSaveFlags = async () => {
+    setSavingFlags(true);
+    const { error } = await updateRestaurant({ id: local.id, feature_flags: { ...(local.feature_flags || {}), ...pendingFlags } });
+    setSavingFlags(false);
+    if (error) {
+      notify(t('updateFailedToast')(error.message), 'error');
+      return;
+    }
+    setFlagsDirty(false);
+    notify(t('updatedToast'));
+    onRefresh?.();
+  };
+
+  const handleCancelFlags = () => {
+    setPendingFlags(flags);
+    setFlagsDirty(false);
+  };
+
   return (
     <div className="border-t border-[var(--k-border)] pt-3 mt-1 space-y-0.5">
       <p className="text-[11px] font-semibold text-[var(--k-text-3)] uppercase tracking-wider mb-1">{t('controlsTitle')}</p>
@@ -584,12 +647,22 @@ function RestaurantControlsPanel({ restaurant, onRefresh }) {
             key={key}
             label={translated.label}
             description={translated.description}
-            checked={Boolean(flags[key])}
-            disabled={pendingKey === key}
-            onChange={(val) => run(key, () => setRestaurantFeatureFlag(local, key, val), { feature_flags: { ...flags, [key]: val } })}
+            checked={Boolean(pendingFlags[key])}
+            disabled={savingFlags}
+            onChange={(val) => { setPendingFlags((prev) => ({ ...prev, [key]: val })); setFlagsDirty(true); }}
           />
         );
       })}
+      {flagsDirty && (
+        <div className="flex gap-2 pt-2">
+          <Button type="button" variant="primary" size="sm" loading={savingFlags} onClick={handleSaveFlags} icon={<Save className="w-3.5 h-3.5" />}>
+            {t('saveButton')}
+          </Button>
+          <Button type="button" variant="secondary" size="sm" disabled={savingFlags} onClick={handleCancelFlags}>
+            {t('cancelButton')}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
