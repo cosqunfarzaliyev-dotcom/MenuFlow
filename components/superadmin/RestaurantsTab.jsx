@@ -388,6 +388,7 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
         // normally when the actual Save button has keyboard focus.
         onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); }}
         className="w-full max-w-md bg-[var(--k-surface)] border border-[var(--k-border)] rounded-[var(--k-r-lg)] p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+      >
         <div className="flex items-center justify-between">
           <h3 className="text-[15px] font-semibold text-[var(--k-text)]">{title}</h3>
           <button type="button" onClick={onClose} className="p-1.5 hover:bg-[var(--k-surface-2)] rounded-[var(--k-r-sm)]"><X className="w-4 h-4 text-[var(--k-text-3)]" /></button>
