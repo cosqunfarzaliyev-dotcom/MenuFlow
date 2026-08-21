@@ -26,6 +26,7 @@ const ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
 export function ImageUploadField({
   value,
   onChange,
+  onUploadComplete,
   restaurantId,
   folder,
   urlPlaceholder,
@@ -59,6 +60,11 @@ export function ImageUploadField({
     }
     setPreviewValid(true);
     onChange(url);
+    // Fired ONLY here, not from handleUrlChange below — a completed upload
+    // is a discrete, meaningful change a caller can safely auto-persist
+    // immediately; every keystroke of someone pasting a URL by hand is not
+    // (see SettingsTab.jsx's logo field for the auto-save this exists for).
+    onUploadComplete?.(url);
   };
 
   const handleUrlChange = (event) => {

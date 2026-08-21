@@ -91,6 +91,30 @@ export function SettingsTab({ settings, updateRestaurantProfile, restaurantId })
     persist(form);
   }, [form, persist]);
 
+  // Logo + its display mode save immediately, independent of the rest of
+  // this form's "Yadda saxla" button — an uploaded file used to only ever
+  // land in `form.restaurantLogo` (local state), never Supabase, unless the
+  // admin ALSO clicked Save afterwards. Nothing here told them that second
+  // step was still needed, so an upload routinely never made it to the DB
+  // at all — confirmed live (restaurants.logo was still '' after repeated
+  // "I uploaded it" reports). Auto-saving on upload completion removes that
+  // failure mode outright instead of just explaining it better.
+  const [autoSaving, setAutoSaving] = useState(false);
+  const persistLogoFields = useCallback(async (logo, logoDisplayMode) => {
+    setAutoSaving(true);
+    setSaveError(null);
+    const { error } = await updateRestaurantProfile({
+      logo: logo.trim(),
+      logoDisplayMode: logo.trim() ? logoDisplayMode : 'name',
+    });
+    setAutoSaving(false);
+    if (error) {
+      setSaveError(error.message || t('settingsSaveErrorMessage'));
+      return;
+    }
+    showSavedMessage();
+  }, [updateRestaurantProfile, showSavedMessage, t]);
+
   const handleResetDefaults = useCallback(() => {
     setForm(DEFAULT_SETTINGS);
     persist(DEFAULT_SETTINGS);
@@ -137,11 +161,12 @@ export function SettingsTab({ settings, updateRestaurantProfile, restaurantId })
               )}
             </Field>
 
-            <Field label={logoFieldLabel} hint={!form.restaurantLogo.trim() ? t('logoEmptyHint') : undefined}>
+            <Field label={logoFieldLabel} hint={!form.restaurantLogo.trim() ? t('logoEmptyHint') : t('logoAutoSavedHint')}>
               {(id, a11y) => (
                 <ImageUploadField
                   id={id} value={form.restaurantLogo}
                   onChange={(url) => updateForm("restaurantLogo", url)}
+                  onUploadComplete={(url) => persistLogoFields(url, form.logoDisplayMode)}
                   restaurantId={restaurantId} folder="logo"
                   urlPlaceholder={t('logoUrlPlaceholder')}
                   uploadLabel={t('imageUploadButton')}
@@ -156,13 +181,21 @@ export function SettingsTab({ settings, updateRestaurantProfile, restaurantId })
                 menu header show the full, uncropped logo instead of the
                 restaurant name. Disabled without a logo uploaded: "show
                 full logo" is meaningless with nothing to show, and leaving
-                it live-but-inert here would just read as broken. */}
+                it live-but-inert here would just read as broken. Saves
+                immediately on toggle (persistLogoFields), same reasoning
+                as the upload above — this pairs with it, so it shouldn't
+                need a separate trip through the page's own Save button
+                either. */}
             <Field label={t('logoDisplayModeLabel')}>
               {() => (
                 <Switch
                   checked={form.logoDisplayMode === 'logo'}
-                  onChange={(checked) => updateForm("logoDisplayMode", checked ? 'logo' : 'name')}
-                  disabled={!form.restaurantLogo.trim()}
+                  disabled={!form.restaurantLogo.trim() || autoSaving}
+                  onChange={(checked) => {
+                    const mode = checked ? 'logo' : 'name';
+                    updateForm("logoDisplayMode", mode);
+                    persistLogoFields(form.restaurantLogo, mode);
+                  }}
                   description={!form.restaurantLogo.trim() ? t('logoDisplayModeDisabledHint') : t('logoDisplayModeHint')}
                 />
               )}
