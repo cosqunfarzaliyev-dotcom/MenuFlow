@@ -2,7 +2,7 @@
 
 // ---------------------------------------------------------------------------
 // components/kit/Toast.jsx — same provider/hook contract as the older
-// components/ui/Toast (notify(message, type)) so a panel can switch kits
+// the old kit's Toast (notify(message, type)) so a panel can switch kits
 // without touching a single call site. What changed: tokens instead of the
 // `.sa-toast .sa-card .sa-caption` SuperAdmin classes it used to borrow, and
 // aria-live so a screen reader actually announces it.

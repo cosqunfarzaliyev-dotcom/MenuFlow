@@ -4,7 +4,7 @@
 // components/kit/Sheet.jsx — modal, right drawer and bottom sheet in one.
 //
 // The focus trap / Escape / scroll-lock / focus-restore logic is carried over
-// deliberately from components/ui/Modal.jsx rather than rewritten: it is the
+// deliberately from the old kit's Modal rather than rewritten: it is the
 // most safety-critical, least visual code in the old kit and it works. What
 // changed is the chrome (tokens, no blur-heavy scrim) and the addition of a
 // `bottom` side for mobile — a customer on a phone should get a bottom sheet,

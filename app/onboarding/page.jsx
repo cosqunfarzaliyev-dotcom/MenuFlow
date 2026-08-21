@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { Store, Loader2, Clock, LogOut } from 'lucide-react';
-import { LanguageSwitcher } from '@/components/ui';
+import { LanguageToggle } from '@/components/kit';
 import { useAuthTranslation } from '@/lib/i18n/dictionaries/auth';
 import { useAppStore } from '@/lib/store';
 import { useLocaleSync } from '@/hooks/useLocaleSync';
@@ -81,7 +81,7 @@ export default function OnboardingPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center">
         <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
       </div>
     );
@@ -89,17 +89,17 @@ export default function OnboardingPage() {
 
   if (view === 'wizard') {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 py-8">
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4 py-8">
         <OnboardingWizard restaurant={restaurant} profile={profile} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+    <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-slate-950/60 backdrop-blur p-8 rounded-3xl border border-slate-800 text-center">
         <div className="flex justify-center mb-4">
-          <LanguageSwitcher context="dark" />
+          <LanguageToggle />
         </div>
         <div className="w-16 h-16 mx-auto bg-amber-500/15 rounded-2xl flex items-center justify-center border border-amber-500/30 mb-6">
           <Clock className="w-8 h-8 text-amber-400" />

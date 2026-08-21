@@ -1,7 +1,7 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// components/kit/Sidebar.jsx — ported from components/ui/Sidebar.jsx for the
+// components/kit/Sidebar.jsx — ported from the old primitive kit for the
 // Admin panel (the first kit-based panel that needs a persistent nav rail;
 // Customer/Staff had no equivalent). Same mobile scrim + off-canvas drawer +
 // Escape-to-close behavior, restyled onto --k-* tokens instead of --mf-*.

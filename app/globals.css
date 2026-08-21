@@ -1,16 +1,17 @@
 /* The font @import must come before `@import "tailwindcss"`: Turbopack inlines
    Tailwind's ~2.6k lines in place, after which a later @import no longer
    "precedes all rules" and CSS parsing fails outright (500 on every route). */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Inter:wght@400;500;600;700;800&display=swap');
-/* Quiet Premium design tokens for the 4 app panels (--k-*, .kit-dark/.kit-light).
-   Sits HERE, not at the end of the file: CSS requires every @import to precede
-   all other rules, so "append at the bottom" is not actually a legal option —
-   and anything after `@import "tailwindcss"` hits the inlining problem the
-   comment above describes. Grouping it with the other @imports satisfies both.
-   Being unlayered, its rules still win over Tailwind's `@layer base` preflight
-   regardless of source order, which is what lets `.kit-* h1` cancel the global
-   Playfair rule below. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700;800&display=swap');
+/* Quiet Premium (--k-*) + Süfrə (--mkt-*) design tokens. Sit HERE, not at the
+   end of the file: CSS requires every @import to precede all other rules, so
+   "append at the bottom" is not actually a legal option — and anything after
+   `@import "tailwindcss"` hits the inlining problem the comment above
+   describes. Grouping them with the other @imports satisfies both. Being
+   unlayered, their rules still win over Tailwind's `@layer base` preflight
+   regardless of source order, which is what lets `.kit-* h1` / `.mkt h1`
+   cancel the global Playfair rule below. */
 @import "../components/kit/tokens.css";
+@import "../components/mkt/tokens.css";
 @import "tailwindcss";
 
 @layer base {
@@ -24,6 +25,20 @@
   h1, h2, h3, .font-serif-title {
     font-family: 'Playfair Display', Georgia, serif;
   }
+}
+
+/* Süfrə (components/mkt) — cancels the two global rules above for the
+   marketing site: its own ground/text colors instead of body's hardcoded
+   #050505/white, and Fraunces instead of Playfair for headings. Unlayered,
+   so (like .kit-* above it) this wins over both the @layer base rule and
+   Tailwind's own preflight regardless of source order — see the @import
+   comment at the top of this file. */
+.mkt {
+  background-color: var(--mkt-ground);
+  color: var(--mkt-text);
+}
+.mkt h1, .mkt h2, .mkt h3, .mkt .font-serif-title {
+  font-family: var(--mkt-font-display);
 }
 
 /* Glassmorphism & Custom Surfaces for Sophisticated Dark Theme */
@@ -205,49 +220,6 @@
 }
 .customer-theme ::-webkit-scrollbar-thumb:hover {
   background: var(--mf-primary);
-}
-
-/* ============================================================================
-   Management (dark) context tokens for components/ui/* primitives.
-   ----------------------------------------------------------------------------
-   `.customer-theme` already defines a `--mf-*` semantic namespace (bg, border,
-   primary, text, success, warning) for the light per-restaurant customer
-   menu. `.mf-dark` gives the SAME `--mf-*` keys dark values so a primitive
-   that only ever reads `var(--mf-*)` renders correctly in both contexts with
-   no `variant="dark"` class-string branching baked into the component itself
-   — only the cva `context` prop selects which literal Tailwind classes apply
-   (see components/ui/variants.js), and those classes are written to
-   reference these variables rather than hardcoded hex/slate values so the
-   two token systems stay the single source of truth. `.mf-dark` is mounted
-   on `<body>` (app/layout.jsx) and still load-bearing for the marketing
-   site, /login, /reset-password and /onboarding — those four surfaces are
-   the only remaining `components/ui` consumers now that Customer/Staff/
-   Admin/SuperAdmin all run on the separate `components/kit` ("Quiet
-   Premium") system instead (see components/kit/tokens.css's own header).
-
-   The `.superadmin-theme`/`.sa-*` glass-panel system (radius tokens, type
-   scale, `.sa-card` hover-lift, `.sa-toast`/`.sa-sidebar-item` keyframes)
-   that used to sit here was retired when the SuperAdmin panel's Quiet
-   Premium redesign replaced every one of its consumers — `.superadmin-theme`
-   is no longer mounted anywhere and `.sa-*` has no remaining call site
-   (confirmed by a repo-wide search before removal; only
-   `components/ui/Toast.jsx`, itself unreferenced by any surface, still
-   contains dead `sa-toast`/`sa-card`/`sa-caption` class-name literals in its
-   own JSX — left as-is rather than edited, since it's an orphaned old-kit
-   file, not a live consumer of this CSS).
-   ============================================================================ */
-.mf-dark {
-  --mf-bg: #050505;
-  --mf-surface: #0f172a;        /* slate-900 — the flat card/input backdrop already used everywhere */
-  --mf-border: #1e293b;         /* slate-800 */
-  --mf-primary: #2563eb;        /* blue-600 — the existing dark-shell accent, distinct from customer --theme-primary */
-  --mf-primary-strong: #1d4ed8; /* blue-700, hover state */
-  --mf-success: #10b981;        /* emerald-500 */
-  --mf-warning: #f59e0b;        /* amber-500 */
-  --mf-danger: #f43f5e;         /* rose-500 */
-  --mf-text: #ffffff;
-  --mf-text-muted: #94a3b8;     /* slate-400 */
-  --mf-focus: #60a5fa;          /* blue-400 — ring color, distinct from --mf-primary for contrast against dark bg */
 }
 
 /* prefers-reduced-motion — appended at the end of the file so it cannot

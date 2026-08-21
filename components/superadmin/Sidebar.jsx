@@ -5,14 +5,15 @@ import Image from 'next/image';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutDashboard, Building2, CreditCard, LineChart, Users, ShieldCheck,
-  LogOut, ChevronLeft, ChevronRight, X, Package,
+  LogOut, ChevronLeft, ChevronRight, X, Package, FileText, Phone, HelpCircle,
 } from 'lucide-react';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
+import { ModeSwitcher } from './ModeSwitcher';
+import { MODES, DEFAULT_MODE } from './modes';
 
-// Kept as a function (not a static array) now that labels are translated —
-// SuperAdminApp.jsx's own `activeMeta` lookup calls this with its own `t`
-// too, so the header title and this sidebar always agree.
-export const getTabs = (t) => [
+export { MODES, DEFAULT_MODE };
+
+const RESTAURANT_TABS = (t) => [
   { id: 'dashboard', label: t('tabDashboard'), icon: LayoutDashboard },
   { id: 'restaurants', label: t('tabRestaurants'), icon: Building2 },
   { id: 'plans', label: t('tabPlans'), icon: Package },
@@ -21,16 +22,25 @@ export const getTabs = (t) => [
   { id: 'users', label: t('tabUsers'), icon: Users },
 ];
 
-// Back-compat static export (AZ-only) for any import this pass didn't
-// catch — TABS.find(...) still works, just won't be reactive to language.
-export const TABS = getTabs((key) => ({
-  tabDashboard: 'Dashboard', tabRestaurants: 'Restoranlar', tabPlans: 'Planlar',
-  tabSubscriptions: 'Abunəliklər', tabAnalytics: 'Analitika', tabUsers: 'İstifadəçilər',
-}[key]));
+// `site-` prefixed ids — one flat, namespaced activeTab string rather than
+// nested per-mode state, so `?tab=` in the URL (SuperAdminApp.jsx) stays a
+// single value and the six RESTAURANT_TABS conditionals never have to change
+// shape, only gain a `mode === MODES.RESTAURANTS &&` wrapper.
+const WEBSITE_TABS = (t) => [
+  { id: 'site-pages', label: t('tabSitePages'), icon: FileText },
+  { id: 'site-contact', label: t('tabSiteContact'), icon: Phone },
+  { id: 'site-faq', label: t('tabSiteFaq'), icon: HelpCircle },
+];
 
-export function Sidebar({ activeTab, onTabChange, restaurantCount, collapsed, onToggleCollapse, onLogout, mobileOpen, onCloseMobile }) {
+export const getTabs = (t, mode = DEFAULT_MODE) =>
+  mode === MODES.WEBSITE ? WEBSITE_TABS(t) : RESTAURANT_TABS(t);
+
+export function Sidebar({
+  activeTab, onTabChange, mode, onModeChange, restaurantCount,
+  collapsed, onToggleCollapse, onLogout, mobileOpen, onCloseMobile,
+}) {
   const { t } = useSuperAdminTranslation();
-  const tabs = getTabs(t);
+  const tabs = getTabs(t, mode);
   return (
     <>
       {/* Mobile scrim */}
@@ -52,7 +62,7 @@ export function Sidebar({ activeTab, onTabChange, restaurantCount, collapsed, on
         className={`fixed lg:sticky top-0 h-screen z-50 shrink-0 flex-col bg-[var(--k-bg)] border-r border-[var(--k-border)] py-5 px-3
           ${mobileOpen ? 'flex' : 'hidden lg:flex'}`}
       >
-        <div className="flex items-center justify-between px-2 mb-8">
+        <div className="flex items-center justify-between px-2 mb-5">
           <div className="flex items-center gap-2.5 overflow-hidden">
             {collapsed ? (
               <div className="w-9 h-9 shrink-0 bg-[var(--k-warning-soft)] rounded-[var(--k-r)] flex items-center justify-center border border-[color:var(--k-warning)]/25">
@@ -80,7 +90,13 @@ export function Sidebar({ activeTab, onTabChange, restaurantCount, collapsed, on
           </button>
         </div>
 
-        <nav className="flex-1 space-y-0.5">
+        <ModeSwitcher mode={mode} onModeChange={onModeChange} collapsed={collapsed} />
+
+        {/* key={mode} + a per-mode layoutId (below) stop the active-tab pill
+            from flying across the whole sidebar when the mode itself
+            changes — without both, framer-motion treats every tab across
+            both modes as one shared-layout group. */}
+        <nav key={mode} className="flex-1 space-y-0.5 mt-3">
           {tabs.map((tab, i) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -95,7 +111,7 @@ export function Sidebar({ activeTab, onTabChange, restaurantCount, collapsed, on
               >
                 {active && (
                   <motion.div
-                    layoutId="sa-sidebar-active"
+                    layoutId={`sa-sidebar-active-${mode}`}
                     transition={{ type: 'spring', stiffness: 400, damping: 32 }}
                     className="absolute inset-0 bg-[var(--k-accent)] rounded-[var(--k-r)]"
                   />

@@ -1,0 +1,48 @@
+# ============================================================================
+# MenuFlow — Supabase project config
+# ============================================================================
+# This file exists to make each Edge Function's JWT posture REVIEWABLE in the
+# repo. Until now those flags lived only in code comments, so a future
+# redeploy could silently flip one and nothing would catch it.
+#
+# IMPORTANT — read before trusting this file:
+# Database and Edge Functions in this project are deployed through the
+# Supabase MCP server, NOT the Supabase CLI. The MCP `deploy_edge_function`
+# tool takes `verify_jwt` as a CALL PARAMETER and does not read this file.
+# So config.toml is:
+#   • a reviewable declaration of intent (diffable, in code review), and
+#   • a real safety net if anyone ever deploys with the CLI,
+# but it does NOT by itself prevent a wrong-flag MCP redeploy.
+# The mechanical guard for that is scripts/verify-pos-integration.mjs, which
+# asserts these values against each function's own header comment.
+# ============================================================================
+
+project_id = "evdlcbfsvvtrrmxxbzpr"
+
+# Super-admin-only account provisioning. Always invoked from a browser with a
+# real session, so the gateway JWT check is appropriate (the function still
+# re-derives the caller and re-checks profiles.role itself).
+[functions.create-restaurant-user]
+verify_jwt = true
+
+# Browser-invoked by a restaurant_admin/super_admin clicking "Sync menu now".
+# Always has a real user session.
+[functions.pos-poster-menu-sync]
+verify_jwt = true
+
+# THE deliberate exception. Invoked by the public.push_order_to_pos() trigger
+# via pg_net — a DB-trigger call carries no user JWT at all, so gateway
+# verification would reject every legitimate call. The real gate is the
+# x-pos-push-secret shared-secret header compared against POS_ORDER_PUSH_SECRET
+# (Edge Function secret) / vault 'pos_order_push_secret' (DB side).
+# Do NOT "fix" this to true — it would silently disable order push.
+[functions.pos-poster-order-push]
+verify_jwt = false
+
+# Same deliberate exception as pos-poster-order-push above, same reason:
+# invoked by public.notify_push() (0030_push_notifications.sql) via pg_net
+# from the orders/alerts AFTER INSERT triggers — no user JWT exists in that
+# context. Gated by x-push-notify-secret / PUSH_NOTIFY_SECRET / vault
+# 'push_notify_secret' instead. Do NOT "fix" this to true.
+[functions.notify-push]
+verify_jwt = false

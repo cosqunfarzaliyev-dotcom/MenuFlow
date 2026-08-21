@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import PropTypes from "prop-types";
 import { CheckCircle2, Building2, Image as ImageIcon, DollarSign, Users2, Sparkles, RefreshCw } from "lucide-react";
 import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
-import { PageHeader, Card, CardBody, Field, Input, Button, Tag, Banner } from "@/components/kit";
+import { PageHeader, Card, CardBody, Field, Input, Button, Banner, ImageUploadField } from "@/components/kit";
 
 const DEFAULT_SETTINGS = {
   restaurantName: "MenuFlow",
@@ -30,11 +29,20 @@ const createForm = (settings) => ({
   tagline: settings?.tagline || DEFAULT_SETTINGS.tagline,
 });
 
-export function SettingsTab({ settings, updateSettings }) {
+// `settings` (the display prop) is already correctly derived from the real
+// `restaurants` row by AdminApp.jsx whenever one is loaded — this form's
+// SAVE path used to go through updateSettings(), a purely local Zustand
+// merge that never reached Supabase at all (`restaurants.name/logo/
+// currency_symbol/table_count/tagline` were never written). Every field
+// below is a real, already-whitelisted column on updateRestaurant()
+// (lib/services/superAdminService.js), so the fix is routing every field
+// through updateRestaurantProfile (lib/store.js) instead — not just logo.
+export function SettingsTab({ settings, updateRestaurantProfile, restaurantId }) {
   const { t } = useAdminTranslation();
   const [form, setForm] = useState(() => createForm(settings));
   const [savedMessage, setSavedMessage] = useState(false);
-  const [isLogoValid, setIsLogoValid] = useState(true);
+  const [saveError, setSaveError] = useState(null);
+  const [saving, setSaving] = useState(false);
   const messageTimeoutRef = useRef(null);
 
   const showSavedMessage = useCallback(() => {
@@ -54,31 +62,35 @@ export function SettingsTab({ settings, updateSettings }) {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
   }, []);
 
-  const handleLogoChange = useCallback((event) => {
-    setIsLogoValid(true);
-    updateForm("restaurantLogo", event.target.value);
-  }, [updateForm]);
+  const persist = useCallback(async (values) => {
+    setSaving(true);
+    setSaveError(null);
+    const { error } = await updateRestaurantProfile({
+      name: values.restaurantName.trim() || DEFAULT_SETTINGS.restaurantName,
+      logo: values.restaurantLogo.trim(),
+      currencySymbol: values.currencySymbol.trim() || DEFAULT_SETTINGS.currencySymbol,
+      tableCount: normalizeTableCount(values.tableCount),
+      tagline: values.tagline.trim(),
+    });
+    setSaving(false);
+    if (error) {
+      setSaveError(error.message || t('settingsSaveErrorMessage'));
+      return false;
+    }
+    showSavedMessage();
+    return true;
+  }, [updateRestaurantProfile, showSavedMessage, t]);
 
   const handleSubmit = useCallback((event) => {
     event.preventDefault();
-    updateSettings({
-      restaurantName: form.restaurantName.trim() || DEFAULT_SETTINGS.restaurantName,
-      restaurantLogo: form.restaurantLogo.trim(),
-      currencySymbol: form.currencySymbol.trim() || DEFAULT_SETTINGS.currencySymbol,
-      tableCount: normalizeTableCount(form.tableCount),
-      tagline: form.tagline.trim(),
-    });
-    showSavedMessage();
-  }, [form, showSavedMessage, updateSettings]);
+    persist(form);
+  }, [form, persist]);
 
   const handleResetDefaults = useCallback(() => {
     setForm(DEFAULT_SETTINGS);
-    setIsLogoValid(true);
-    updateSettings(DEFAULT_SETTINGS);
-    showSavedMessage();
-  }, [showSavedMessage, updateSettings]);
+    persist(DEFAULT_SETTINGS);
+  }, [persist]);
 
-  const hasLogo = Boolean(form.restaurantLogo.trim());
   const nameFieldLabel = <span className="flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('restaurantNameLabel')}</span>;
   const logoFieldLabel = <span className="flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('logoUrlLabel')}</span>;
   const currencyFieldLabel = <span className="flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5 text-[var(--k-accent)]" />{t('currencySymbolLabel')}</span>;
@@ -91,7 +103,7 @@ export function SettingsTab({ settings, updateSettings }) {
         title={t('titleSettings')}
         description={t('settingsDescription')}
         actions={
-          <Button type="button" variant="secondary" size="sm" onClick={handleResetDefaults} title={t('resetToDefaultsTitle')} icon={<RefreshCw className="w-3.5 h-3.5" />}>
+          <Button type="button" variant="secondary" size="sm" onClick={handleResetDefaults} loading={saving} title={t('resetToDefaultsTitle')} icon={<RefreshCw className="w-3.5 h-3.5" />}>
             <span className="hidden sm:inline">{t('resetButton')}</span>
           </Button>
         }
@@ -100,6 +112,11 @@ export function SettingsTab({ settings, updateSettings }) {
       {savedMessage && (
         <Banner tone="success" icon={<CheckCircle2 className="w-4 h-4 shrink-0" />} className="font-medium">
           {t('settingsSavedMessage')}
+        </Banner>
+      )}
+      {saveError && (
+        <Banner tone="danger" className="font-medium">
+          {saveError}
         </Banner>
       )}
 
@@ -116,24 +133,18 @@ export function SettingsTab({ settings, updateSettings }) {
               )}
             </Field>
 
-            <Field label={logoFieldLabel} hint={!hasLogo ? t('logoEmptyHint') : undefined}>
+            <Field label={logoFieldLabel} hint={!form.restaurantLogo.trim() ? t('logoEmptyHint') : undefined}>
               {(id, a11y) => (
-                <>
-                  <Input
-                    id={id} type="text" value={form.restaurantLogo}
-                    onChange={handleLogoChange} placeholder={t('logoUrlPlaceholder')} {...a11y}
-                  />
-                  {hasLogo && (
-                    <div className="mt-3 flex items-center gap-3 p-3 bg-[var(--k-surface-2)] border border-[var(--k-border)] rounded-[var(--k-r)]">
-                      <span className="text-xs font-medium text-[var(--k-text-3)]">{t('logoPreviewLabel')}</span>
-                      {isLogoValid ? (
-                        <Image key={form.restaurantLogo} src={form.restaurantLogo.trim()} alt={t('logoPreviewAlt')} className="w-10 h-10 object-contain rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-3)]" width={40} height={40} unoptimized onError={() => setIsLogoValid(false)} />
-                      ) : (
-                        <Tag tone="danger">{t('logoInvalidBadge')}</Tag>
-                      )}
-                    </div>
-                  )}
-                </>
+                <ImageUploadField
+                  id={id} value={form.restaurantLogo}
+                  onChange={(url) => updateForm("restaurantLogo", url)}
+                  restaurantId={restaurantId} folder="logo"
+                  urlPlaceholder={t('logoUrlPlaceholder')}
+                  uploadLabel={t('imageUploadButton')}
+                  previewAlt={t('logoPreviewAlt')}
+                  invalidLabel={t('logoInvalidBadge')}
+                  {...a11y}
+                />
               )}
             </Field>
 
@@ -175,7 +186,7 @@ export function SettingsTab({ settings, updateSettings }) {
             </Field>
 
             <div className="pt-2">
-              <Button type="submit" variant="primary" size="block" icon={<CheckCircle2 className="w-4 h-4" />}>
+              <Button type="submit" variant="primary" size="block" loading={saving} icon={<CheckCircle2 className="w-4 h-4" />}>
                 <span>{t('saveChangesButton')}</span>
               </Button>
             </div>
@@ -194,7 +205,8 @@ SettingsTab.propTypes = {
     tableCount: PropTypes.number,
     tagline: PropTypes.string,
   }),
-  updateSettings: PropTypes.func.isRequired,
+  updateRestaurantProfile: PropTypes.func.isRequired,
+  restaurantId: PropTypes.string,
 };
 
-SettingsTab.defaultProps = { settings: undefined };
+SettingsTab.defaultProps = { settings: undefined, restaurantId: undefined };

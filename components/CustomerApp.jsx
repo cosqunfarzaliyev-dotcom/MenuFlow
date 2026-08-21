@@ -8,13 +8,13 @@ import { subscribeOrders, subscribeProducts } from '@/lib/services/realtime';
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { CartDrawer } from "@/components/CartDrawer";
-import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight, XCircle } from "lucide-react";
+import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight, XCircle, Search, X, Leaf } from "lucide-react";
 import { getLocalizedText, getLocalizedCategoryName, getLocalizedProduct } from "@/lib/translations";
 import { applyDiscounts } from "@/lib/services/promotionsService";
 import { requestWalletPayment } from "@/lib/services/paymentService";
 import { FEATURES, hasFeature } from "@/lib/services/entitlementService";
 import {
-  Sheet, Button, Tag, Pill, LanguageToggle,
+  Sheet, Button, Tag, Pill, Input, LanguageToggle,
   EmptyState, LoadingState, ErrorState,
 } from "@/components/kit";
 import { useLanguage } from "@/hooks/useLanguage";
@@ -83,6 +83,8 @@ export function CustomerApp() {
   // so this surface's translated output is unchanged (see PROJECT_CONTEXT.md).
   const { language: lang } = useLanguage();
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [vegOnly, setVegOnly] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [cartItems, setCartItems] = useState([]);
@@ -320,6 +322,58 @@ export function CustomerApp() {
   const [walletPaying, setWalletPaying] = useState(null); // 'google_pay' | 'apple_pay' | null
   const [billRequesting, setBillRequesting] = useState(false);
 
+  // Kept in sync with the latest `activeOrders` on every render so the
+  // 30s-later timeout below (whose closure is otherwise fixed at mount,
+  // deps []) can check the CURRENT order state at fire time, not whatever
+  // it was when the tab was hidden.
+  const hasActiveOrderRef = useRef(false);
+  useEffect(() => {
+    hasActiveOrderRef.current = activeOrders.length > 0;
+  }, [activeOrders]);
+
+  // Auto-clear on a backgrounded/closed tab. sessionStorage alone doesn't
+  // solve "the menu shouldn't stay open forever" on mobile — a locked
+  // screen or a backgrounded browser tab routinely stays alive for hours,
+  // so without this the cart (and whatever modal/search state was on
+  // screen) just sits there indefinitely. Page Visibility is the only
+  // signal available (there's no reliable "tab actually closed" event);
+  // `hidden` also fires on a quick app-switch or screen lock, which is why
+  // this is a debounced timeout rather than an instant clear — cancelled on
+  // `visible` so a brief glance away never wipes an in-progress order. A
+  // customer with an active order (placed, awaiting kitchen/payment) is
+  // never cleared this way, however long the tab stays hidden — they still
+  // need this screen to see their order/pay the bill when they come back.
+  const backgroundClearTimeoutRef = useRef(null);
+  useEffect(() => {
+    const BACKGROUND_CLEAR_DELAY_MS = 30000;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        backgroundClearTimeoutRef.current = setTimeout(() => {
+          if (hasActiveOrderRef.current) return;
+          setCartItems([]);
+          setIsCartOpen(false);
+          setSelectedProduct(null);
+          setIsBillModalOpen(false);
+          setSelectedCategory("all");
+          setSearchQuery("");
+          setVegOnly(false);
+        }, BACKGROUND_CLEAR_DELAY_MS);
+      } else if (backgroundClearTimeoutRef.current) {
+        clearTimeout(backgroundClearTimeoutRef.current);
+        backgroundClearTimeoutRef.current = null;
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (backgroundClearTimeoutRef.current) {
+        clearTimeout(backgroundClearTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleRequestBill = async (methodKey) => {
     if (billRequesting) return;
     setBillRequesting(true);
@@ -369,10 +423,35 @@ export function CustomerApp() {
     });
   }, [PRODUCTS, discounts]);
 
+  // Axtarış + VEG süzgəci + kateqoriya eyni anda tətbiq olunur (reference
+  // dizaynda hər üçü bir sırada birgə işləyir). Axtarış hazırkı dildə
+  // göstərilən ad/təsvirə görə uyğunlaşır — getLocalizedProduct-un mövcud
+  // DB tərcüməsi → köhnə demo map → AZ mənbə zənciri (lib/translations.js)
+  // ilə eynidir, ona görə axtarış nəticələri ekranda görünənlə üst-üstə düşür.
+  const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
-    if (selectedCategory === "all") return pricedProducts;
-    return pricedProducts.filter(p => p.category === selectedCategory);
-  }, [selectedCategory, pricedProducts]);
+    let list = selectedCategory === "all"
+      ? pricedProducts
+      : pricedProducts.filter(p => p.category === selectedCategory);
+
+    if (vegOnly) {
+      list = list.filter(p => p.isVegetarian);
+    }
+
+    if (normalizedQuery) {
+      list = list.filter(p => {
+        const localized = getLocalizedProduct(p, lang);
+        return (
+          localized.name?.toLowerCase().includes(normalizedQuery) ||
+          localized.description?.toLowerCase().includes(normalizedQuery)
+        );
+      });
+    }
+
+    return list;
+  }, [selectedCategory, pricedProducts, vegOnly, normalizedQuery, lang]);
+
+  const isFiltering = Boolean(normalizedQuery) || vegOnly;
 
   const cartTotalQty = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
@@ -452,6 +531,53 @@ export function CustomerApp() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-8 px-4 pt-6 sm:px-6">
+
+        {/* Axtarış + VEG süzgəci. Kateqoriya sırasından ayrıca, birgə bir sırada:
+            axtarış həmişəki kimi geniş kapsul, VEG düyməsi onun yanında sabit
+            enli — hər ikisi eyni "kapsul" forma dilini paylaşır ki, aşağıdakı
+            kateqoriya kaşeləri və şəkil üstü reytinq nişanı ilə vizual olaraq
+            bir ailədən görünsün. */}
+        <section className="flex items-center gap-2.5">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--k-text-3)]" aria-hidden="true" />
+            <Input
+              type="search"
+              inputMode="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={getLocalizedText("searchPlaceholder", lang)}
+              aria-label={getLocalizedText("searchPlaceholder", lang)}
+              className="!rounded-full pl-10 pr-9"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label={getLocalizedText("clearSearchLabel", lang)}
+                className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-[var(--k-text-3)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--k-focus)]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setVegOnly(v => !v)}
+            aria-pressed={vegOnly}
+            title={getLocalizedText("vegOnlyLabel", lang)}
+            className={cn(
+              'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-colors duration-[var(--k-dur)]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--k-focus)]',
+              vegOnly
+                ? 'border-[var(--k-success)] bg-[var(--k-success)] text-white'
+                : 'border-[var(--k-border)] bg-[var(--k-surface)] text-[var(--k-success)] hover:border-[var(--k-success)]',
+            )}
+          >
+            <Leaf className="h-[18px] w-[18px]" aria-hidden="true" />
+            <span className="sr-only">{getLocalizedText("vegOnlyLabel", lang)}</span>
+          </button>
+        </section>
 
         {/* Banners (Banner sistemi) — SuperAdmin restoranın banner funksiyasını söndürsə heç göstərilmir, plan-dan asılı olmayaraq (bax: lib/services/entitlementService.js) */}
         {hasFeature(restaurant, FEATURES.BANNERS) && banners.filter((b) => b.is_active).length > 0 && (
@@ -540,27 +666,49 @@ export function CustomerApp() {
           </section>
         )}
 
-        {/* Categories */}
+        {/* Categories. Icon-tile row instead of a text-pill row: the category
+            set is the customer's real primary navigation through the menu
+            (not decoration), so it earns the heavier, more tappable tile
+            treatment — each tile carries the admin's own emoji icon
+            (categories.icon) on a tint of the restaurant's own accent colour,
+            so this stays self-branded per tenant with zero new tokens. */}
         <section id="menu-categories" className="scroll-mt-20">
-          <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 no-scrollbar sm:-mx-6 sm:px-6">
-            <Pill active={selectedCategory === "all"} onClick={() => setSelectedCategory("all")}>
-              {getLocalizedText("allMenu", lang)}
-            </Pill>
+          <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 no-scrollbar sm:-mx-6 sm:px-6">
+            <CategoryTile
+              active={selectedCategory === "all"}
+              onClick={() => setSelectedCategory("all")}
+              icon={<UtensilsCrossed className="h-5 w-5" aria-hidden="true" />}
+              label={getLocalizedText("allMenu", lang)}
+            />
             {CATEGORIES.map(cat => (
-              <Pill
+              <CategoryTile
                 key={cat.id}
                 active={selectedCategory === cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-              >
-                <span aria-hidden="true">{cat.icon}</span>
-                {getLocalizedCategoryName(cat, lang)}
-              </Pill>
+                icon={<span aria-hidden="true" className="text-xl leading-none">{cat.icon}</span>}
+                label={getLocalizedCategoryName(cat, lang)}
+              />
             ))}
           </div>
         </section>
 
         {/* Products */}
         <section>
+          {/* Section heading. Names what the grid below is currently showing —
+              the selected category, or the whole menu — so the icon row above
+              and the grid read as one navigation unit rather than two
+              unrelated blocks. Hidden while filtering, where the grid is a
+              result set rather than a browsable section. */}
+          {filteredProducts.length > 0 && !isFiltering && (
+            <h2 className="mb-3.5 text-[19px] font-bold tracking-[-0.01em] text-[var(--k-text)]">
+              {selectedCategory === 'all'
+                ? getLocalizedText('allMenu', lang)
+                : getLocalizedCategoryName(
+                    CATEGORIES.find(c => c.id === selectedCategory) || {},
+                    lang,
+                  )}
+            </h2>
+          )}
           {filteredProducts.length > 0 ? (
             <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
               {filteredProducts.map(product => (
@@ -569,12 +717,24 @@ export function CustomerApp() {
                   product={product}
                   onOpenDetail={setSelectedProduct}
                   onAddToCart={handleAddToCart}
-                  isFavorite={false}
-                  onToggleFavorite={() => {}}
                   lang={lang}
                 />
               ))}
             </div>
+          ) : isFiltering ? (
+            <EmptyState
+              icon={<Search className="w-5 h-5" />}
+              title={getLocalizedText("noSearchResultsTitle", lang)}
+              description={getLocalizedText("noSearchResultsDescription", lang)}
+              action={
+                <Button
+                  variant="secondary"
+                  onClick={() => { setSearchQuery(''); setVegOnly(false); }}
+                >
+                  {getLocalizedText("clearSearchLabel", lang)}
+                </Button>
+              }
+            />
           ) : (
             <EmptyState
               icon={<ShoppingCart className="w-5 h-5" />}
@@ -696,16 +856,30 @@ export function CustomerApp() {
           smear rather than depth. */}
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--k-border)] bg-[var(--k-surface)] pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto grid max-w-md grid-cols-4">
-          <BottomNavButton icon={<Home className="w-[18px] h-[18px]" />} label="Menu" active onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
-          <BottomNavButton icon={<ShoppingCart className="w-[18px] h-[18px]" />} label="Səbət" badge={cartTotalQty > 0 ? cartTotalQty : null} onClick={() => setIsCartOpen(true)} />
           <BottomNavButton
-            icon={<Bell className="w-[18px] h-[18px]" />}
-            label={waiterCooldownLeft > 0 ? `${waiterCooldownLeft}s` : 'Garson'}
+            icon={<Home className="h-[21px] w-[21px]" strokeWidth={2.2} />}
+            label={getLocalizedText("navMenu", lang)}
+            active
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          />
+          <BottomNavButton
+            icon={<ShoppingCart className="h-[21px] w-[21px]" strokeWidth={2.2} />}
+            label={getLocalizedText("navCart", lang)}
+            badge={cartTotalQty > 0 ? cartTotalQty : null}
+            onClick={() => setIsCartOpen(true)}
+          />
+          <BottomNavButton
+            icon={<Bell className="h-[21px] w-[21px]" strokeWidth={2.2} />}
+            label={waiterCooldownLeft > 0 ? `${waiterCooldownLeft}s` : getLocalizedText("navWaiter", lang)}
             loading={waiterCalling}
             disabled={waiterCooldownLeft > 0}
             onClick={handleCallWaiter}
           />
-          <BottomNavButton icon={<CreditCard className="w-[18px] h-[18px]" />} label="Hesab" onClick={() => setIsBillModalOpen(true)} />
+          <BottomNavButton
+            icon={<CreditCard className="h-[21px] w-[21px]" strokeWidth={2.2} />}
+            label={getLocalizedText("navBill", lang)}
+            onClick={() => setIsBillModalOpen(true)}
+          />
         </div>
       </nav>
 
@@ -715,8 +889,6 @@ export function CustomerApp() {
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
         onAddToCartWithOptions={handleAddToCart}
-        isFavorite={false}
-        onToggleFavorite={() => {}}
         lang={lang}
       />
 
@@ -845,26 +1017,77 @@ export function CustomerApp() {
   );
 }
 
+// Kateqoriya kaşesi: ikon üstdə, etiket altda, dar sütun. Aktiv olmayanda
+// --k-accent-soft üzərində --k-accent tonunda ikon (restoranın öz brend
+// rəngi), aktiv olanda tam dolu --k-accent — Pill komponenti ilə eyni
+// active/passive məntiqi, sadəcə kvadrat kaşe formasında.
+function CategoryTile({ icon, label, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className="group flex w-[68px] shrink-0 flex-col items-center gap-1.5 focus-visible:outline-none"
+    >
+      <span
+        className={cn(
+          'flex h-14 w-14 items-center justify-center rounded-[var(--k-r-lg)] border transition-colors duration-[var(--k-dur)]',
+          'group-focus-visible:ring-2 group-focus-visible:ring-[var(--k-focus)]',
+          active
+            ? 'border-[var(--k-accent)] bg-[var(--k-accent)] text-[var(--k-accent-fg)]'
+            : 'border-transparent bg-[var(--k-accent-soft)] text-[var(--k-accent)]',
+        )}
+      >
+        {icon}
+      </span>
+      <span
+        className={cn(
+          'line-clamp-2 w-full text-center text-[11px] leading-tight',
+          active ? 'font-semibold text-[var(--k-text)]' : 'font-medium text-[var(--k-text-3)]',
+        )}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
+// Alt naviqasiya düyməsi. Aktiv vəziyyət ikonun arxasındakı accent-tonlu
+// kapsulla verilir — CategoryTile və Fərdiləşdirmə çipləri ilə eyni "seçilmiş =
+// accent-soft fon + accent ikon" dili, ona görə bütün panel bir sistem kimi
+// oxunur. Yalnız rəng dəyişikliyi ilə kifayətlənmirik: kiçik 10px etiketdə
+// tək başına rəng fərqi kontrast baxımından zəif siqnaldır.
 function BottomNavButton({ icon, label, active, badge, loading, disabled, onClick }) {
   return (
     <button
       onClick={onClick}
       disabled={loading || disabled}
+      aria-current={active ? 'page' : undefined}
       className={cn(
-        'flex flex-col items-center justify-center gap-1 py-2.5 transition-colors duration-[var(--k-dur)]',
-        'disabled:opacity-45 focus-visible:outline-none focus-visible:bg-[var(--k-surface-2)]',
+        'group flex flex-col items-center justify-center gap-1 py-2 transition-colors duration-[var(--k-dur)]',
+        'disabled:opacity-45 focus-visible:outline-none',
         active ? 'text-[var(--k-accent)]' : 'text-[var(--k-text-3)]',
       )}
     >
-      <span className="relative flex items-center justify-center">
-        {loading ? <Loader2 className="w-[18px] h-[18px] animate-spin" /> : icon}
+      <span
+        className={cn(
+          'relative flex h-9 w-[52px] items-center justify-center rounded-full transition-colors duration-[var(--k-dur)]',
+          'group-focus-visible:ring-2 group-focus-visible:ring-[var(--k-focus)]',
+          active
+            ? 'bg-[var(--k-accent-soft)]'
+            : 'bg-transparent group-hover:bg-[var(--k-surface-2)]',
+        )}
+      >
+        {loading ? <Loader2 className="h-[21px] w-[21px] animate-spin" /> : icon}
         {badge != null && (
-          <span className="k-nums absolute -right-2.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--k-accent)] px-1 text-[9px] font-semibold text-[var(--k-accent-fg)]">
+          <span className="k-nums absolute right-1 top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--k-accent)] px-1 text-[9px] font-semibold text-[var(--k-accent-fg)] ring-2 ring-[var(--k-surface)]">
             {badge}
           </span>
         )}
       </span>
-      <span className="text-[10px] font-medium">{label}</span>
+      <span className={cn('text-[10px] leading-none', active ? 'font-semibold' : 'font-medium')}>
+        {label}
+      </span>
     </button>
   );
 }

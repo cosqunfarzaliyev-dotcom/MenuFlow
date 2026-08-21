@@ -2,7 +2,7 @@
 
 // ---------------------------------------------------------------------------
 // components/kit/ConfirmDialog.jsx — same API as the older
-// components/ui/ConfirmDialog (`useConfirmDialog()` -> { confirm, close,
+// the old kit's ConfirmDialog (`useConfirmDialog()` -> { confirm, close,
 // dialogProps }), so migrating a panel is an import swap, not a rewrite of its
 // delete flows. Two shapes, both already relied on: a real confirm
 // (Cancel + destructive Confirm) and a plain alert (single OK, `isAlert`).

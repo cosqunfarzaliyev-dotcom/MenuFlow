@@ -8,7 +8,7 @@ import { useAppStore, ORDER_STATUS } from '@/lib/store';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { subscribeOrders, subscribeAlerts } from '@/lib/services/realtime';
 import { isAccessBlocked, accessBlockReason } from '@/lib/services/billingService';
-import { CheckCircle2, Clock, Bell, UserSquare2, UtensilsCrossed, Check, QrCode, Lock, Shield } from 'lucide-react';
+import { CheckCircle2, Clock, Bell, BellRing, BellOff, UserSquare2, UtensilsCrossed, Check, Lock, Shield } from 'lucide-react';
 import { OrderCard } from '@/components/staff/OrderCard';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
 import { LoadingState, ErrorState, EmptyState, PageSkeleton, Tabs, TabsTrigger, LanguageToggle, Card, CardHeader, CardBody, Tag, Button, PageHeader, Banner, ConfirmDialog, useConfirmDialog } from '@/components/kit';
@@ -16,9 +16,12 @@ import { buttonVariants } from '@/components/kit/variants';
 import { cn } from '@/lib/utils';
 import { CAPABILITIES } from '@/lib/services/capabilityService';
 import { useCapability } from '@/hooks/useCapability';
+import { FEATURES } from '@/lib/services/entitlementService';
+import { useFeature } from '@/hooks/useEntitlement';
 import { useStaffTranslation } from '@/lib/i18n/dictionaries/staff';
 import { useCommonTranslation } from '@/lib/i18n/dictionaries/common';
 import { useLocaleSync } from '@/hooks/useLocaleSync';
+import { isPushSupported, getPushPermission, isSubscribedOnThisDevice, subscribeToPush, unsubscribeFromPush } from '@/lib/services/pushService';
 
 export function StaffApp() {
   const {
@@ -39,7 +42,7 @@ export function StaffApp() {
     setIsAdminAuthenticated,
   } = useAppStore();
   const settings = restaurant ? { restaurantName: restaurant.name } : (rawSettings || { restaurantName: 'MenuFlow' });
-  const { t } = useStaffTranslation();
+  const { t, language } = useStaffTranslation();
   const { t: tc } = useCommonTranslation();
   useLocaleSync(profile?.locale);
   // Formal capability layer (Master Plan Phase 6) — both roles that reach
@@ -48,6 +51,7 @@ export function StaffApp() {
   // exists so a future view-only staff tier is a role-matrix edit, not a
   // StaffApp rewrite.
   const canManageOrders = useCapability(CAPABILITIES.ORDERS_MANAGE);
+  const pushNotificationsEnabled = useFeature(FEATURES.PUSH_NOTIFICATIONS);
   // Order cancellation — see OrderCard.jsx's `onCancel` prop. Confirmed
   // before it fires (irreversible, and the customer-facing menu shows the
   // order as cancelled immediately), same useConfirmDialog pattern
@@ -89,9 +93,13 @@ export function StaffApp() {
     router.replace('/login');
   };
 
-  const getTableName = useCallback((id) => {
+  // `fallbackNumber` is the human-readable table_number (order.table/
+  // alert.table) — used only if the table can't be found by id (e.g. a
+  // deleted table with orphaned orders), so that rare case still shows
+  // "Masa 5" instead of a raw UUID.
+  const getTableName = useCallback((id, fallbackNumber) => {
     const table = tables.find(tb => tb.id === id);
-    return table ? table.name : t('tableFallbackName')(id);
+    return table ? table.name : t('tableFallbackName')(fallbackNumber ?? id);
   }, [tables, t]);
 
   const playChimeSound = useCallback(() => {
@@ -201,7 +209,17 @@ export function StaffApp() {
         cleanup();
       }
     };
-  }, [loadOrders, loadAlerts, loadTables, triggerNotification, isAdminAuthenticated, isAuthorizedStaff, t]);
+  // `language` (a stable primitive from useLanguageStore), NOT `t` — `t` is
+  // a brand-new function reference on every single render
+  // (createTranslationHook, lib/i18n/index.js: `const t = (key) => ...`,
+  // never memoized). With `t` in this array, the first setLoading(false)
+  // above caused a re-render, which produced a new `t`, which re-ran this
+  // whole effect — re-fetching orders/alerts/tables and re-subscribing to
+  // realtime — forever. That's what an endless loading screen that never
+  // actually shows the panel looks like. `language` still gives the
+  // intended behavior (re-subscribe so the realtime chime text picks up a
+  // language change) without recreating itself on every unrelated render.
+  }, [loadOrders, loadAlerts, loadTables, triggerNotification, isAdminAuthenticated, isAuthorizedStaff, language]);
 
 
   const pendingOrders = orders.filter(o => o.status === ORDER_STATUS.PENDING);
@@ -370,20 +388,8 @@ export function StaffApp() {
             description={t('panelSubtitle')(settings.restaurantName || "MenuFlow")}
             actions={
               <>
+                {pushNotificationsEnabled && <PushNotificationToggle profileId={profile?.id} />}
                 <LanguageToggle profile={profile} />
-                {/* / is now the public marketing homepage, not the customer
-                    menu (see app/page.jsx) — link to this restaurant's own
-                    real menu when the slug is known, falling back to the
-                    marketing home rather than a dead link while it's still
-                    loading. Styled via buttonVariants since a Link can't
-                    render the Button primitive itself. */}
-                <Link
-                  href={restaurant?.slug ? `/menu/${restaurant.slug}` : '/'}
-                  className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'gap-2')}
-                >
-                  <QrCode className="w-4 h-4" />
-                  <span>{t('customerMenuLink')}</span>
-                </Link>
 
                 <Button variant="secondary" size="sm" onClick={handleLogout}>
                   {t('logoutShort')}
@@ -436,7 +442,7 @@ export function StaffApp() {
                 {pendingOrders.length > 0 ? (
                   <div className="space-y-4">
                     {pendingOrders.map(order => (
-                      <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.ACCEPTED} nextLabel={t('acceptButton')} readOnly={!canManageOrders} onCancel={canManageOrders ? handleCancelOrder : undefined} />
+                      <OrderCard key={order.id} order={order} tableName={getTableName(order.tableId, order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.ACCEPTED} nextLabel={t('acceptButton')} readOnly={!canManageOrders} onCancel={canManageOrders ? handleCancelOrder : undefined} />
                     ))}
                   </div>
                 ) : (
@@ -457,9 +463,30 @@ export function StaffApp() {
                   </h3>
                 </div>
                 <div className="space-y-4">
-                  {preparingOrders.map(order => (
-                    <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} nextStatus={ORDER_STATUS.READY} nextLabel={t('readyButton')} readOnly={!canManageOrders} onCancel={canManageOrders ? handleCancelOrder : undefined} />
-                  ))}
+                  {preparingOrders.map(order => {
+                    // This column mixes ACCEPTED and PREPARING orders (see
+                    // the filter above) but handleStatusChange only ever
+                    // advances ONE step at a time — an ACCEPTED order still
+                    // needs to become PREPARING first. A single hardcoded
+                    // "Ready" label/nextStatus for the whole column used to
+                    // mean clicking it on a freshly-accepted order silently
+                    // moved it to PREPARING (still in this same column, same
+                    // card, same label) with no visible change — looked like
+                    // the button just didn't work. Computed per-order instead.
+                    const isAccepted = order.status === ORDER_STATUS.ACCEPTED;
+                    return (
+                      <OrderCard
+                        key={order.id}
+                        order={order}
+                        tableName={getTableName(order.tableId, order.table)}
+                        onStatusChange={handleStatusChange}
+                        nextStatus={isAccepted ? ORDER_STATUS.PREPARING : ORDER_STATUS.READY}
+                        nextLabel={isAccepted ? t('startPreparingButton') : t('readyButton')}
+                        readOnly={!canManageOrders}
+                        onCancel={canManageOrders ? handleCancelOrder : undefined}
+                      />
+                    );
+                  })}
                 </div>
               </div>
 
@@ -473,7 +500,7 @@ export function StaffApp() {
                 </div>
                 <div className="space-y-4">
                   {finishedOrders.slice(0, 10).map(order => (
-                    <OrderCard key={order.id} order={order} tableName={getTableName(order.table)} onStatusChange={handleStatusChange} isCompleted={order.status === ORDER_STATUS.SERVED} nextLabel={t('servedButton')} readOnly={!canManageOrders} />
+                    <OrderCard key={order.id} order={order} tableName={getTableName(order.tableId, order.table)} onStatusChange={handleStatusChange} isCompleted={order.status === ORDER_STATUS.SERVED} nextLabel={t('servedButton')} readOnly={!canManageOrders} />
                   ))}
                 </div>
               </div>
@@ -506,7 +533,7 @@ export function StaffApp() {
                         </div>
                         <div className="min-w-0">
                           <h4 className="font-semibold text-[var(--k-text)] flex items-center gap-2">
-                            {getTableName(alert.table)}
+                            {getTableName(alert.tableId, alert.table)}
                             {alert.callCount > 1 && (
                               <Tag tone="warning" size="sm" title={t('calledTimesTitle')(alert.callCount)}>
                                 ×{alert.callCount}
@@ -582,6 +609,81 @@ export function StaffApp() {
 
       <ConfirmDialog {...confirmDialog.dialogProps} />
     </div>
+  );
+}
+
+// "Bildirişləri aktivləşdir" — subscribes THIS device to Web Push
+// (lib/services/pushService.js) so a new order/waiter-call/bill-request
+// still surfaces (public/sw.js's `push` handler → an OS notification) when
+// the /staff tab is backgrounded or closed, not just via the in-app
+// Realtime toast + audio chime this panel already has. iOS Safari only
+// supports Web Push from an installed (Add to Home Screen) PWA — the
+// permission prompt still works either way, it just won't fire on iOS until
+// installed; not worth a platform-detection branch for a graceful-degrade
+// case the browser itself already handles (requestPermission()/subscribe()
+// simply reject there).
+function PushNotificationToggle({ profileId }) {
+  const { t } = useStaffTranslation();
+  // Lazy initializer, not a synchronous setState-in-effect: browser support
+  // is a stable fact of the render environment, not something that changes
+  // mid-session, so it only ever needs to be read once, at mount — no
+  // separate "unsupported" branch inside the effect below is needed.
+  const [supported] = useState(() => isPushSupported());
+  const [subscribed, setSubscribed] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!supported) return undefined;
+    let cancelled = false;
+    isSubscribedOnThisDevice().then((result) => {
+      if (!cancelled) setSubscribed(result);
+    });
+    return () => { cancelled = true; };
+  }, [supported]);
+
+  if (!supported) return null;
+
+  const handleToggle = async () => {
+    setBusy(true);
+    if (subscribed) {
+      const { error } = await unsubscribeFromPush();
+      if (!error) setSubscribed(false);
+    } else {
+      const { error } = await subscribeToPush(profileId);
+      if (!error) {
+        setSubscribed(true);
+      } else if (getPushPermission() === 'denied') {
+        // A rejected browser permission prompt can't be re-triggered
+        // programmatically — only the user's own browser settings can undo
+        // it, so the button's title attribute below points them there
+        // instead of retrying silently forever.
+      } else {
+        // Permission WAS granted but the actual subscribe() call still
+        // failed — e.g. the browser's own push service (Google/Mozilla's
+        // infrastructure) is unreachable (AbortError "push service not
+        // available": no network path to it, a corporate/VPN block, or a
+        // browser with it disabled). Previously this branch did nothing —
+        // the button just stopped spinning with zero explanation, which is
+        // indistinguishable from "the click didn't register." At least
+        // surface that it failed; there's nothing this app can do about an
+        // unreachable browser-level push service beyond that.
+        alert(t('pushSubscribeFailedHint'));
+      }
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Button
+      variant={subscribed ? 'secondary' : 'outline'}
+      size="sm"
+      onClick={handleToggle}
+      loading={busy}
+      title={getPushPermission() === 'denied' ? t('pushPermissionDeniedHint') : undefined}
+      icon={subscribed ? <BellRing className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+    >
+      {subscribed ? t('pushEnabledLabel') : t('pushEnableButton')}
+    </Button>
   );
 }
 

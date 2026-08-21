@@ -1,0 +1,18 @@
+-- ============================================================================
+-- MenuFlow — 0026-nın get_advisors tapıntısının düzəlişi
+-- ============================================================================
+-- push_order_to_pos() (trigger funksiyası) default olaraq PostgREST-ə
+-- /rest/v1/rpc/push_order_to_pos kimi açıq idi (hər `security definer`
+-- funksiya kimi). Bu, HEÇ VAXT birbaşa çağırılmamalıdır — yalnız
+-- orders_push_to_pos trigger-i tərəfindən. Digər daxili trigger funksiyaları
+-- (enforce_order_rate_limit və s.) bu layihədə əvvəldən eyni açıqlığı
+-- daşıyır (mövcud, düzəldilməmiş boşluq), amma yeni kod köhnə boşluğu
+-- təkrarlamamalıdır — burada bağlanır.
+--
+-- (pg_net-in `public` sxemində qeydiyyatlı olması ayrıca INFO-səviyyəli
+-- tapıntıdır — pg_net "SET SCHEMA"-nı dəstəkləmir, düzəltmək üçün
+-- drop+recreate lazımdır; net.http_post() öz ayrıca `net` sxemində yaşayır
+-- və bundan təsirlənmir, ona görə funksional risk yoxdur, kosmetik məsələ
+-- olaraq saxlanılır.)
+-- ============================================================================
+revoke all on function public.push_order_to_pos() from public, anon, authenticated;

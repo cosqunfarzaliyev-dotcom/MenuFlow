@@ -4,7 +4,7 @@
 // Every class here reads `var(--k-*)` from components/kit/tokens.css. No raw
 // slate-*, no hex literals, no gradients: the whole palette is swappable from
 // one CSS file. That is the main structural difference from the older
-// components/ui/variants.js, where ~17 slate literals leaked through the
+// the old primitive kit, where ~17 slate literals leaked through the
 // token layer itself.
 //
 // `tone` (not `context`) selects the theme, and it exists only where a recipe

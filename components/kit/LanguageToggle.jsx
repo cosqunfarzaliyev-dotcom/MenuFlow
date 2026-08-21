@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // components/kit/LanguageToggle.jsx
 //
-// Behaviourally identical to components/ui/LanguageSwitcher — same
+// Behaviourally identical to the old kit's LanguageSwitcher — same
 // `useLanguage()` store read, same `setLanguageAndSync(code, profile)` write
 // (which persists to profiles.locale via the update_my_locale RPC when a
 // profile is passed). Only the chrome differs.

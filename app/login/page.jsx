@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { fetchMyProfile } from '@/lib/services/authService';
 import { Loader2 } from 'lucide-react';
-import { LanguageSwitcher } from '@/components/ui';
+import { LanguageToggle } from '@/components/kit';
 import { useAuthTranslation } from '@/lib/i18n/dictionaries/auth';
 
 const HOME_FOR_ROLE = {
@@ -115,7 +115,7 @@ function LoginPageContent() {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center">
         <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
       </div>
     );
@@ -127,10 +127,10 @@ function LoginPageContent() {
   const isStaffLogin = next === '/staff';
 
   return (
-    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-4">
+    <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-sm bg-slate-950/60 backdrop-blur p-8 rounded-3xl border border-slate-800 text-center shadow-2xl">
         <div className="flex justify-center mb-4">
-          <LanguageSwitcher context="dark" />
+          <LanguageToggle />
         </div>
 
         <div className={`h-16 px-5 rounded-2xl mx-auto flex items-center justify-center border mb-6 ${
@@ -199,7 +199,7 @@ function LoginPageContent() {
 export default function LoginPage() {
   return (
     <Suspense fallback={(
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center">
         <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
       </div>
     )}>

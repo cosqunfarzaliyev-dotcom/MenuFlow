@@ -13,6 +13,9 @@
  *
  * Run: node scripts/verify-entitlements.mjs
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import {
   FEATURES,
   FEATURE_REGISTRY,
@@ -21,6 +24,8 @@ import {
   hasFeature,
   getEntitlements,
 } from '../lib/services/entitlementService.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 let failed = false;
 const fail = (msg) => {
@@ -41,9 +46,18 @@ for (const key of [FEATURES.APPLE_PAY, FEATURES.GOOGLE_PAY, FEATURES.BANNERS]) {
 //    feature_flags nor plan (verified against the live view definition).
 //    Every launch feature must still resolve true, matching the old
 //    `restaurant?.feature_flags?.x !== false` reading exactly.
+//
+//    Scoped to the same grandfathered launch keys as check 1, NOT all of
+//    FEATURE_KEYS — a feature added later (e.g. pos_integration, an
+//    admin-only entitlement that deliberately defaults false, see its own
+//    FEATURE_REGISTRY comment) is neither customer-facing nor grandfathered,
+//    so it has no business being asserted true here. Looping over every
+//    registered key would make this check fail the moment ANY new
+//    defaultEnabled:false feature is registered, regardless of whether it
+//    has anything to do with the customer surface.
 {
   const customerSurfaceRow = { id: 'r1', slug: 'demo', name: 'Demo', is_active: true };
-  for (const key of FEATURE_KEYS) {
+  for (const key of [FEATURES.APPLE_PAY, FEATURES.GOOGLE_PAY, FEATURES.BANNERS]) {
     if (hasFeature(customerSurfaceRow, key) !== true) {
       fail(`customer-surface row (no feature_flags/plan) must resolve ${key} to true, got ${hasFeature(customerSurfaceRow, key)}`);
     }
@@ -141,6 +155,18 @@ for (const key of [FEATURES.APPLE_PAY, FEATURES.GOOGLE_PAY, FEATURES.BANNERS]) {
 //    codebase today (DB column default; basic/pro plan seeds) must resolve
 //    to itself when read back, i.e. the resolver introduces no observable
 //    change for already-provisioned restaurants.
+//
+//    Each shape is checked against its OWN declared keys (Object.keys(flags)),
+//    not the full FEATURE_KEYS list. 'DB column default (0016)' deliberately
+//    stays a 3-key snapshot of what that migration actually wrote — it
+//    documents a real historical row shape, from before pos_integration
+//    (0026) existed, and a restaurant row provisioned back then genuinely
+//    has no pos_integration key in its feature_flags jsonb. Falling through
+//    to the plan default for that missing key is correct new behavior for a
+//    newly-registered feature, not a regression this check should catch;
+//    padding the shape with a guessed value would make it stop representing
+//    real historical data. (PLAN_FEATURE_DEFAULTS.basic/pro happen to cover
+//    every current key already — check 8 is what actually enforces that.)
 {
   const shapes = [
     { name: 'DB column default (0016)', flags: { apple_pay: true, google_pay: true, banners: true } },
@@ -149,9 +175,43 @@ for (const key of [FEATURES.APPLE_PAY, FEATURES.GOOGLE_PAY, FEATURES.BANNERS]) {
   ];
   for (const { name, flags } of shapes) {
     const restaurant = { plan: 'basic', feature_flags: flags };
-    for (const key of FEATURE_KEYS) {
+    for (const key of Object.keys(flags)) {
       if (hasFeature(restaurant, key) !== flags[key]) {
         fail(`${name}: resolved ${key}=${hasFeature(restaurant, key)}, expected ${flags[key]} (explicit flags must always win)`);
+      }
+    }
+  }
+}
+
+// 10. /pricing must have a human label for EVERY registered feature.
+//    app/[locale]/pricing/page.jsx maps feature key -> pricing.js key via
+//    FEATURE_LABEL_KEYS, falling back to `t(key)`, whose own last resort is
+//    the raw key — so a feature added to FEATURES without a label here
+//    silently renders as a literal `pos_integration` on the PUBLIC pricing
+//    page. That is exactly what happened when POS_INTEGRATION and
+//    PUSH_NOTIFICATIONS were registered; this check is why it can't recur.
+//    Text assertions (not import) because both files resolve via the `@/`
+//    alias that plain Node can't follow — same reasoning as
+//    scripts/verify-i18n-keys.mjs's own header.
+{
+  const pricingPage = readFileSync(path.join(ROOT, 'app', '[locale]', 'pricing', 'page.jsx'), 'utf8');
+  const pricingDict = readFileSync(path.join(ROOT, 'lib', 'i18n', 'dictionaries', 'pricing.js'), 'utf8');
+
+  const mapBody = pricingPage.match(/const FEATURE_LABEL_KEYS = \{([\s\S]*?)\};/)?.[1] ?? '';
+  const mapped = new Map(
+    [...mapBody.matchAll(/([a-z_]+):\s*'([A-Za-z0-9_]+)'/g)].map((m) => [m[1], m[2]]),
+  );
+
+  for (const key of FEATURE_KEYS) {
+    const labelKey = mapped.get(key);
+    if (!labelKey) {
+      fail(`/pricing: feature '${key}' has no FEATURE_LABEL_KEYS entry — it would render as the raw key`);
+      continue;
+    }
+    for (const locale of ['az', 'en', 'ru']) {
+      const block = pricingDict.split(`  ${locale}: {`)[1]?.split('\n  },')[0] ?? '';
+      if (!block.includes(`${labelKey}:`)) {
+        fail(`/pricing: '${labelKey}' (for feature '${key}') missing from pricing.js ${locale} block`);
       }
     }
   }
@@ -161,4 +221,4 @@ if (failed) {
   process.exit(1);
 }
 
-console.log('PASS: entitlement precedence chain resolves correctly for all 9 checks');
+console.log('PASS: entitlement precedence chain resolves correctly for all 10 checks');

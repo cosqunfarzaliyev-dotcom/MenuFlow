@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { KeyRound, Loader2, CheckCircle2 } from 'lucide-react';
-import { LanguageSwitcher } from '@/components/ui';
+import { LanguageToggle } from '@/components/kit';
 import { useAuthTranslation } from '@/lib/i18n/dictionaries/auth';
 
 export default function ResetPasswordPage() {
@@ -61,7 +61,7 @@ export default function ResetPasswordPage() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center">
         <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
       </div>
     );
@@ -69,7 +69,7 @@ export default function ResetPasswordPage() {
 
   if (!hasRecoverySession) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
         <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
           <h2 className="text-xl font-bold text-white mb-2">{t('invalidLinkTitle')}</h2>
           <p className="text-slate-400 text-sm mb-6">
@@ -85,7 +85,7 @@ export default function ResetPasswordPage() {
 
   if (done) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
         <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
           <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-white mb-2">{t('passwordUpdatedTitle')}</h2>
@@ -96,10 +96,10 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+    <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm bg-slate-950/60 backdrop-blur p-8 rounded-3xl border border-slate-800 text-center">
         <div className="flex justify-center mb-4">
-          <LanguageSwitcher context="dark" />
+          <LanguageToggle />
         </div>
         <div className="w-16 h-16 bg-slate-900 rounded-2xl mx-auto flex items-center justify-center border border-slate-800 mb-6">
           <KeyRound className="w-8 h-8 text-blue-500" />

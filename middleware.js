@@ -63,7 +63,11 @@ export async function middleware(request) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    const loginUrl = new URL("/login", request.url);
+    // /superadmin gets its own dedicated entry point (app/superadmin-login)
+    // instead of the shared multi-role /login — see that page's header
+    // comment for why it's a sibling route, not nested under /superadmin.
+    const loginPath = prefix === "/superadmin" ? "/superadmin-login" : "/login";
+    const loginUrl = new URL(loginPath, request.url);
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }

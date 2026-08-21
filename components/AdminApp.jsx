@@ -11,18 +11,20 @@ import {
   Settings, Plus, Edit2, Trash2, QrCode, Lock, BarChart3, Users, Download, Printer,
   TrendingUp, Clock, Activity, CheckCircle2, LayoutDashboard, Table2, ListOrdered, FileBarChart2,
   Search, Bell, ChevronRight, UserCircle2, Package, DollarSign, Megaphone, Palette, ClipboardList,
-  Wallet, CreditCard, Smartphone,
+  Wallet, CreditCard, Smartphone, Plug,
 } from 'lucide-react';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
 import {
   LoadingState, ErrorState, EmptyState, PageSkeleton, Sheet, SheetHeader, SheetFooter, Banner, Tabs, TabsTrigger,
   Sidebar, SidebarMenuButton, ConfirmDialog, useConfirmDialog, Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell, TableEmptyRow,
-  Card, CardHeader, CardBody, PageHeader, Button, Input, Select, Textarea, Checkbox, Field, Tag, LanguageToggle,
+  Card, CardHeader, CardBody, PageHeader, Button, Input, Select, Textarea, Checkbox, Field, Tag, LanguageToggle, Divider,
+  ImageUploadField,
 } from '@/components/kit';
 import { buttonVariants } from '@/components/kit/variants';
 import { QRCodeSVG } from 'qrcode.react';
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { SettingsTab } from '@/components/SettingsTab';
+import { IntegrationsTab } from '@/components/IntegrationsTab';
 import { PromotionsTab } from '@/components/PromotionsTab';
 import { DesignTab } from '@/components/DesignTab';
 import { AuditLogTab } from '@/components/AuditLogTab';
@@ -43,7 +45,7 @@ export function AdminApp() {
     products, categories, createProduct, updateProduct, deleteProduct, createCategory, updateCategory, deleteCategory, 
     tables, loadTables, loadMenuData, loadOrders, loadAlerts, updateTableName, isAdminAuthenticated, setIsAdminAuthenticated, orders,
     qrTokensByTableId, loadQrTokens,
-    settings: rawSettings, updateSettings, profile, loadProfile, restaurant,
+    settings: rawSettings, updateRestaurantProfile, profile, loadProfile, restaurant,
     loadPlans,
   } = useAppStore();
 
@@ -94,15 +96,15 @@ export function AdminApp() {
   // Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState(null);
-  const [categoryForm, setCategoryForm] = useState({ name: '', icon: '' });
+  const [categoryForm, setCategoryForm] = useState({ name: '', icon: '', image: '', translations: {} });
 
   const handleOpenCategoryModal = (category = null) => {
     if (category) {
       setEditingCategoryId(category.id);
-      setCategoryForm({ name: category.name, icon: category.icon });
+      setCategoryForm({ name: category.name, icon: category.icon, image: category.image || '', translations: category.translations || {} });
     } else {
       setEditingCategoryId(null);
-      setCategoryForm({ name: '', icon: '' });
+      setCategoryForm({ name: '', icon: '', image: '', translations: {} });
     }
     setIsCategoryModalOpen(true);
   };
@@ -139,9 +141,9 @@ export function AdminApp() {
   // Product Modal State
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState(null);
-  const [productForm, setProductForm] = useState({ name: '', category: '', price: '', description: '', image: '', prepTimeMinutes: '', isPopular: false, isChefChoice: false, isSpicy: false, isVegetarian: false, options: [] });
+  const [productForm, setProductForm] = useState({ name: '', category: '', price: '', description: '', image: '', prepTimeMinutes: '', caloriesValue: '', proteinValue: '', carbsValue: '', fatValue: '', isPopular: false, isChefChoice: false, isSpicy: false, isVegetarian: false, options: [], translations: {} });
 
-  // Confirmation dialog — shared components/ui/ConfirmDialog (Phase B),
+  // Confirmation dialog — shared kit ConfirmDialog (Phase B),
   // promoted from what used to be a local ConfirmModal + confirmState pair
   // in this file.
   const confirmDialog = useConfirmDialog();
@@ -158,15 +160,22 @@ export function AdminApp() {
         // prepTimeMinutes is the raw integer; product.prepTime is the
         // formatted display string and must never be fed back into the form.
         prepTimeMinutes: product.prepTimeMinutes ?? '',
+        // Same rule for nutrition: the *Value fields are the raw numbers,
+        // product.calories/protein/... are formatted display strings.
+        caloriesValue: product.caloriesValue ?? '',
+        proteinValue: product.proteinValue ?? '',
+        carbsValue: product.carbsValue ?? '',
+        fatValue: product.fatValue ?? '',
         isPopular: !!product.isPopular,
         isChefChoice: !!product.isChefChoice,
         isSpicy: !!product.isSpicy,
         isVegetarian: !!product.isVegetarian,
-        options: Array.isArray(product.options) ? product.options : []
+        options: Array.isArray(product.options) ? product.options : [],
+        translations: product.translations || {},
       });
     } else {
       setEditingProductId(null);
-      setProductForm({ name: '', category: categories[0]?.id || '', price: '', description: '', image: '', prepTimeMinutes: '', isPopular: false, isChefChoice: false, isSpicy: false, isVegetarian: false, options: [] });
+      setProductForm({ name: '', category: categories[0]?.id || '', price: '', description: '', image: '', prepTimeMinutes: '', caloriesValue: '', proteinValue: '', carbsValue: '', fatValue: '', isPopular: false, isChefChoice: false, isSpicy: false, isVegetarian: false, options: [], translations: {} });
     }
     setIsProductModalOpen(true);
   };
@@ -463,6 +472,7 @@ export function AdminApp() {
     { key: 'audit', label: t('navAudit'), icon: <ClipboardList /> },
     { key: 'users', label: t('navUsers'), icon: <Users /> },
     { key: 'settings', label: t('navSettings'), icon: <Settings /> },
+    { key: 'integrations', label: t('navIntegrations'), icon: <Plug /> },
   ];
 
   const PAGE_TITLES = {
@@ -479,12 +489,13 @@ export function AdminApp() {
     audit: t('titleAudit'),
     users: t('titleUsers'),
     settings: t('titleSettings'),
+    integrations: t('titleIntegrations'),
   };
 
   return (
     <div className="kit-dark min-h-screen bg-[var(--k-bg)] text-[var(--k-text)] font-sans flex">
 
-      {/* Sidebar — kit's Sidebar (ported from components/ui/Sidebar.jsx for
+      {/* Sidebar — kit's Sidebar (ported from the old primitive kit for
           this panel, see components/kit/Sidebar.jsx) keeps the same mobile
           scrim + off-canvas drawer behavior; only the tokens changed. */}
       <Sidebar
@@ -516,14 +527,6 @@ export function AdminApp() {
             <Link href="/staff" className="w-full flex items-center justify-center gap-2 h-9 text-[var(--k-success)] hover:text-[var(--k-text)] bg-[var(--k-success-soft)] hover:bg-[var(--k-success)] rounded-[var(--k-r)] font-medium transition-colors text-xs">
               <UtensilsCrossed className="w-4 h-4" />
               <span>{t('staffPanelLink')}</span>
-            </Link>
-            {/* / is now the public marketing homepage, not the customer menu
-                (see app/page.jsx) — link to this admin's own real menu when
-                the slug is known, falling back to the marketing home rather
-                than a dead link while it's still loading. */}
-            <Link href={restaurant?.slug ? `/menu/${restaurant.slug}` : '/'} className="w-full flex items-center justify-center gap-2 h-9 text-[var(--k-accent)] hover:text-[var(--k-accent-fg)] bg-[var(--k-accent-soft)] hover:bg-[var(--k-accent)] rounded-[var(--k-r)] font-medium transition-colors text-xs">
-              <QrCode className="w-4 h-4" />
-              <span>{t('customerMenuLink')}</span>
             </Link>
             <button onClick={handleLogout} className="w-full h-9 text-[var(--k-text-2)] hover:text-[var(--k-text)] bg-[var(--k-surface-2)] border border-[var(--k-border)] hover:bg-[var(--k-surface-3)] rounded-[var(--k-r)] font-medium transition-colors text-xs">
               {t('logoutButton')}
@@ -649,12 +652,12 @@ export function AdminApp() {
             <AuditLogTab />
           )}
 
-          {/* İstifadəçilər */}
-          {activeTab === 'users' && (
-            <UsersPlaceholder profile={profile} restaurant={restaurant} settings={settings} />
+          {/* İstifadəçilər — oxu-only heyət siyahısı (0028). */}
+          {activeTab === 'users' && can[CAPABILITIES.USERS_VIEW] && (
+            <UsersTab profile={profile} restaurant={restaurant} settings={settings} />
           )}
 
-          {/* Məhsullar — migrated to Card/PageHeader/Table/Button (components/ui).
+          {/* Məhsullar — migrated to Card/PageHeader/Table/Button (kit).
               Pulled out of the shared settings/categories/qrcodes wrapper below
               (which stays exactly as it was) since Products now owns its own
               PageHeader + Card, not the plain bg-slate-900/60 box. */}
@@ -744,7 +747,7 @@ export function AdminApp() {
           )}
 
           {/* Kateqoriyalar — migrated to Card/PageHeader/Button/Badge/EmptyState
-              (components/ui), same pattern as the Məhsullar block above.
+              (kit), same pattern as the Məhsullar block above.
               Pulled out of the shared settings/qrcodes wrapper below, which
               stays exactly as it was for those two tabs. The per-category
               product-count Badge is a pure display addition (products are
@@ -818,7 +821,7 @@ export function AdminApp() {
           )}
 
           {/* QR Kodları — migrated to Card/PageHeader/Button/Badge/EmptyState
-              (components/ui). Pulled out of the shared settings wrapper below
+              (kit). Pulled out of the shared settings wrapper below
               (now Settings-only, unchanged). Every id handleDownloadQR and the
               @media print rule depend on (#print-qr-area, #qr-card-<id>,
               #qr-<id>) and every print:hidden class stays exactly where it
@@ -963,25 +966,33 @@ export function AdminApp() {
           )}
 
           {/* Ayarlar — SettingsTab.jsx now owns its own PageHeader/Card
-              (migrated to components/ui), so this no longer needs its own
+              (migrated to kit), so this no longer needs its own
               wrapper div. Removing it also fixes a pre-existing double-card
               nesting bug: this div and SettingsTab's own root box were both
               `bg-slate-900/60 border-slate-800 rounded-3xl`, so Settings was
               rendering one bordered box inside an identical outer one. */}
           {activeTab === 'settings' && can[CAPABILITIES.RESTAURANT_SETTINGS] && (
-            <SettingsTab settings={settings} updateSettings={updateSettings} />
+            <SettingsTab settings={settings} updateRestaurantProfile={updateRestaurantProfile} restaurantId={restaurant?.id} />
+          )}
+
+          {/* İnteqrasiyalar — IntegrationsTab.jsx öz PageHeader/Card-larını
+              daşıyır (SettingsTab-ın yuxarıdakı naxışı), üstəgəl öz daxilində
+              FEATURES.POS_INTEGRATION (Pro plan) qapısını özü idarə edir. */}
+          {activeTab === 'integrations' && can[CAPABILITIES.INTEGRATIONS] && (
+            <IntegrationsTab />
           )}
 
           </div>
         </div>
 
-      <CategoryModal 
+      <CategoryModal
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
         onSave={handleSaveCategory}
         categoryForm={categoryForm}
         setCategoryForm={setCategoryForm}
         isEditing={!!editingCategoryId}
+        restaurantId={restaurant?.id}
       />
 
       <ProductModal
@@ -992,6 +1003,7 @@ export function AdminApp() {
         setProductForm={setProductForm}
         isEditing={!!editingProductId}
         categories={categories}
+        restaurantId={restaurant?.id}
       />
 
       <ConfirmDialog {...confirmDialog.dialogProps} />
@@ -1004,10 +1016,10 @@ export function AdminApp() {
 // qiymət avtomatik hesablanır (bax: ProductDetailModal.jsx).
 function ProductOptionsEditor({ options, onChange }) {
   const { t } = useAdminTranslation();
-  const addGroup = () => onChange([...options, { title: '', choices: [{ name: '', extraPrice: 0 }] }]);
+  const addGroup = () => onChange([...options, { title: '', choices: [{ name: '', extraPrice: 0, icon: '' }] }]);
   const removeGroup = (gi) => onChange(options.filter((_, i) => i !== gi));
   const updateGroupTitle = (gi, title) => onChange(options.map((g, i) => (i === gi ? { ...g, title } : g)));
-  const addChoice = (gi) => onChange(options.map((g, i) => (i === gi ? { ...g, choices: [...g.choices, { name: '', extraPrice: 0 }] } : g)));
+  const addChoice = (gi) => onChange(options.map((g, i) => (i === gi ? { ...g, choices: [...g.choices, { name: '', extraPrice: 0, icon: '' }] } : g)));
   const removeChoice = (gi, ci) => onChange(options.map((g, i) => (i === gi ? { ...g, choices: g.choices.filter((_, j) => j !== ci) } : g)));
   const updateChoice = (gi, ci, field, value) =>
     onChange(
@@ -1044,6 +1056,21 @@ function ProductOptionsEditor({ options, onChange }) {
             <div className="space-y-1.5">
               {group.choices.map((choice, ci) => (
                 <div key={ci} className="flex items-center gap-2">
+                  {/* Emoji — müştəri menyusunda bu seçimin dairəvi çipində
+                      görünür. Kateqoriya ikonları ilə eyni yanaşma: şəkil
+                      yükləmədən rəngarəng nəticə. Boş buraxılsa çipdə neytral
+                      ehtiyat ikon göstərilir. maxLength=2 çünki bəzi emoji
+                      cütlüklərdən (ZWJ) ibarətdir. */}
+                  <Input
+                    type="text"
+                    size="sm"
+                    maxLength={2}
+                    value={choice.icon || ''}
+                    onChange={(e) => updateChoice(gi, ci, 'icon', e.target.value)}
+                    placeholder={t('optionsChoiceIconPlaceholder')}
+                    aria-label={t('optionsChoiceIconLabel')}
+                    className="w-12 shrink-0 text-center text-base"
+                  />
                   <Input
                     type="text"
                     size="sm"
@@ -1073,10 +1100,24 @@ function ProductOptionsEditor({ options, onChange }) {
   );
 }
 
-function ProductModal({ isOpen, onClose, onSave, productForm, setProductForm, isEditing, categories }) {
+function ProductModal({ isOpen, onClose, onSave, productForm, setProductForm, isEditing, categories, restaurantId }) {
   const { t } = useAdminTranslation();
   const { t: tc } = useCommonTranslation();
   if (!isOpen) return null;
+
+  // Small helper so the 4 EN/RU fields below don't each hand-roll the
+  // {...translations, [lang]: {...translations[lang], [field]: value}}
+  // spread. Written once here (product-scoped) rather than lib/translations.js
+  // since it's UI-form shape, not a resolver concern.
+  const setTranslationField = (lang, field, value) => {
+    setProductForm({
+      ...productForm,
+      translations: {
+        ...productForm.translations,
+        [lang]: { ...productForm.translations?.[lang], [field]: value },
+      },
+    });
+  };
   return (
     <Sheet isOpen={isOpen} onClose={onClose} side="right" size="lg" ariaLabel={isEditing ? t('editProductTitle') : t('newProductTitle')}>
       <SheetHeader title={isEditing ? t('editProductTitle') : t('newProductTitle')} onClose={onClose} />
@@ -1124,12 +1165,64 @@ function ProductModal({ isOpen, onClose, onSave, productForm, setProductForm, is
               />
             )}
           </Field>
+          {/* Qidalanma dəyəri — müştəri menyusunun məhsul detalındakı
+              "Qidalanma dəyəri" panelini doldurur (0031_product_nutrition.sql).
+              Dördü də istəyə bağlıdır: boş buraxılan sahə NULL yazılır və
+              paneldə heç görünmür, ona görə "ölçülməyib" ilə "sıfırdır"
+              qarışmır. */}
+          <div className="rounded-[var(--k-r)] border border-[var(--k-border)] p-3.5">
+            <p className="text-[13px] font-semibold text-[var(--k-text)]">{t('nutritionSectionTitle')}</p>
+            <p className="mt-0.5 text-[11px] text-[var(--k-text-3)]">{t('nutritionSectionHint')}</p>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <Field label={t('caloriesLabel')}>
+                {(id, a11y) => (
+                  <Input
+                    id={id} type="number" min="0" step="1" value={productForm.caloriesValue}
+                    onChange={(e) => setProductForm({ ...productForm, caloriesValue: e.target.value })}
+                    {...a11y}
+                  />
+                )}
+              </Field>
+              <Field label={t('proteinLabel')}>
+                {(id, a11y) => (
+                  <Input
+                    id={id} type="number" min="0" step="0.1" value={productForm.proteinValue}
+                    onChange={(e) => setProductForm({ ...productForm, proteinValue: e.target.value })}
+                    {...a11y}
+                  />
+                )}
+              </Field>
+              <Field label={t('carbsLabel')}>
+                {(id, a11y) => (
+                  <Input
+                    id={id} type="number" min="0" step="0.1" value={productForm.carbsValue}
+                    onChange={(e) => setProductForm({ ...productForm, carbsValue: e.target.value })}
+                    {...a11y}
+                  />
+                )}
+              </Field>
+              <Field label={t('fatLabel')}>
+                {(id, a11y) => (
+                  <Input
+                    id={id} type="number" min="0" step="0.1" value={productForm.fatValue}
+                    onChange={(e) => setProductForm({ ...productForm, fatValue: e.target.value })}
+                    {...a11y}
+                  />
+                )}
+              </Field>
+            </div>
+          </div>
           <Field label={t('imageUrlLabel')}>
             {(id, a11y) => (
-              <Input
-                id={id} type="text" value={productForm.image}
-                onChange={(e) => setProductForm({ ...productForm, image: e.target.value })}
-                placeholder={t('imageUrlPlaceholder')} {...a11y}
+              <ImageUploadField
+                id={id} value={productForm.image}
+                onChange={(url) => setProductForm({ ...productForm, image: url })}
+                restaurantId={restaurantId} folder="products"
+                urlPlaceholder={t('imageUrlPlaceholder')}
+                uploadLabel={t('imageUploadButton')}
+                previewAlt={t('imagePreviewAlt')}
+                invalidLabel={t('logoInvalidBadge')}
+                {...a11y}
               />
             )}
           </Field>
@@ -1145,6 +1238,54 @@ function ProductModal({ isOpen, onClose, onSave, productForm, setProductForm, is
               />
             )}
           </Field>
+
+          <Divider />
+
+          {/* EN/RU tərcümələri (0029_product_category_translations.sql) —
+              istəyə bağlı override, boş buraxılsa müştəri menyusunda yuxarıdakı
+              AZ dəyəri göstərilir (bax lib/translations.js-in resolver şərhi). */}
+          <div className="space-y-3">
+            <div>
+              <h4 className="text-sm font-semibold text-[var(--k-text)]">{t('translationsSectionTitle')}</h4>
+              <p className="text-xs text-[var(--k-text-3)] mt-0.5">{t('translationsHint')}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label={t('productNameEnLabel')}>
+                {(id, a11y) => (
+                  <Input
+                    id={id} type="text" value={productForm.translations?.en?.name || ''}
+                    onChange={(e) => setTranslationField('en', 'name', e.target.value)} {...a11y}
+                  />
+                )}
+              </Field>
+              <Field label={t('productNameRuLabel')}>
+                {(id, a11y) => (
+                  <Input
+                    id={id} type="text" value={productForm.translations?.ru?.name || ''}
+                    onChange={(e) => setTranslationField('ru', 'name', e.target.value)} {...a11y}
+                  />
+                )}
+              </Field>
+            </div>
+            <Field label={t('productDescriptionEnLabel')}>
+              {(id, a11y) => (
+                <Textarea
+                  id={id} rows={2} value={productForm.translations?.en?.description || ''}
+                  onChange={(e) => setTranslationField('en', 'description', e.target.value)} {...a11y}
+                />
+              )}
+            </Field>
+            <Field label={t('productDescriptionRuLabel')}>
+              {(id, a11y) => (
+                <Textarea
+                  id={id} rows={2} value={productForm.translations?.ru?.description || ''}
+                  onChange={(e) => setTranslationField('ru', 'description', e.target.value)} {...a11y}
+                />
+              )}
+            </Field>
+          </div>
+
+          <Divider />
 
           {/* Variantlar (Ölçü, Əlavələr və s.) — qiymət avtomatik hesablanır */}
           <ProductOptionsEditor
@@ -1190,7 +1331,7 @@ function ProductModal({ isOpen, onClose, onSave, productForm, setProductForm, is
   );
 }
 
-function CategoryModal({ isOpen, onClose, onSave, categoryForm, setCategoryForm, isEditing }) {
+function CategoryModal({ isOpen, onClose, onSave, categoryForm, setCategoryForm, isEditing, restaurantId }) {
   const { t } = useAdminTranslation();
   const { t: tc } = useCommonTranslation();
   if (!isOpen) return null;
@@ -1218,6 +1359,58 @@ function CategoryModal({ isOpen, onClose, onSave, categoryForm, setCategoryForm,
               />
             )}
           </Field>
+          {/* Separate from the emoji `icon` above — a real photo for the
+              category card/header, not the dot-leader list's own glyph.
+              0033_media_uploads.sql. */}
+          <Field label={t('categoryImageLabel')}>
+            {(id, a11y) => (
+              <ImageUploadField
+                id={id} value={categoryForm.image}
+                onChange={(url) => setCategoryForm({ ...categoryForm, image: url })}
+                restaurantId={restaurantId} folder="categories"
+                urlPlaceholder={t('imageUrlPlaceholder')}
+                uploadLabel={t('imageUploadButton')}
+                previewAlt={t('imagePreviewAlt')}
+                invalidLabel={t('logoInvalidBadge')}
+                {...a11y}
+              />
+            )}
+          </Field>
+
+          <Divider />
+
+          {/* EN/RU — yalnız ad, categories cədvəlində description sütunu
+              yoxdur (bax 0029-un öz şərhi). */}
+          <div className="space-y-3">
+            <div>
+              <h4 className="text-sm font-semibold text-[var(--k-text)]">{t('translationsSectionTitle')}</h4>
+              <p className="text-xs text-[var(--k-text-3)] mt-0.5">{t('translationsHint')}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label={t('categoryNameEnLabel')}>
+                {(id, a11y) => (
+                  <Input
+                    id={id} type="text" value={categoryForm.translations?.en?.name || ''}
+                    onChange={(e) => setCategoryForm({
+                      ...categoryForm,
+                      translations: { ...categoryForm.translations, en: { ...categoryForm.translations?.en, name: e.target.value } },
+                    })} {...a11y}
+                  />
+                )}
+              </Field>
+              <Field label={t('categoryNameRuLabel')}>
+                {(id, a11y) => (
+                  <Input
+                    id={id} type="text" value={categoryForm.translations?.ru?.name || ''}
+                    onChange={(e) => setCategoryForm({
+                      ...categoryForm,
+                      translations: { ...categoryForm.translations, ru: { ...categoryForm.translations?.ru, name: e.target.value } },
+                    })} {...a11y}
+                  />
+                )}
+              </Field>
+            </div>
+          </div>
         </div>
         <SheetFooter className="flex gap-3">
           <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
@@ -1534,7 +1727,7 @@ const orderStatusLabels = (t) => ({
 });
 
 // Kept as a literal Tailwind color-pair string, now built directly from
-// --k-* tokens instead of components/ui's BADGE_TONE_CLASSES map — its one
+// --k-* tokens instead of the old kit's BADGE_TONE_CLASSES map — its one
 // remaining call site (DashboardHome's recent-orders table, see the "Known
 // mismatches" note in CLAUDE.md) renders a hand-styled <span>, not a <Tag>,
 // so it can't just take a `tone` prop.
@@ -2138,9 +2331,34 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
   );
 }
 
-// İstifadəçilər — placeholder until multi-user/staff-role management ships.
-function UsersPlaceholder({ profile, restaurant, settings }) {
+// İstifadəçilər — oxu-only heyət siyahısı (0028_restaurant_staff_directory.sql
+// / get_restaurant_staff() RPC). Hesab yaratma/silmə/rol dəyişmə BURADAN
+// keçmir və heç vaxt keçməyəcək — CLAUDE.md-nin D1 qərarına görə hesab
+// yaratma uçdan-uca super-admin-only-dur (bax capabilityService.js-in
+// CAPABILITIES.USERS_MANAGE şərhi). Əvvəlki versiya ("UsersPlaceholder")
+// yalnız giriş etmiş adminin öz kartını göstərib "ayrıca heyət qeydiyyatı
+// lazım deyil" yazırdı — bu, yanıldıcı idi: staff rollu hesablar real
+// mövcuddur, sadəcə bu tabdan görünmürdü.
+function UsersTab({ profile, restaurant, settings }) {
   const { t } = useAdminTranslation();
+  const { restaurantStaff, loadRestaurantStaff } = useAppStore();
+  const [loading, setLoading] = useState(true);
+
+  // No setLoading(true) here: `loading` already starts true (useState(true)
+  // above) and UsersTab fully unmounts when the admin switches tabs (it's
+  // gated behind `activeTab === 'users'` in the parent), so a fresh mount
+  // always starts from a clean loading state without needing to set it
+  // synchronously inside the effect (react-hooks/set-state-in-effect).
+  useEffect(() => {
+    let cancelled = false;
+    loadRestaurantStaff().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [loadRestaurantStaff]);
+
+  const roleLabel = (role) => (role === 'restaurant_admin' ? t('roleLabelRestaurantAdmin') : t('roleLabelStaff'));
+
   return (
     <div className="space-y-6">
       <PageHeader title={t('titleUsers')} description={t('usersSubtitle')} />
@@ -2170,10 +2388,56 @@ function UsersPlaceholder({ profile, restaurant, settings }) {
         </CardBody>
       </Card>
 
+      <Card variant="plain">
+        <CardHeader title={t('usersRosterSectionTitle')} />
+        <CardBody>
+          {loading ? (
+            <LoadingState full={false} />
+          ) : (
+            <Table>
+              <TableHead>
+                <TableHeaderCell>{t('colEmail')}</TableHeaderCell>
+                <TableHeaderCell>{t('colRole')}</TableHeaderCell>
+              </TableHead>
+              <TableBody>
+                {restaurantStaff.length === 0 ? (
+                  <TableEmptyRow colSpan={2}>{t('noStaffYet')}</TableEmptyRow>
+                ) : (
+                  restaurantStaff.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell>
+                        {u.email}
+                        {u.id === profile?.id && <span className="text-[var(--k-text-3)]"> ({t('youLabel')})</span>}
+                      </TableCell>
+                      <TableCell>
+                        <Tag tone={u.role === 'restaurant_admin' ? 'accent' : 'neutral'}>{roleLabel(u.role)}</Tag>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Hesab yaratma özü hələ də super-admin-only-dur (D1) — bu, honest
+          bir "bizimlə əlaqə saxla" yönləndirməsidir, "lazım deyil" yalanı
+          deyil. SubscriptionLockedScreen-in eyni dəstək linkini işlədir. */}
       <EmptyState
         icon={<UserCircle2 className="w-5 h-5" />}
-        title={t('noStaffRegistrationTitle')}
-        description={t('noStaffRegistrationDescription')}
+        title={t('contactSupportToAddStaffTitle')}
+        description={t('contactSupportToAddStaffDescription')}
+        action={
+          <a
+            href="https://wa.me/994000000000"
+            target="_blank"
+            rel="noreferrer"
+            className={buttonVariants({ variant: 'secondary' })}
+          >
+            {t('contactSupportButton')}
+          </a>
+        }
       />
     </div>
   );

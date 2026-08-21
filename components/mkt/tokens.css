@@ -1,0 +1,95 @@
+/* ============================================================================
+   "Süfrə" (the table) — design tokens for the public marketing site.
+   ----------------------------------------------------------------------------
+   Imported in app/globals.css beside components/kit/tokens.css, BEFORE
+   `@import "tailwindcss"` — CSS requires every @import to precede all other
+   rules, and Turbopack inlines Tailwind in place, so anything after it stops
+   "preceding all rules" and 500s every route. Being unlayered (no @layer),
+   these rules still win over Tailwind's @layer base preflight regardless of
+   source order — same mechanism kit/tokens.css relies on.
+
+   SCOPE: `.mkt`, mounted on app/[locale]/layout.jsx's root div — never on
+   <body>. Deliberately a NEW namespace (`--mkt-*`), not a reuse of `--k-*`:
+   reusing the panel kit's tokens here would mean any future panel restyle
+   silently bleeds into the marketing site too — exactly the coupling
+   components/kit/index.js's header says the kit/ui split exists to prevent.
+   Three systems now coexist, each scoped to its own class:
+     .kit-dark / .kit-light  -> the four app panels
+     .customer-theme         -> CustomerApp (still --mf-*, per-tenant themed)
+     .mkt                    -> this file, the marketing site only
+
+   PALETTE — a light, airy revision of the original dark-walnut "Süfrə"
+   room: warm cream ground (tablecloth in daylight, not a neutral/cold
+   white), brass as the single hot accent (candlelight / cutlery), sage as
+   a quiet secondary (herbs / linen). Same restaurant-table character as
+   the original dark pass, just lit differently — brass and sage are both
+   deepened from their dark-theme values so they still read clearly as
+   text/icon colors against the cream instead of only working as button
+   fills. See git history for the original dark-walnut rationale this
+   replaced.
+   ============================================================================ */
+
+.mkt {
+  /* Ground + surfaces — warm cream, not neutral/blue-tinted white. */
+  --mkt-ground: #FBF6EC;
+  --mkt-surface: #FDF9EF;
+  --mkt-surface-2: #F0E6CF;
+  --mkt-surface-3: #E4D5AE;
+  --mkt-line: #DFCFA4;
+  --mkt-line-soft: rgba(191, 165, 111, 0.35);
+
+  /* Text — dark ink, not pure black (pure black on cream is too cold/harsh). */
+  --mkt-text: #2A2115;
+  --mkt-text-2: #6B5D46;
+  --mkt-text-3: #8A7C60;
+  /* Independent of --mkt-text (paper is lighter than ink, not the same
+     value flipped) — the paper/card-stock color of physical objects on
+     the table (TableHero.jsx's QR stand + order ticket). A background
+     use, not a text-color use, so it gets its own token rather than
+     overloading --mkt-text's name for a different purpose. */
+  --mkt-linen: #FFFCF3;
+
+  /* Accent — brass (candlelight, cutlery). The one hot color on the page;
+     everything else stays quiet so this reads as deliberate, not decorative.
+     Deepened from the dark-theme value so it clears ~5:1 contrast as a
+     standalone text/icon color on the cream ground, not just as a button
+     fill. */
+  --mkt-brass: #8A6410;
+  --mkt-brass-hover: #714F0A;
+  /* Independent of --mkt-ground (brass is a mid-dark gold now, so its
+     foreground needs to stay light regardless of what ground's value is). */
+  --mkt-brass-fg: #FBF6EC;
+  --mkt-brass-soft: rgba(138, 100, 16, 0.12);
+  --mkt-brass-line: rgba(138, 100, 16, 0.35);
+
+  /* Secondary — sage (herbs, linen napkins). Used sparingly: category
+     markers, success states, the occasional accent that isn't the CTA.
+     Deepened for the same contrast-on-cream reason as brass above. */
+  --mkt-sage: #5F6E4E;
+  --mkt-sage-soft: rgba(95, 110, 78, 0.14);
+
+  /* Semantic (reuses the palette above rather than importing new hues, so
+     an error/warning state still reads as part of this room, not a
+     generic Bootstrap alert dropped onto it). */
+  --mkt-danger: #A8442E;
+  --mkt-danger-soft: rgba(168, 68, 46, 0.12);
+  --mkt-focus: #714F0A;
+
+  /* Shape + motion — distinct from kit's tighter 6/10/14px scale: the
+     marketing site can afford slightly larger radii since it isn't a dense
+     data panel. */
+  --mkt-r-sm: 8px;
+  --mkt-r: 12px;
+  --mkt-r-lg: 20px;
+  --mkt-dur: 200ms;
+  --mkt-dur-slow: 500ms;
+  --mkt-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Display face — Fraunces, not Playfair (globals.css's existing
+     .font-serif-title). Playfair is the AI-generated-design default serif;
+     Fraunces' "wonk"/soft optical axes give it a house-made, slightly
+     handset character that reads as chosen for THIS brief, not reached for
+     by default. Loaded via Google Fonts in app/globals.css's existing
+     @import line. */
+  --mkt-font-display: 'Fraunces', 'Playfair Display', serif;
+}

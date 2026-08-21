@@ -1,25 +1,28 @@
 import './globals.css'; // Global styles
 
+// NEXT_PUBLIC_SITE_URL is optional in local dev (falls back to
+// menuflow.az — a placeholder production domain); every generateMetadata()
+// call under app/[locale]/** builds its `alternates.canonical`/`.languages`
+// as ROOT-RELATIVE paths, so metadataBase is what actually resolves them
+// into absolute URLs for the <link rel="canonical">/hreflang tags search
+// engines read (01-app/03-api-reference/04-functions/generate-metadata.md,
+// "metadataBase").
 export const metadata = {
-  title: 'MenuFlow — Rəqəmsal QR Menyu vər İdarəetmə Sistemi',
-  description: 'MenuFlow — Rəqəmsal QR Menyu vər İdarəetmə Sistemi',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://menuflow.az'),
+  title: 'MenuFlow — Rəqəmsal QR Menyu və İdarəetmə Sistemi',
+  description: 'MenuFlow — Rəqəmsal QR Menyu və İdarəetmə Sistemi',
 };
 
 export default function RootLayout({ children }) {
+  // `.mf-dark` used to be mounted on <body> here as a fallback --mf-* source
+  // for the old --mf-* primitive kit (deleted in this pass — see globals.css on
+  // the three surviving design systems). The only remaining --mf-* consumer
+  // is `.customer-theme` (CustomerApp/ProductCard/ProductDetailModal/
+  // CartDrawer), which already re-declares its own --mf-* values on its own
+  // root, so nothing needs a body-level default anymore.
   return (
     <html lang="az" suppressHydrationWarning>
-      {/* `.mf-dark` (app/globals.css) only declares --mf-* custom properties —
-          it sets no background-color/color of its own, so mounting it here is
-          purely additive. Without it, every dark-context primitive
-          (Button/Input's existing pilot in DesignTab, plus Card/Modal/Alert/
-          Tabs added in this phase) resolves var(--mf-primary) etc. to nothing,
-          since a CSS custom property with no declared value anywhere in the
-          ancestor chain is invalid at computed-value time. Customer routes
-          are unaffected: CustomerApp/ProductDetailModal/CartDrawer each
-          already re-declare the same --mf-* names on their own `.customer-theme`
-          root (nearest-ancestor wins for custom-property inheritance), so
-          this body-level default only ever reaches un-themed dark surfaces. */}
-      <body suppressHydrationWarning className="mf-dark">{children}</body>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

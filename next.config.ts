@@ -54,10 +54,45 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      // Supabase Storage (0033_media_uploads.sql's `restaurant-media`
+      // bucket — manually-uploaded product/category/logo images,
+      // lib/services/storageService.js). Every <Image> that renders these
+      // already passes `unoptimized`, which makes Next skip its own image
+      // optimizer entirely and this allowlist moot in practice — this
+      // entry exists for correctness/future-proofing in case `unoptimized`
+      // is ever dropped from one of those call sites. Wildcarded to
+      // `**.supabase.co` (project-ref subdomain) rather than one hardcoded
+      // project id, so it isn't tied to a single environment.
+      {
+        protocol: 'https',
+        hostname: '**.supabase.co',
+        port: '',
+        pathname: '/storage/v1/object/public/**',
+      },
     ],
   },
 
   transpilePackages: ['motion'],
+
+  // Pre-locale-routing URLs (/pricing, /features, ...) redirected to their
+  // AZ equivalent under app/[locale]/ — the content that used to live at
+  // these paths was always AZ-first (lib/i18n/dictionaries/marketing.js's
+  // `az` block is the fallback for every other locale), so /az/* is the
+  // correct 1:1 target, not a locale guess. 308 (permanent, method-preserving)
+  // rather than 307: these are real, indexed URLs being permanently moved,
+  // not a temporary redirect. Redirects run before routing, so none of these
+  // sources may ever collide with a real route — /admin, /staff, /superadmin,
+  // /superadmin-login, /login, /reset-password, /onboarding, /stuff, /menu
+  // all stay outside app/[locale]/ and are unaffected.
+  async redirects() {
+    return [
+      { source: '/pricing', destination: '/az/pricing', permanent: true },
+      { source: '/features', destination: '/az/features', permanent: true },
+      { source: '/faq', destination: '/az/faq', permanent: true },
+      { source: '/demo', destination: '/az/demo', permanent: true },
+      { source: '/contact', destination: '/az/contact', permanent: true },
+    ];
+  },
 
   async headers() {
     return [

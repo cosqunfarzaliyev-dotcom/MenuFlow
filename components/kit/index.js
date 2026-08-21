@@ -2,7 +2,7 @@
 // components/kit — "Quiet Premium", the design system for the four app panels
 // (Customer, Staff, Admin, SuperAdmin).
 //
-// Deliberately SEPARATE from components/ui, which is left in place and
+// Deliberately SEPARATE from components/mkt (the marketing site) and
 // untouched: the marketing site, /login, /reset-password and /onboarding still
 // import it. Two kits coexist so redesigning the panels cannot regress those
 // nine pages. Tokens are namespaced (--k-* vs --mf-*/--sa-*) for the same
@@ -22,6 +22,7 @@ export {
 } from './primitives';
 
 export { Sheet, SheetHeader, SheetBody, SheetFooter, SheetClose } from './Sheet';
+export { ImageUploadField } from './ImageUploadField';
 export { Sidebar, SidebarMenuButton } from './Sidebar';
 export { LanguageToggle } from './LanguageToggle';
 export { EmptyState, LoadingState, ErrorState, PageSkeleton } from './states';
