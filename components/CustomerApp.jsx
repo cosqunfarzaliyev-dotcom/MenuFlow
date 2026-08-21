@@ -594,9 +594,9 @@ export function CustomerApp() {
               <Image
                 src={settings.restaurantLogo}
                 alt={settings.restaurantName}
-                className="h-14 w-auto max-w-[260px] shrink-0 object-contain"
-                width={260}
-                height={56}
+                className="h-10 w-auto max-w-[190px] shrink-0 object-contain"
+                width={190}
+                height={40}
                 unoptimized
               />
             ) : settings.restaurantLogo ? (
