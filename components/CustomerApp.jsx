@@ -259,12 +259,30 @@ export function CustomerApp() {
   }, [loadMenuData, restaurant?.id]);
 
   // Promotions are owned by the admin panel but displayed to anonymous menu
-  // visitors. Refetch the relevant collection on every tenant-scoped change
-  // so an already-open QR menu updates without a manual reload. Discounts are
-  // included because their changes affect the product prices rendered below.
+  // visitors. Realtime events update an already-open QR menu immediately;
+  // the visible-tab polling fallback keeps the same UI current if a project's
+  // Realtime publication has not yet been configured. Discounts are included
+  // because their changes affect the product prices rendered below.
   useEffect(() => {
     let subscriptions = [];
     let disposed = false;
+    let pollInterval = null;
+
+    const refreshPromotions = () => {
+      Promise.all([loadBanners(), loadCampaigns(), loadDiscounts()]).catch((err) => {
+        console.warn('Failed to refresh promotions:', err);
+      });
+    };
+
+    const startPolling = () => {
+      if (!pollInterval) pollInterval = setInterval(refreshPromotions, 12000);
+    };
+
+    const stopPolling = () => {
+      if (!pollInterval) return;
+      clearInterval(pollInterval);
+      pollInterval = null;
+    };
 
     const start = async () => {
       if (!restaurant?.id) return;
@@ -286,8 +304,21 @@ export function CustomerApp() {
     };
 
     start();
+    if (document.visibilityState === 'visible') startPolling();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshPromotions();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
       disposed = true;
+      stopPolling();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       subscriptions.forEach((sub) => sub?.unsubscribe?.());
     };
   }, [restaurant?.id, loadBanners, loadCampaigns, loadDiscounts]);
@@ -849,17 +880,26 @@ export function CustomerApp() {
                   className="relative min-h-28 overflow-hidden rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
                 >
                   {campaign.banner_image_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={campaign.banner_image_url}
-                      alt=""
-                      className="absolute inset-0 h-full w-full object-cover opacity-20"
-                    />
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={campaign.banner_image_url}
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-black/10" />
+                    </>
                   )}
                   <div className="relative">
-                    <p className="text-sm font-semibold text-[var(--k-text)]">{campaign.title}</p>
+                    <p className={cn(
+                      'text-sm font-semibold',
+                      campaign.banner_image_url ? 'text-white' : 'text-[var(--k-text)]',
+                    )}>{campaign.title}</p>
                     {campaign.description && (
-                      <p className="mt-1 text-xs leading-relaxed text-[var(--k-text-3)]">{campaign.description}</p>
+                      <p className={cn(
+                        'mt-1 text-xs leading-relaxed',
+                        campaign.banner_image_url ? 'text-white/85' : 'text-[var(--k-text-3)]',
+                      )}>{campaign.description}</p>
                     )}
                   </div>
                 </article>
