@@ -56,6 +56,7 @@ export function DesignTab() {
   const [bannerForm, setBannerForm] = useState(EMPTY_BANNER_FORM);
   const [editingBannerId, setEditingBannerId] = useState(null);
   const [bannerSaving, setBannerSaving] = useState(false);
+  const [bannerSaveError, setBannerSaveError] = useState(null);
 
   useEffect(() => {
     loadBanners();
@@ -86,6 +87,7 @@ export function DesignTab() {
     e.preventDefault();
     if (!bannerForm.image_url.trim()) return;
     setBannerSaving(true);
+    setBannerSaveError(null);
 
     const isTargetAction = bannerForm.action_type === 'product' || bannerForm.action_type === 'category';
     let linkUrl = isTargetAction ? '' : bannerForm.link_url.trim();
@@ -104,17 +106,22 @@ export function DesignTab() {
       action_target_id: isTargetAction && bannerForm.action_target_id ? bannerForm.action_target_id : null,
     };
 
-    if (editingBannerId) {
-      await updateBanner({ id: editingBannerId, ...payload });
-    } else {
-      await createBanner({ ...payload, sort_order: banners.length, is_active: true });
+    const { error } = editingBannerId
+      ? await updateBanner({ id: editingBannerId, ...payload })
+      : await createBanner({ ...payload, sort_order: banners.length, is_active: true });
+
+    setBannerSaving(false);
+    if (error) {
+      setBannerSaveError(error.message || 'Banner yadda saxlanmadı.');
+      return;
     }
+
     setBannerForm(EMPTY_BANNER_FORM);
     setEditingBannerId(null);
-    setBannerSaving(false);
   };
 
   const handleEditBanner = (b) => {
+    setBannerSaveError(null);
     setEditingBannerId(b.id);
     setBannerForm({
       title: b.title || "",
@@ -127,6 +134,7 @@ export function DesignTab() {
   };
 
   const handleCancelEditBanner = () => {
+    setBannerSaveError(null);
     setEditingBannerId(null);
     setBannerForm(EMPTY_BANNER_FORM);
   };
@@ -202,6 +210,10 @@ export function DesignTab() {
               unset -> createBanner (banners.create). Fieldset disables the
               whole form when either the plan-level feature or the role-level
               capability for the action currently in play is off. */}
+          {bannerSaveError && (
+            <Banner tone="danger" className="mb-4 text-sm">{bannerSaveError}</Banner>
+          )}
+
           <fieldset disabled={!bannersEnabled || !(editingBannerId ? canEditBanners : canCreateBanners)} className="disabled:opacity-50">
           <form onSubmit={handleSaveBanner} className="grid sm:grid-cols-2 gap-3 mb-5">
             <Input type="text" value={bannerForm.title} onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })} placeholder={t('bannerTitlePlaceholder')} />

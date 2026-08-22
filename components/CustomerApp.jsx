@@ -4,13 +4,15 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { ORDER_STATUS, useAppStore } from "@/lib/store";
-import { subscribeOrders, subscribeProducts } from '@/lib/services/realtime';
+import {
+  subscribeOrders, subscribeProducts, subscribeBanners, subscribeCampaigns, subscribeDiscounts,
+} from '@/lib/services/realtime';
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { CartDrawer } from "@/components/CartDrawer";
-import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight, XCircle, Search, X, Leaf } from "lucide-react";
+import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight, XCircle, Search, X, Leaf, Megaphone } from "lucide-react";
 import { getLocalizedText, getLocalizedCategoryName, getLocalizedProduct } from "@/lib/translations";
-import { applyDiscounts } from "@/lib/services/promotionsService";
+import { applyDiscounts, isCampaignLive } from "@/lib/services/promotionsService";
 import { requestWalletPayment } from "@/lib/services/paymentService";
 import { FEATURES, hasFeature } from "@/lib/services/entitlementService";
 import {
@@ -51,6 +53,8 @@ export function CustomerApp() {
     loadRestaurantBySlug,
     banners,
     loadBanners,
+    campaigns,
+    loadCampaigns,
     discounts,
     loadDiscounts,
     setQrToken,
@@ -142,7 +146,9 @@ export function CustomerApp() {
         // would silently return [] for this anon session (orders RLS has no
         // anon SELECT policy at all). They're loaded once `resolvedTable` is
         // known, below, via the QR-token-gated loadTableOrders().
-        await Promise.all([loadMenuData(), loadAlerts(), loadTables(), loadBanners(), loadDiscounts(), loadPlans()]);
+        await Promise.all([
+          loadMenuData(), loadAlerts(), loadTables(), loadBanners(), loadCampaigns(), loadDiscounts(), loadPlans(),
+        ]);
       } catch (err) {
         console.error('CustomerApp load error', err);
         setLoadError(err?.message || String(err));
@@ -152,7 +158,7 @@ export function CustomerApp() {
     };
 
     loadAppData();
-  }, [params, searchParams, loadMenuData, loadAlerts, loadTables, loadRestaurantBySlug, loadBanners, loadDiscounts, loadPlans]);
+  }, [params, searchParams, loadMenuData, loadAlerts, loadTables, loadRestaurantBySlug, loadBanners, loadCampaigns, loadDiscounts, loadPlans]);
 
   const resolvedTable = tables.find(
     (t) => t.table_number?.toString() === tableId?.toString() || t.id === tableId,
@@ -251,6 +257,40 @@ export function CustomerApp() {
       if (prodSub && typeof prodSub.unsubscribe === 'function') prodSub.unsubscribe();
     };
   }, [loadMenuData, restaurant?.id]);
+
+  // Promotions are owned by the admin panel but displayed to anonymous menu
+  // visitors. Refetch the relevant collection on every tenant-scoped change
+  // so an already-open QR menu updates without a manual reload. Discounts are
+  // included because their changes affect the product prices rendered below.
+  useEffect(() => {
+    let subscriptions = [];
+    let disposed = false;
+
+    const start = async () => {
+      if (!restaurant?.id) return;
+      const options = { restaurantId: restaurant.id };
+      try {
+        const created = await Promise.all([
+          subscribeBanners(() => loadBanners(), options),
+          subscribeCampaigns(() => loadCampaigns(), options),
+          subscribeDiscounts(() => loadDiscounts(), options),
+        ]);
+        if (disposed) {
+          created.forEach((sub) => sub?.unsubscribe?.());
+        } else {
+          subscriptions = created;
+        }
+      } catch (err) {
+        console.warn('Failed to subscribe to promotion realtime updates:', err);
+      }
+    };
+
+    start();
+    return () => {
+      disposed = true;
+      subscriptions.forEach((sub) => sub?.unsubscribe?.());
+    };
+  }, [restaurant?.id, loadBanners, loadCampaigns, loadDiscounts]);
 
   // Restore a persisted cart once we know which restaurant+table it belongs
   // to (guards against restoring the wrong table's cart, and against
@@ -510,6 +550,11 @@ export function CustomerApp() {
   // göstərilən ad/təsvirə görə uyğunlaşır — getLocalizedProduct-un mövcud
   // DB tərcüməsi → köhnə demo map → AZ mənbə zənciri (lib/translations.js)
   // ilə eynidir, ona görə axtarış nəticələri ekranda görünənlə üst-üstə düşür.
+  const liveCampaigns = useMemo(
+    () => campaigns.filter(isCampaignLive),
+    [campaigns],
+  );
+
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
     let list = selectedCategory === "all"
@@ -783,6 +828,46 @@ export function CustomerApp() {
             treatment — each tile carries the admin's own emoji icon
             (categories.icon) on a tint of the restaurant's own accent colour,
             so this stays self-branded per tenant with zero new tokens. */}
+        {/* Campaigns are distinct from design banners: they carry the
+            restaurant's offer copy and optional artwork. Rendering them here
+            makes every active admin campaign visible in the customer menu,
+            including campaigns without an image. */}
+        {liveCampaigns.length > 0 && (
+          <section aria-labelledby="menu-campaigns-title">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--k-accent-soft)] text-[var(--k-accent)]">
+                <Megaphone className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <h2 id="menu-campaigns-title" className="text-sm font-semibold text-[var(--k-text)]">
+                {getLocalizedText('activeCampaigns', lang)}
+              </h2>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {liveCampaigns.map((campaign) => (
+                <article
+                  key={campaign.id}
+                  className="relative min-h-28 overflow-hidden rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
+                >
+                  {campaign.banner_image_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={campaign.banner_image_url}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover opacity-20"
+                    />
+                  )}
+                  <div className="relative">
+                    <p className="text-sm font-semibold text-[var(--k-text)]">{campaign.title}</p>
+                    {campaign.description && (
+                      <p className="mt-1 text-xs leading-relaxed text-[var(--k-text-3)]">{campaign.description}</p>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section id="menu-categories" className="scroll-mt-20">
           <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 no-scrollbar sm:-mx-6 sm:px-6">
             <CategoryTile
