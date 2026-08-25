@@ -794,6 +794,9 @@ export function CustomerApp() {
         {/* Banners (Banner sistemi) — SuperAdmin restoranın banner funksiyasını söndürsə heç göstərilmir, plan-dan asılı olmayaraq (bax: lib/services/entitlementService.js) */}
         {hasFeature(restaurant, FEATURES.BANNERS) && activeBanners.length > 0 && (
           <BannerCarousel
+            prevLabel={getLocalizedText("bannerPrevLabel", lang)}
+            nextLabel={getLocalizedText("bannerNextLabel", lang)}
+            goToLabel={(n, total) => getLocalizedText("bannerGoToLabel", lang)(n, total)}
             slides={activeBanners.map((banner) => {
               // A banner is now either a static image OR a short looping
               // video (Dizayn -> Banner sistemi) — isVideoUrl reads the

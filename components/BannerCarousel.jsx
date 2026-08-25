@@ -13,44 +13,84 @@
 // local to CustomerApp) separate from the purely mechanical carousel
 // behaviour, the same way ProductCard/CartDrawer are their own files.
 //
-// Previously this was a horizontally-scrollable flex row showing every
-// banner side by side (manual swipe only, sized to a fixed 280/360px card).
-// Multiple banners now cycle through ONE full-width slot automatically —
-// that's what "banners take turns, a few seconds apart" means in practice.
+// Multiple banners cycle through ONE full-width slot automatically, and the
+// customer can also drive it by hand: swipe (the natural gesture on the
+// phone this menu is actually read on), the arrow buttons, or the dots.
+//
+// AUTO-ADVANCE STOPS PERMANENTLY ON FIRST MANUAL INPUT. Resuming the timer
+// after a pause would yank the customer off whatever they deliberately
+// navigated to, which is the single most irritating thing a carousel can
+// do — once someone takes control, the rotation is theirs, not ours.
 // ---------------------------------------------------------------------------
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const AUTO_ADVANCE_MS = 5000;
+// Below this the gesture reads as a tap (or a vertical page scroll that
+// happened to wobble sideways), not a deliberate swipe.
+const SWIPE_THRESHOLD_PX = 40;
 
-export function BannerCarousel({ slides }) {
+export function BannerCarousel({ slides, prevLabel, nextLabel, goToLabel }) {
   const [index, setIndex] = useState(0);
+  const [manual, setManual] = useState(false);
   const count = slides.length;
   // Derived at render time rather than clamped via a setState-in-effect: if
   // the active banner list shrinks (an admin deactivates/deletes one) while
   // a later slide is showing, `index` can briefly point past the end of the
   // new, shorter array. Reading it through Math.min here fixes what's ON
   // SCREEN immediately, with no extra render — the raw `index` state itself
-  // self-corrects on the very next auto-advance tick anyway, since
-  // `(i + 1) % count` always lands back in range regardless of how big the
-  // stale `i` was.
+  // self-corrects on the very next advance anyway, since `(i + 1) % count`
+  // always lands back in range regardless of how big the stale `i` was.
   const activeIndex = count > 0 ? Math.min(index, count - 1) : 0;
 
+  const touchStartX = useRef(null);
+  const touchStartY = useRef(null);
+
   useEffect(() => {
-    if (count <= 1) return undefined;
+    if (count <= 1 || manual) return undefined;
     const id = setInterval(() => {
       setIndex((i) => (i + 1) % count);
     }, AUTO_ADVANCE_MS);
     return () => clearInterval(id);
-    // Deliberately re-armed on every `index` change too (not just `count`):
-    // a dot click or the wrap-around below should reset the countdown to a
-    // full AUTO_ADVANCE_MS rather than firing early because most of the
-    // previous interval had already elapsed.
-  }, [count, index]);
+  }, [count, index, manual]);
+
+  // Every manual entry point goes through this, so "stop auto-advancing"
+  // can never be forgotten at one call site while working at another.
+  const goTo = (next) => {
+    setManual(true);
+    setIndex(((next % count) + count) % count);
+  };
+
+  const handleTouchStart = (e) => {
+    const t = e.changedTouches[0];
+    touchStartX.current = t.clientX;
+    touchStartY.current = t.clientY;
+  };
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartX.current;
+    const dy = t.clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    // Horizontal intent only: the banner strip sits in a vertically
+    // scrolling page, so a mostly-vertical drag must stay a page scroll and
+    // never steal the gesture to change slides.
+    if (Math.abs(dx) < SWIPE_THRESHOLD_PX || Math.abs(dx) <= Math.abs(dy)) return;
+    goTo(activeIndex + (dx < 0 ? 1 : -1));
+  };
 
   if (count === 0) return null;
 
+  const arrowClass = 'pointer-events-auto absolute top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors hover:bg-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80';
+
   return (
-    <div className="relative h-32 overflow-hidden rounded-[var(--k-r-lg)] border border-[var(--k-border)] sm:h-40">
+    <div
+      className="relative h-32 overflow-hidden rounded-[var(--k-r-lg)] border border-[var(--k-border)] sm:h-40"
+      onTouchStart={count > 1 ? handleTouchStart : undefined}
+      onTouchEnd={count > 1 ? handleTouchEnd : undefined}
+    >
       <div
         className="flex h-full transition-transform duration-500 ease-out"
         style={{ transform: `translateX(-${activeIndex * 100}%)` }}
@@ -61,21 +101,44 @@ export function BannerCarousel({ slides }) {
           </div>
         ))}
       </div>
+
       {count > 1 && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-2 flex items-center justify-center gap-1.5">
-          {slides.map((slide, i) => (
-            <button
-              key={slide.key}
-              type="button"
-              onClick={() => setIndex(i)}
-              aria-label={`${i + 1}/${count}`}
-              aria-current={i === activeIndex}
-              className={`pointer-events-auto h-1.5 rounded-full transition-all duration-[var(--k-dur)] ${
-                i === activeIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/50'
-              }`}
-            />
-          ))}
-        </div>
+        <>
+          {/* Real <button>s rather than swipe-only, so the carousel is
+              reachable by keyboard and on desktop, where there is no swipe
+              gesture at all. */}
+          <button
+            type="button"
+            onClick={() => goTo(activeIndex - 1)}
+            aria-label={prevLabel}
+            className={`${arrowClass} left-2`}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => goTo(activeIndex + 1)}
+            aria-label={nextLabel}
+            className={`${arrowClass} right-2`}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-2 flex items-center justify-center gap-1.5">
+            {slides.map((slide, i) => (
+              <button
+                key={slide.key}
+                type="button"
+                onClick={() => goTo(i)}
+                aria-label={goToLabel ? goToLabel(i + 1, count) : `${i + 1}/${count}`}
+                aria-current={i === activeIndex}
+                className={`pointer-events-auto h-1.5 rounded-full transition-all duration-[var(--k-dur)] ${
+                  i === activeIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/50'
+                }`}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
