@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { Palette, Image as ImageIcon, Plus, Trash2, CheckCircle2, Edit2, X, Eye, EyeOff, Video } from "lucide-react";
 import { useAppStore } from "@/lib/store";
-import { isVideoUrl } from "@/lib/utils";
+import { isVideoUrl, contrastRatio, pickReadableForeground } from "@/lib/utils";
+import { THEME_PRESETS, DEFAULT_THEME } from "@/lib/services/themePresetService";
 import { FEATURES } from "@/lib/services/entitlementService";
 import { useFeature } from "@/hooks/useEntitlement";
 import { CAPABILITIES } from "@/lib/services/capabilityService";
@@ -48,8 +49,13 @@ export function DesignTab() {
   const canEditBanners = useCapability(CAPABILITIES.BANNERS_EDIT);
   const canDeleteBanners = useCapability(CAPABILITIES.BANNERS_DELETE);
 
-  const [primary, setPrimary] = useState(restaurant?.theme_primary_color || "#6C4CFF");
-  const [secondary, setSecondary] = useState(restaurant?.theme_secondary_color || "#14151A");
+  // The four colours the customer menu is built from (0043). `secondary` is
+  // the menu TEXT colour — the column it writes fed a CSS variable nothing
+  // read before that migration, so this picker used to do nothing at all.
+  const [primary, setPrimary] = useState(restaurant?.theme_primary_color || DEFAULT_THEME.primary);
+  const [secondary, setSecondary] = useState(restaurant?.theme_secondary_color || DEFAULT_THEME.text);
+  const [background, setBackground] = useState(restaurant?.theme_background_color || DEFAULT_THEME.background);
+  const [surface, setSurface] = useState(restaurant?.theme_surface_color || DEFAULT_THEME.surface);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -64,16 +70,65 @@ export function DesignTab() {
   }, [loadBanners]);
 
   useEffect(() => {
-    setPrimary(restaurant?.theme_primary_color || "#6C4CFF");
-    setSecondary(restaurant?.theme_secondary_color || "#14151A");
-  }, [restaurant?.theme_primary_color, restaurant?.theme_secondary_color]);
+    setPrimary(restaurant?.theme_primary_color || DEFAULT_THEME.primary);
+    setSecondary(restaurant?.theme_secondary_color || DEFAULT_THEME.text);
+    setBackground(restaurant?.theme_background_color || DEFAULT_THEME.background);
+    setSurface(restaurant?.theme_surface_color || DEFAULT_THEME.surface);
+  }, [
+    restaurant?.theme_primary_color,
+    restaurant?.theme_secondary_color,
+    restaurant?.theme_background_color,
+    restaurant?.theme_surface_color,
+  ]);
 
-  const handleSaveTheme = async () => {
+  const persistTheme = async (palette) => {
     setSaving(true);
-    await updateRestaurantDesign({ themePrimaryColor: primary, themeSecondaryColor: secondary });
+    await updateRestaurantDesign({
+      themePrimaryColor: palette.primary,
+      themeSecondaryColor: palette.text,
+      themeBackgroundColor: palette.background,
+      themeSurfaceColor: palette.surface,
+    });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleSaveTheme = () =>
+    persistTheme({ primary, text: secondary, background, surface });
+
+  // Presets only FILL the form — they do not save. The admin still reviews
+  // the live preview and presses Save, so a mis-click never overwrites a
+  // palette they spent time on.
+  const applyPreset = (preset) => {
+    setPrimary(preset.primary);
+    setSecondary(preset.text);
+    setBackground(preset.background);
+    setSurface(preset.surface);
+  };
+
+  // Reset DOES persist immediately, matching SettingsTab.jsx's own
+  // handleResetDefaults: "reset" is only useful if it actually undoes what
+  // is live, and leaving it staged would read as a no-op.
+  const handleResetTheme = () => {
+    applyPreset({ ...DEFAULT_THEME, text: DEFAULT_THEME.text });
+    persistTheme(DEFAULT_THEME);
+  };
+
+  // Warn (never block) when text and background are too close to read. The
+  // admin owns their brand; our job is to tell them, not to overrule them.
+  const textContrast = contrastRatio(secondary, background);
+  const lowContrast = textContrast !== null && textContrast < 4.5;
+
+  // Same four variables CustomerApp injects, so the preview below resolves
+  // its --k-* tokens through exactly the production .kit-light rules rather
+  // than a hand-maintained copy of them that could drift.
+  const previewStyle = {
+    '--theme-primary': primary,
+    '--theme-text': secondary,
+    '--theme-bg': background,
+    '--theme-surface': surface,
+    '--theme-accent-fg': pickReadableForeground(primary),
   };
 
   // Create + edit share one form/handler, same pattern AdminApp's
@@ -173,27 +228,132 @@ export function DesignTab() {
         </CardHeader>
         <CardBody>
           <p className="text-sm text-[var(--k-text-3)] mb-4">{t('themeBuilderDescription')}</p>
-          <div className="grid grid-cols-2 gap-4 max-w-md">
-            <Field label={t('primaryColorLabel')}>
+
+          {/* Presets first, pickers second. A restaurant owner is not a
+              designer: four empty colour pickers can produce an unreadable
+              menu long before they produce a nice one, so the ready-made
+              palettes lead and the pickers become the refinement step.
+              Every preset is contrast-checked by
+              scripts/verify-theme-presets.mjs before it can ship. */}
+          <p className="text-[13px] font-medium text-[var(--k-text-2)] mb-2">{t('themePresetsLabel')}</p>
+          <div className="flex flex-wrap gap-2 mb-5">
+            {THEME_PRESETS.map((preset) => {
+              const isActive = preset.primary.toLowerCase() === primary.toLowerCase()
+                && preset.text.toLowerCase() === secondary.toLowerCase()
+                && preset.background.toLowerCase() === background.toLowerCase()
+                && preset.surface.toLowerCase() === surface.toLowerCase();
+              const label = t(`themePreset${preset.key.charAt(0).toUpperCase()}${preset.key.slice(1)}Label`);
+              return (
+                <button
+                  key={preset.key}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  aria-pressed={isActive}
+                  className={`flex items-center gap-2 rounded-[var(--k-r)] border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    isActive ? 'border-[var(--k-accent)] bg-[var(--k-accent-soft)] text-[var(--k-text)]' : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text-2)] hover:border-[var(--k-border-2)]'
+                  }`}
+                >
+                  {/* Three dots preview the palette itself, so the name is a
+                      reminder rather than the only information. */}
+                  <span className="flex shrink-0 items-center gap-0.5" aria-hidden="true">
+                    <span className="h-3 w-3 rounded-full border border-black/10" style={{ background: preset.background }} />
+                    <span className="h-3 w-3 rounded-full border border-black/10" style={{ background: preset.surface }} />
+                    <span className="h-3 w-3 rounded-full border border-black/10" style={{ background: preset.primary }} />
+                  </span>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+            <Field label={t('backgroundColorLabel')}>
               {(id) => (
                 <div className="flex items-center gap-2">
-                  <input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} aria-label={t('primaryColorAriaLabel')} className="w-11 h-10 rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-2)] cursor-pointer" />
-                  <Input id={id} type="text" value={primary} onChange={(e) => setPrimary(e.target.value)} className="flex-1" />
+                  <input type="color" value={background} onChange={(e) => setBackground(e.target.value)} aria-label={t('backgroundColorAriaLabel')} className="w-11 h-10 rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-2)] cursor-pointer shrink-0" />
+                  <Input id={id} type="text" value={background} onChange={(e) => setBackground(e.target.value)} className="flex-1 min-w-0" />
+                </div>
+              )}
+            </Field>
+            <Field label={t('surfaceColorLabel')}>
+              {(id) => (
+                <div className="flex items-center gap-2">
+                  <input type="color" value={surface} onChange={(e) => setSurface(e.target.value)} aria-label={t('surfaceColorAriaLabel')} className="w-11 h-10 rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-2)] cursor-pointer shrink-0" />
+                  <Input id={id} type="text" value={surface} onChange={(e) => setSurface(e.target.value)} className="flex-1 min-w-0" />
                 </div>
               )}
             </Field>
             <Field label={t('secondaryColorLabel')}>
               {(id) => (
                 <div className="flex items-center gap-2">
-                  <input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} aria-label={t('secondaryColorAriaLabel')} className="w-11 h-10 rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-2)] cursor-pointer" />
-                  <Input id={id} type="text" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="flex-1" />
+                  <input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} aria-label={t('secondaryColorAriaLabel')} className="w-11 h-10 rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-2)] cursor-pointer shrink-0" />
+                  <Input id={id} type="text" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="flex-1 min-w-0" />
                 </div>
               )}
             </Field>
+            <Field label={t('primaryColorLabel')}>
+              {(id) => (
+                <div className="flex items-center gap-2">
+                  <input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} aria-label={t('primaryColorAriaLabel')} className="w-11 h-10 rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-2)] cursor-pointer shrink-0" />
+                  <Input id={id} type="text" value={primary} onChange={(e) => setPrimary(e.target.value)} className="flex-1 min-w-0" />
+                </div>
+              )}
+            </Field>
+            </div>
+
+            {/* Live preview. It carries the SAME --theme-* variables
+                CustomerApp injects and sits inside a .kit-light scope, so
+                what renders here is the production token pipeline, not a
+                separate approximation of it that could drift. */}
+            <div className="lg:w-[260px]">
+              <p className="text-[13px] font-medium text-[var(--k-text-2)] mb-2">{t('themePreviewLabel')}</p>
+              <div className="kit-light overflow-hidden rounded-[var(--k-r-lg)] border border-[var(--k-border)]" style={previewStyle}>
+                <div className="bg-[var(--k-bg)] p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-[var(--k-r-sm)] bg-[var(--k-accent)] text-[11px] font-semibold text-[var(--k-accent-fg)]">
+                      {(restaurant?.name || 'M').charAt(0).toUpperCase()}
+                    </span>
+                    <span className="truncate text-[12px] font-semibold text-[var(--k-text)]">{restaurant?.name || 'MenuFlow'}</span>
+                  </div>
+                  {[0, 1].map((i) => (
+                    <div key={i} className="flex items-center gap-2 rounded-[var(--k-r)] border border-[var(--k-border)] bg-[var(--k-surface)] p-2">
+                      <div className="h-8 w-8 shrink-0 rounded-[var(--k-r-sm)] bg-[var(--k-surface-3)]" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[11px] font-medium text-[var(--k-text)]">{t('themePreviewSampleProduct')} {i + 1}</p>
+                        <p className="text-[10px] text-[var(--k-text-3)]">12.00 ₼</p>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="rounded-[var(--k-r)] bg-[var(--k-accent)] py-1.5 text-center text-[11px] font-semibold text-[var(--k-accent-fg)]">
+                    {t('themePreviewSampleButton')}
+                  </div>
+                </div>
+                {/* Shown deliberately: the footer keeps its fixed cream
+                    ground no matter what is picked above, and the admin
+                    should discover that here rather than be surprised by it
+                    on the live menu. */}
+                <div className="customer-footer border-t border-[var(--k-border)] px-3 py-2 text-center">
+                  <p className="text-[9px] text-[var(--k-text-3)]">{t('themePreviewFooterNote')}</p>
+                </div>
+              </div>
+            </div>
           </div>
+
+          {lowContrast && (
+            <Banner tone="warning" className="mt-4 text-xs">
+              {t('themeContrastWarning')}
+            </Banner>
+          )}
+
+          <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="primary" onClick={handleSaveTheme} disabled={saving} className="mt-4" icon={saved ? <CheckCircle2 className="w-4 h-4" /> : undefined}>
             {saving ? t('savingColors') : saved ? t('colorsSaved') : t('saveColorsButton')}
           </Button>
+            <Button variant="secondary" onClick={handleResetTheme} disabled={saving} title={t('themeResetTitle')}>
+              {t('themeResetButton')}
+            </Button>
+          </div>
         </CardBody>
       </Card>
 

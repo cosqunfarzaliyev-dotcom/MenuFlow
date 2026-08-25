@@ -88,24 +88,40 @@
    canvas; a blue-grey ground makes every dish look slightly grey too.
    ---------------------------------------------------------------------------- */
 .kit-light {
-  --k-bg: #FAFAF9;
-  --k-surface: #FFFFFF;
-  --k-surface-2: #F5F5F4;
-  --k-surface-3: #EFEEEC;
+  /* Every colour below is the restaurant's OWN choice, injected inline by
+     CustomerApp as --theme-* from four `restaurants` columns (0043). These
+     are functional data, not design decisions — each fallback is exactly the
+     value this block hardcoded before 0043, so any surface that does NOT set
+     the --theme-* variables renders byte-identically to before. That matters
+     for components/marketing/PhoneShowcase.jsx, which re-declares .kit-light
+     on the marketing site and supplies only --theme-primary.
 
-  --k-border: #EBEAE8;
-  --k-border-2: #DCDAD6;
+     Only FOUR knobs are stored; the in-between tones derive from them with
+     color-mix() (the same technique --k-accent-soft/-line already used), so a
+     restaurant that picks a dark background gets readable muted text and
+     borders automatically instead of the light-grey constants that used to be
+     baked in here. Mix ratios were solved against the old constants, so the
+     defaults land within 1–2 hex points of the previous values. */
+  --k-bg: var(--theme-bg, #FAFAF9);
+  --k-surface: var(--theme-surface, #FFFFFF);
+  --k-surface-2: color-mix(in srgb, var(--theme-surface, #FFFFFF) 96%, var(--theme-text, #18181B));
+  --k-surface-3: color-mix(in srgb, var(--theme-surface, #FFFFFF) 93%, var(--theme-text, #18181B));
 
-  --k-text: #18181B;
-  --k-text-2: #71717A;
-  --k-text-3: #A1A1AA;
+  --k-border: color-mix(in srgb, var(--theme-text, #18181B) 9%, var(--theme-surface, #FFFFFF));
+  --k-border-2: color-mix(in srgb, var(--theme-text, #18181B) 15%, var(--theme-surface, #FFFFFF));
 
-  /* The accent IS the restaurant's own brand colour, injected inline by
-     CustomerApp from restaurant.theme_primary_color. This is functional data,
-     not a design choice — the fallback only applies before the row loads. */
+  --k-text: var(--theme-text, #18181B);
+  --k-text-2: color-mix(in srgb, var(--theme-text, #18181B) 62%, var(--theme-surface, #FFFFFF));
+  --k-text-3: color-mix(in srgb, var(--theme-text, #18181B) 41%, var(--theme-surface, #FFFFFF));
+
   --k-accent: var(--theme-primary, #18181B);
   --k-accent-hover: var(--theme-primary, #18181B);
-  --k-accent-fg: #FFFFFF;
+  /* Black-or-white, decided in JS from the accent's luminance (see
+     pickReadableForeground in lib/utils.js). CSS cannot make this binary
+     contrast call: color-mix() only blends, and color-contrast() is not yet
+     broadly supported. Without it a restaurant picking a pale yellow button
+     would get white-on-yellow label text. */
+  --k-accent-fg: var(--theme-accent-fg, #FFFFFF);
   --k-accent-soft: color-mix(in srgb, var(--theme-primary, #18181B) 10%, transparent);
   --k-accent-line: color-mix(in srgb, var(--theme-primary, #18181B) 28%, transparent);
 

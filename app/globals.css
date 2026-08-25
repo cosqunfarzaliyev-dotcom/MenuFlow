@@ -159,79 +159,36 @@
 }
 
 /* ============================================================================
-   Customer panel theme — white/light, scoped to `.customer-theme` so the
-   admin/staff/super-admin panels keep their dark glass theme untouched.
+   Customer menu footer — deliberately OUTSIDE the per-restaurant theme.
+
+   Migration 0043 made the customer menu's background/surface/text colours
+   admin-controlled. The footer is the one region that must not follow them:
+   it is the MenuFlow product credit line, not the restaurant's canvas, and
+   it is the same on every tenant's menu.
+
+   There is also a hard technical reason. The mark it renders is
+   /brand/menuflow-logo-light-bg-h48.png — an asset baked for a LIGHT ground.
+   A restaurant picking a dark background would make that logo disappear
+   into it. Pinning the footer to cream keeps the asset legible without
+   needing a second, dark-ground variant of the file.
+
+   HOW the isolation works: the footer re-declares the handful of --k-*
+   tokens its own subtree reads. Custom properties cascade, so redeclaring
+   them ON this element overrides whatever .kit-light resolved them to for
+   the themed page above — the existing text-[var(--k-text-3)] /
+   border-[var(--k-border)] utilities inside keep working untouched and
+   simply resolve against these fixed values instead.
    ============================================================================ */
-.customer-theme {
-  --mf-bg: #FFFFFF;
-  --mf-bg-secondary: #F7F8FA;
-  --mf-border: #E8E8E8;
-  --mf-primary: #6C4CFF;
-  --mf-primary-strong: #5B3DF5;
-  --mf-success: #34C759;
-  --mf-warning: #FFB020;
-  --mf-text: #14151A;
-  --mf-text-muted: #8A8F98;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Plus Jakarta Sans', sans-serif;
-  color: var(--mf-text);
-}
-
-.customer-theme h1,
-.customer-theme h2,
-.customer-theme h3 {
-  font-family: inherit;
-}
-
-/* Card: white, not pure-flat — soft border + ambient shadow, lifts on hover */
-.customer-card {
-  background: #FFFFFF;
-  border-radius: 20px;
-  border: 1px solid #ECECEC;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.customer-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.10);
-}
-
-/* Primary button: violet gradient, 56px tall, 16px radius, presses down slightly */
-.customer-btn-primary {
-  background: linear-gradient(180deg, #7B61FF 0%, #5B3DF5 100%);
-  border-radius: 16px;
-  min-height: 56px;
-  color: #ffffff;
-  font-weight: 700;
-  box-shadow: 0 10px 24px -6px rgba(108, 76, 255, 0.45);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-}
-.customer-btn-primary:hover {
-  box-shadow: 0 14px 30px -6px rgba(108, 76, 255, 0.55);
-}
-.customer-btn-primary:active {
-  transform: scale(0.98);
-}
-.customer-btn-primary:disabled {
-  opacity: 0.5;
-  box-shadow: none;
-}
-
-/* Bottom navigation: frosted glass over the page content */
-.customer-bottom-nav {
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
-  border-top: 1px solid var(--mf-border);
-}
-
-.customer-theme ::-webkit-scrollbar-track {
-  background: var(--mf-bg-secondary);
-}
-.customer-theme ::-webkit-scrollbar-thumb {
-  background: #D9DBE3;
-}
-.customer-theme ::-webkit-scrollbar-thumb:hover {
-  background: var(--mf-primary);
+.customer-footer {
+  background-color: #FBF6EC;
+  --k-text: #1A1714;
+  --k-text-2: #6B6259;
+  /* 4.59:1 on the cream above. The footer tagline renders at 11px, so it
+     needs the full WCAG AA 4.5:1 body-text ratio, not the 3:1 large-text
+     allowance — the first value tried here measured 3.46:1 and failed. */
+  --k-text-3: #776F66;
+  --k-border: #E6DECF;
+  color: var(--k-text);
 }
 
 /* prefers-reduced-motion — appended at the end of the file so it cannot
@@ -247,11 +204,10 @@
   .qr-code-card {
     animation: none;
   }
-  .glass-panel-interactive, .customer-card, .customer-btn-primary {
+  /* .customer-card / .customer-btn-primary were removed with the dead
+     .customer-theme block above; only .glass-panel-interactive still exists. */
+  .glass-panel-interactive {
     transition: none;
-  }
-  .customer-card:hover {
-    transform: none;
   }
 }
 

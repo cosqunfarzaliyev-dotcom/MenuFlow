@@ -13,7 +13,7 @@ npm run lint     # eslint . — baseline is 19 pre-existing problems (15 react-h
                  #   existing one is its own reviewed task since most touch auth/session-loading code.
 ```
 
-There is no test framework. `scripts/verify-*.mjs` are standalone Node assertion scripts, the closest thing to tests — run one directly: `node scripts/verify-capabilities.mjs` (also `verify-entitlements.mjs`, `verify-plans.mjs`, `verify-order-subscription.mjs`, `verify-pos-integration.mjs`, `verify-translations.mjs`, `verify-site-content.mjs`, `verify-design-systems.mjs`, `verify-i18n-keys.mjs`). Each prints a numbered pass/fail list for one subsystem's invariants. **All nine exit 0** — treat any non-zero exit as new breakage, not as pre-existing noise.
+There is no test framework. `scripts/verify-*.mjs` are standalone Node assertion scripts, the closest thing to tests — run one directly: `node scripts/verify-capabilities.mjs` (also `verify-entitlements.mjs`, `verify-plans.mjs`, `verify-order-subscription.mjs`, `verify-pos-integration.mjs`, `verify-translations.mjs`, `verify-site-content.mjs`, `verify-design-systems.mjs`, `verify-i18n-keys.mjs`, `verify-theme-presets.mjs`). Each prints a numbered pass/fail list for one subsystem's invariants. **All ten exit 0** — treat any non-zero exit as new breakage, not as pre-existing noise.
 
 **Database and Edge Functions are managed through the Supabase MCP server, not the Supabase CLI or dashboard SQL editor.** A new migration is a new numbered file in `supabase/migrations/` (`NNNN_description.sql`, next number after the highest existing one — check first, there are two files sharing prefix `0017`), applied live via the MCP `apply_migration` tool, then verified with `get_advisors` (security + performance). The repo file is the reviewable source of truth; the MCP call is the deploy mechanism — this mirrors how Edge Functions are deployed (`deploy_edge_function`, passing the function's file contents directly). After any schema change, run `get_advisors` before considering the work done — RLS-missing-policy and other findings are expected to be caught here, not discovered later.
 
@@ -61,13 +61,23 @@ Every mutation in `lib/store.js` follows the same shape: call a function from `l
 
 Realtime subscriptions go through `lib/services/realtime.js`'s single `RealtimeManager` (`subscribeOrders`/`subscribeProducts`/etc., all `subscribe(table, handler, { restaurantId })`) — always pass `restaurantId` to get a tenant-filtered Postgres changes stream.
 
-### Three design systems — do not mix them
+### Two design systems — do not mix them
 
 - **`components/kit/`** ("Quiet Premium", `--k-*` CSS tokens, `.kit-dark`/`.kit-light` scoped to each panel root) is the live system for all four app panels (Customer, Staff, Admin, SuperAdmin) **and** the four auth/setup pages: `/login`, `/superadmin-login`, `/reset-password`, `/onboarding`. All new UI on those surfaces uses `kit` primitives (`Card`, `Button`, `Field`, `Input`, `Switch`, `Tag`, `PageHeader`, `Sheet`, `ConfirmDialog`/`useConfirmDialog`, etc. — see `components/kit/index.js`).
 - **`components/mkt/`** ("Süfrə", `--mkt-*` tokens, `.mkt` scoped to `app/[locale]/layout.jsx`'s root div) is the public marketing site only (`app/[locale]/**`, `components/marketing/**`). Warm walnut ground + brass/sage accents + Fraunces display face — deliberately its own visual language, not a restyle of the panels.
-- **`.customer-theme`** (`--mf-*` tokens, declared in `app/globals.css`) is the last surviving piece of the retired primitive kit: the per-restaurant-themed customer QR menu (`CustomerApp`/`ProductCard`/`ProductDetailModal`/`CartDrawer`), whose accent comes from `--theme-primary` injected from the DB at runtime. **Do not delete these `--mf-*` declarations** — the `.mf-dark` body class and `components/ui/` that used the same prefix are both gone, but this block is live.
 
-They are deliberately separate trees with non-overlapping token namespaces so a file can't accidentally import from two and end up with competing systems. `scripts/verify-design-systems.mjs` enforces this mechanically: no file may import from both `kit` and `mkt`, no `--k-*` may appear under `components/mkt/`, no `--mkt-*` under `components/kit/`. Run it after any cross-surface UI change.
+There used to be a third entry here — `.customer-theme` / `--mf-*` in `app/globals.css`, described as the live customer-menu theme. It was not: the customer QR menu has always rendered under `.kit-light`, and nothing in the repo ever applied that class or read those tokens. The block (and `.customer-card` / `.customer-btn-primary` / `.customer-bottom-nav` with it) was deleted in `0043_customer_theme_colors.sql`'s pass. **The customer menu is a `kit` surface**, themed per-restaurant as described below — do not reintroduce a parallel token namespace for it.
+
+#### Per-restaurant theming of the customer menu
+
+`.kit-light` is the only themeable scope. `CustomerApp.jsx` injects four CSS custom properties inline from `restaurants` columns (`0043`): `--theme-bg`, `--theme-surface`, `--theme-text`, `--theme-primary`, plus a computed `--theme-accent-fg` (black-or-white button label, from `pickReadableForeground` in `lib/utils.js`). `components/kit/tokens.css` reads those with fallbacks equal to its own pre-0043 constants, and derives every muted tone (`--k-text-2/3`, `--k-border`, `--k-surface-2/3`) from them with `color-mix()`. Consequences worth knowing before touching this:
+
+- Any surface that does **not** set the `--theme-*` variables renders exactly as before — that is what keeps `components/marketing/PhoneShowcase.jsx` (which re-declares `.kit-light` and supplies only `--theme-primary`) unchanged.
+- The customer `<footer>` carries `.customer-footer`, which pins a fixed cream ground **and re-declares the `--k-*` tokens its subtree reads**, so the restaurant's palette stops at its edge. This is deliberate: the mark it renders (`menuflow-logo-light-bg-h48.png`) is baked for a light ground and would vanish on a dark theme.
+- `theme_secondary_color` is the menu **text** colour. Before 0043 it fed a `--theme-secondary` variable no file read, so the admin picker writing it did nothing.
+- Shipped palettes live in `lib/services/themePresetService.js`; `scripts/verify-theme-presets.mjs` asserts each clears WCAG AA 4.5:1 for body text and button labels, that every preset key is translated in az/en/ru, and that `DEFAULT_THEME` matches the migration's column defaults.
+
+The two trees are deliberately separate, with non-overlapping token namespaces, so a file can't accidentally import from both and end up with competing systems. `scripts/verify-design-systems.mjs` enforces this mechanically: no file may import from both `kit` and `mkt`, no `--k-*` may appear under `components/mkt/`, no `--mkt-*` under `components/kit/`. Run it after any cross-surface UI change.
 
 ### Two independent authorization axes — don't conflate them
 

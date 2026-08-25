@@ -21,7 +21,7 @@ import {
   EmptyState, LoadingState, ErrorState,
 } from "@/components/kit";
 import { useLanguage } from "@/hooks/useLanguage";
-import { cn, isVideoUrl } from "@/lib/utils";
+import { cn, isVideoUrl, pickReadableForeground } from "@/lib/utils";
 
 // Only ever render admin-supplied banner links as a real navigable <a href>
 // if they're http(s) — blocks javascript:/data: URI injection via a
@@ -623,10 +623,36 @@ export function CustomerApp() {
     [ORDER_STATUS.CANCELLED]: { label: getLocalizedText("statusCancelled", lang), icon: <XCircle className="w-3.5 h-3.5" />, tone: 'danger' },
   };
 
-  const themeStyle = {
-    '--theme-primary': restaurant?.theme_primary_color || '#6C4CFF',
-    '--theme-secondary': restaurant?.theme_secondary_color || '#14151A',
-  };
+  // The restaurant's own palette, handed to .kit-light as CSS custom
+  // properties (components/kit/tokens.css derives every other token from
+  // these four via color-mix). Four inline variables instead of a stylesheet
+  // per tenant: the values are row data that changes at runtime, and CSS
+  // custom properties inherit down the whole subtree, including the cart and
+  // product Sheets, which render in place (theme={null}) precisely so they
+  // stay inside this element and keep inheriting them.
+  //
+  // NOTE: theme_secondary_color is the MENU TEXT colour as of migration 0043.
+  // It previously fed a --theme-secondary variable that nothing in the repo
+  // ever read, so the admin panel's "second colour" picker was inert; the
+  // migration repurposed the column rather than adding a fifth one.
+  const themeStyle = useMemo(() => {
+    const accent = restaurant?.theme_primary_color || '#6C4CFF';
+    return {
+      '--theme-primary': accent,
+      '--theme-text': restaurant?.theme_secondary_color || '#14151A',
+      '--theme-bg': restaurant?.theme_background_color || '#FAFAF9',
+      '--theme-surface': restaurant?.theme_surface_color || '#FFFFFF',
+      // Button LABEL colour. Computed, never stored: it is fully determined
+      // by the accent, so persisting it would just create a second source of
+      // truth that can drift out of sync with the button colour it describes.
+      '--theme-accent-fg': pickReadableForeground(accent),
+    };
+  }, [
+    restaurant?.theme_primary_color,
+    restaurant?.theme_secondary_color,
+    restaurant?.theme_background_color,
+    restaurant?.theme_surface_color,
+  ]);
 
   if (loading) {
     return (
@@ -1019,7 +1045,11 @@ export function CustomerApp() {
       </main>
 
       {/* Footer */}
-      <footer className="mt-10 border-t border-[var(--k-border)] px-4 py-6 text-center">
+      {/* .customer-footer pins this region to a fixed cream ground and
+          re-declares the --k-* tokens its subtree reads, so the restaurant's
+          chosen background/text colours stop at its edge — see the block in
+          app/globals.css for why the MenuFlow mark requires that. */}
+      <footer className="customer-footer mt-10 border-t border-[var(--k-border)] px-4 py-6 text-center">
         <div className="mx-auto flex max-w-7xl flex-col items-center gap-1.5">
           <div className="flex items-center gap-1.5 text-[11px] text-[var(--k-text-3)]">
             {/* Deliberately NOT the restaurant's own logo. A restaurant's
