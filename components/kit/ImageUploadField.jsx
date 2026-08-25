@@ -17,11 +17,12 @@
 import React, { useRef, useState } from 'react';
 import Image from 'next/image';
 import { Upload } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, isVideoUrl } from '@/lib/utils';
 import { uploadRestaurantImage } from '@/lib/services/storageService';
 import { Input, Button, Tag } from './primitives';
 
-const ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
+const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
+const VIDEO_ACCEPT = 'video/mp4,video/webm,video/quicktime';
 
 export function ImageUploadField({
   value,
@@ -33,6 +34,10 @@ export function ImageUploadField({
   uploadLabel,
   previewAlt,
   invalidLabel,
+  // Opt-in only (DesignTab's banner form) — every other caller of this
+  // field (product/category image, restaurant logo) stays image-only, see
+  // storageService.js's own note on why video isn't offered everywhere.
+  allowVideo = false,
   id,
   className,
   ...a11y
@@ -41,6 +46,7 @@ export function ImageUploadField({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [previewValid, setPreviewValid] = useState(true);
+  const accept = allowVideo ? `${IMAGE_ACCEPT},${VIDEO_ACCEPT}` : IMAGE_ACCEPT;
 
   const handleFileSelect = async (event) => {
     const file = event.target.files?.[0];
@@ -51,7 +57,7 @@ export function ImageUploadField({
 
     setUploading(true);
     setUploadError(null);
-    const { url, error } = await uploadRestaurantImage(file, { restaurantId, folder });
+    const { url, error } = await uploadRestaurantImage(file, { restaurantId, folder, allowVideo });
     setUploading(false);
 
     if (error) {
@@ -79,7 +85,7 @@ export function ImageUploadField({
     <div className={cn('space-y-2', className)}>
       <div className="flex items-center gap-2">
         <Input id={id} type="text" value={value || ''} onChange={handleUrlChange} placeholder={urlPlaceholder} className="flex-1" {...a11y} />
-        <input ref={fileInputRef} type="file" accept={ACCEPT} className="hidden" onChange={handleFileSelect} />
+        <input ref={fileInputRef} type="file" accept={accept} className="hidden" onChange={handleFileSelect} />
         <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} loading={uploading} icon={<Upload className="w-4 h-4" />}>
           {uploadLabel}
         </Button>
@@ -88,32 +94,48 @@ export function ImageUploadField({
       {trimmedValue && (
         <div className="flex items-center gap-3 p-3 bg-[var(--k-surface-2)] border border-[var(--k-border)] rounded-[var(--k-r)]">
           {previewValid ? (
-            <Image
-              key={trimmedValue}
-              src={trimmedValue}
-              alt={previewAlt}
-              width={40}
-              height={40}
-              unoptimized
-              className="w-10 h-10 object-contain rounded-[var(--k-r-sm)] border border-[var(--k-border)]"
-              // A solid --k-surface-3 fill here used to make every preview
-              // look "fine" regardless of whether the uploaded PNG actually
-              // had a transparent background — an admin had no way to tell
-              // the difference from this thumbnail alone, and this panel's
-              // own dark theme isn't representative of the (often light)
-              // customer menu the logo actually renders on anyway. A
-              // checkerboard is the standard "this is really transparent"
-              // tell — a logo with a baked-in white/colored background
-              // shows a solid square here; a truly transparent one shows
-              // the checker pattern through it.
-              style={{
-                backgroundImage:
-                  'conic-gradient(#8886 25%, transparent 0 50%, #8886 0 75%, transparent 0)',
-                backgroundSize: '8px 8px',
-                backgroundColor: 'var(--k-surface-3)',
-              }}
-              onError={() => setPreviewValid(false)}
-            />
+            allowVideo && isVideoUrl(trimmedValue) ? (
+              // Muted/looping so the admin sees actual motion, not a single
+              // static frame — same "show what the customer will really
+              // see" reasoning as the checkerboard treatment below.
+              <video
+                key={trimmedValue}
+                src={trimmedValue}
+                autoPlay
+                muted
+                loop
+                playsInline
+                className="w-10 h-10 object-cover rounded-[var(--k-r-sm)] border border-[var(--k-border)] bg-[var(--k-surface-3)]"
+                onError={() => setPreviewValid(false)}
+              />
+            ) : (
+              <Image
+                key={trimmedValue}
+                src={trimmedValue}
+                alt={previewAlt}
+                width={40}
+                height={40}
+                unoptimized
+                className="w-10 h-10 object-contain rounded-[var(--k-r-sm)] border border-[var(--k-border)]"
+                // A solid --k-surface-3 fill here used to make every preview
+                // look "fine" regardless of whether the uploaded PNG actually
+                // had a transparent background — an admin had no way to tell
+                // the difference from this thumbnail alone, and this panel's
+                // own dark theme isn't representative of the (often light)
+                // customer menu the logo actually renders on anyway. A
+                // checkerboard is the standard "this is really transparent"
+                // tell — a logo with a baked-in white/colored background
+                // shows a solid square here; a truly transparent one shows
+                // the checker pattern through it.
+                style={{
+                  backgroundImage:
+                    'conic-gradient(#8886 25%, transparent 0 50%, #8886 0 75%, transparent 0)',
+                  backgroundSize: '8px 8px',
+                  backgroundColor: 'var(--k-surface-3)',
+                }}
+                onError={() => setPreviewValid(false)}
+              />
+            )
           ) : (
             <Tag tone="danger">{invalidLabel}</Tag>
           )}

@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutDashboard, Building2, CreditCard, LineChart, Users, ShieldCheck,
-  LogOut, ChevronLeft, ChevronRight, X, Package, FileText, Phone, HelpCircle,
+  LogOut, ChevronLeft, ChevronRight, X, Package, FileText, Phone, HelpCircle, Megaphone,
 } from 'lucide-react';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 import { ModeSwitcher } from './ModeSwitcher';
@@ -20,6 +20,7 @@ const RESTAURANT_TABS = (t) => [
   { id: 'subscriptions', label: t('tabSubscriptions'), icon: CreditCard },
   { id: 'analytics', label: t('tabAnalytics'), icon: LineChart },
   { id: 'users', label: t('tabUsers'), icon: Users },
+  { id: 'announcements', label: t('tabAnnouncements'), icon: Megaphone },
 ];
 
 // `site-` prefixed ids — one flat, namespaced activeTab string rather than

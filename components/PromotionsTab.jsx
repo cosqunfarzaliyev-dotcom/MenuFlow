@@ -1,81 +1,34 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Megaphone, Percent, Plus, Trash2, Edit2, X, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { Percent, Plus, Trash2, Edit2, X, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
 import { useCommonTranslation } from "@/lib/i18n/dictionaries/common";
 import {
   PageHeader, Card, CardHeader, CardBody, Field, Input, Select, Button, Tag, EmptyState, ConfirmDialog, useConfirmDialog,
-  Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell, ImageUploadField,
 } from "@/components/kit";
 
-const emptyCampaign = { title: "", description: "", banner_image_url: "" };
 const emptyDiscount = { title: "", discount_type: "percentage", value: "", product_id: "" };
 
-// Admin -> Kampaniya + Endirim: kampaniyalar (bannerli tanıtımlar) və
-// endirimlər (bütün menyuya və ya seçilmiş məhsula tətbiq olunan qiymət
-// azalması) buradan idarə olunur.
+// Admin -> Endirimlər: bütün menyuya və ya seçilmiş bir məhsula tətbiq
+// olunan qiymət azalmaları buradan idarə olunur. Promo şəkilləri artıq
+// yalnız Dizayn -> Banner sistemindən gəlir (kampaniyalar silinib).
 export function PromotionsTab() {
   const { t } = useAdminTranslation();
   const { t: tc } = useCommonTranslation();
   const {
-    campaigns, loadCampaigns, createCampaign, updateCampaign, deleteCampaign,
     discounts, loadDiscounts, createDiscount, updateDiscount, deleteDiscount,
-    products, restaurant,
+    products,
   } = useAppStore();
   const confirmDialog = useConfirmDialog();
 
-  const [campaignForm, setCampaignForm] = useState(emptyCampaign);
-  const [editingCampaignId, setEditingCampaignId] = useState(null);
   const [discountForm, setDiscountForm] = useState(emptyDiscount);
   const [editingDiscountId, setEditingDiscountId] = useState(null);
 
   useEffect(() => {
-    loadCampaigns();
     loadDiscounts();
-  }, [loadCampaigns, loadDiscounts]);
-
-  // Create + edit share one form/handler — editingCampaignId set means Save
-  // calls updateCampaign instead of createCampaign, same pattern
-  // DesignTab.jsx already uses for banners (see its handleSaveBanner).
-  const handleSaveCampaign = async (e) => {
-    e.preventDefault();
-    if (!campaignForm.title.trim()) return;
-    if (editingCampaignId) {
-      await updateCampaign({ id: editingCampaignId, ...campaignForm });
-    } else {
-      await createCampaign({ ...campaignForm, is_active: true });
-    }
-    setCampaignForm(emptyCampaign);
-    setEditingCampaignId(null);
-  };
-
-  const handleEditCampaign = (c) => {
-    setEditingCampaignId(c.id);
-    setCampaignForm({
-      title: c.title || "",
-      description: c.description || "",
-      banner_image_url: c.banner_image_url || "",
-    });
-  };
-
-  const handleCancelEditCampaign = () => {
-    setEditingCampaignId(null);
-    setCampaignForm(emptyCampaign);
-  };
-
-  const handleToggleCampaignActive = (c) => {
-    updateCampaign({ id: c.id, is_active: !c.is_active });
-  };
-
-  const handleDeleteCampaign = (c) => {
-    confirmDialog.confirm({
-      title: t('deleteCampaignConfirmTitle'),
-      message: t('deleteCampaignConfirmMessage')(c.title),
-      onConfirm: () => deleteCampaign(c.id),
-    });
-  };
+  }, [loadDiscounts]);
 
   const handleSaveDiscount = async (e) => {
     e.preventDefault();
@@ -127,115 +80,6 @@ export function PromotionsTab() {
   return (
     <div className="space-y-6">
       <PageHeader title={t('titlePromotions')} description={t('promotionsSubtitle')} />
-
-      {/* Campaigns */}
-      <Card variant="plain">
-        <CardHeader>
-          <h2 className="font-semibold text-[var(--k-text)] flex items-center gap-2 text-sm">
-            <Megaphone className="w-4 h-4 text-[var(--k-accent)]" />
-            {t('campaignsSectionTitle')}
-          </h2>
-        </CardHeader>
-        <CardBody>
-          <form onSubmit={handleSaveCampaign} className="grid sm:grid-cols-3 gap-3 mb-5">
-            <Field label={t('campaignNameFieldLabel')} required>
-              {(id, a11y) => (
-                <Input
-                  id={id} type="text" value={campaignForm.title}
-                  onChange={(e) => setCampaignForm({ ...campaignForm, title: e.target.value })}
-                  placeholder={t('campaignNamePlaceholder')} {...a11y}
-                />
-              )}
-            </Field>
-            <Field label={t('campaignDescFieldLabel')}>
-              {(id, a11y) => (
-                <Input
-                  id={id} type="text" value={campaignForm.description}
-                  onChange={(e) => setCampaignForm({ ...campaignForm, description: e.target.value })}
-                  placeholder={t('campaignDescPlaceholder')} {...a11y}
-                />
-              )}
-            </Field>
-            <Field label={t('campaignBannerUrlFieldLabel')}>
-              {(id, a11y) => (
-                <ImageUploadField
-                  id={id} value={campaignForm.banner_image_url}
-                  onChange={(url) => setCampaignForm({ ...campaignForm, banner_image_url: url })}
-                  restaurantId={restaurant?.id} folder="campaigns"
-                  urlPlaceholder={t('campaignBannerUrlPlaceholder')}
-                  uploadLabel={t('imageUploadButton')}
-                  previewAlt={t('imagePreviewAlt')}
-                  invalidLabel={t('logoInvalidBadge')}
-                  {...a11y}
-                />
-              )}
-            </Field>
-            <div className="sm:col-span-3 flex gap-2">
-              <Button type="submit" variant="primary" className="flex-1" icon={editingCampaignId ? <CheckCircle2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}>
-                {editingCampaignId ? t('saveChangesShort') : t('addCampaignButton')}
-              </Button>
-              {editingCampaignId && (
-                <Button type="button" variant="secondary" onClick={handleCancelEditCampaign} icon={<X className="w-4 h-4" />}>
-                  {tc('cancel')}
-                </Button>
-              )}
-            </div>
-          </form>
-
-          {campaigns.length === 0 ? (
-            <EmptyState icon={<Megaphone className="w-5 h-5" />} title={t('noCampaignsYet')} description={t('campaignsNotFoundDescription')} />
-          ) : (
-            <Table>
-              <TableHead>
-                <TableHeaderCell>{t('colCampaign')}</TableHeaderCell>
-                <TableHeaderCell>{t('colStatus')}</TableHeaderCell>
-                <TableHeaderCell className="text-right">{t('colActions')}</TableHeaderCell>
-              </TableHead>
-              <TableBody>
-                {campaigns.map((c) => (
-                  <TableRow key={c.id} className={editingCampaignId === c.id ? 'bg-[var(--k-accent-soft)]' : undefined}>
-                    <TableCell>
-                      <p className="font-medium text-[var(--k-text)]">{c.title}</p>
-                      {c.description && <p className="text-xs text-[var(--k-text-3)] mt-0.5">{c.description}</p>}
-                    </TableCell>
-                    <TableCell>
-                      <Tag tone={c.is_active ? 'success' : 'neutral'}>
-                        {c.is_active ? t('campaignActiveStatusBadge') : t('campaignInactiveStatusBadge')}
-                      </Tag>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        <button
-                          onClick={() => handleToggleCampaignActive(c)}
-                          aria-label={c.is_active ? t('deactivateCampaignAriaLabel')(c.title) : t('activateCampaignAriaLabel')(c.title)}
-                          title={c.is_active ? t('bannerActiveTooltip') : t('bannerInactiveTooltip')}
-                          className="text-[var(--k-text-3)] hover:text-[var(--k-text)] p-2 shrink-0"
-                        >
-                          {c.is_active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                        </button>
-                        <button
-                          onClick={() => handleEditCampaign(c)}
-                          aria-label={t('editCampaignAriaLabel')(c.title)}
-                          className="text-[var(--k-text-3)] hover:text-[var(--k-accent)] p-2 shrink-0"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCampaign(c)}
-                          aria-label={t('deleteCampaignAriaLabel')(c.title)}
-                          className="text-[var(--k-text-3)] hover:text-[var(--k-danger)] p-2 shrink-0"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardBody>
-      </Card>
 
       {/* Discounts */}
       <Card variant="plain">

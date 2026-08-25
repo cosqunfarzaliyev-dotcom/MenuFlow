@@ -6,16 +6,16 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ORDER_STATUS, useAppStore } from '@/lib/store';
 import { supabase, supabaseReady } from '@/lib/supabase';
-import { subscribeProducts, subscribeCategories, subscribeTables, subscribeOrders, subscribeAlerts } from '@/lib/services/realtime';
+import { subscribeProducts, subscribeCategories, subscribeTables, subscribeOrders, subscribeAlerts, subscribeAnnouncements } from '@/lib/services/realtime';
 import {
   Settings, Plus, Edit2, Trash2, QrCode, Lock, BarChart3, Users, Download, Printer,
   TrendingUp, Clock, Activity, CheckCircle2, LayoutDashboard, Table2, ListOrdered, FileBarChart2,
   Search, Bell, ChevronRight, UserCircle2, Package, DollarSign, Megaphone, Palette, ClipboardList,
-  Wallet, CreditCard, Smartphone, Plug,
+  Wallet, CreditCard, Smartphone, Plug, ChevronUp, ChevronDown, X,
 } from 'lucide-react';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
 import {
-  LoadingState, ErrorState, EmptyState, PageSkeleton, Sheet, SheetHeader, SheetFooter, Banner, Tabs, TabsTrigger,
+  LoadingState, ErrorState, EmptyState, PageSkeleton, Sheet, SheetHeader, SheetBody, SheetFooter, Banner, Tabs, TabsTrigger,
   Sidebar, SidebarMenuButton, ConfirmDialog, useConfirmDialog, Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell, TableEmptyRow,
   Card, CardHeader, CardBody, PageHeader, Button, Input, Select, Textarea, Checkbox, Field, Tag, LanguageToggle, Divider,
   ImageUploadField,
@@ -30,6 +30,7 @@ import { PromotionsTab } from '@/components/PromotionsTab';
 import { DesignTab } from '@/components/DesignTab';
 import { AuditLogTab } from '@/components/AuditLogTab';
 import { getTrialDaysLeft, isAccessBlocked, accessBlockReason } from '@/lib/services/billingService';
+import { matchesSearch } from '@/lib/utils';
 import { getEntitlements } from '@/lib/services/entitlementService';
 import { CAPABILITIES } from '@/lib/services/capabilityService';
 import { useCapabilities } from '@/hooks/useCapability';
@@ -42,10 +43,11 @@ import { useLocaleSync } from '@/hooks/useLocaleSync';
 // browser JS and visible to anyone via devtools. Create the admin user in
 // your Supabase project's Authentication tab.
 export function AdminApp() {
-  const { 
-    products, categories, createProduct, updateProduct, deleteProduct, createCategory, updateCategory, deleteCategory, 
+  const {
+    products, categories, createProduct, updateProduct, deleteProduct, createCategory, updateCategory, deleteCategory, reorderCategories,
     tables, loadTables, loadMenuData, loadOrders, loadAlerts, updateTableName, isAdminAuthenticated, setIsAdminAuthenticated, orders,
     qrTokensByTableId, loadQrTokens,
+    announcements, announcementReadIds, loadAnnouncements, markAnnouncementsRead,
     settings: rawSettings, updateRestaurantProfile, profile, loadProfile, restaurant,
     loadPlans,
   } = useAppStore();
@@ -77,7 +79,7 @@ export function AdminApp() {
   // useLocaleSync hydrates the shared language store from this admin's
   // saved profiles.locale (migration 0023) the first time this browser has
   // no explicit local choice — see hooks/useLocaleSync.js.
-  const { t } = useAdminTranslation();
+  const { t, language } = useAdminTranslation();
   const { t: tc } = useCommonTranslation();
   useLocaleSync(profile?.locale);
   // Formal capability layer (Master Plan Phase 6) — role → capability matrix,
@@ -103,6 +105,37 @@ export function AdminApp() {
   const [isMounted, setIsMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+
+  // Notifications (platform announcements, bell icon) -----------------------
+  //
+  // unreadIds is derived every render from announcements/announcementReadIds
+  // (both store state, refetched via the standard "refetch after mutation"
+  // pattern) — no separate counter to keep in sync.
+  //
+  // openedUnreadIds is a SNAPSHOT taken the instant the sheet opens. Opening
+  // the sheet immediately marks every currently-visible announcement read
+  // (see handleOpenNotifications below), which would make unreadIds go to
+  // zero mid-view and silently drop the "New" badge while the admin is still
+  // looking at the list — the snapshot keeps that badge stable for the
+  // duration of this one open/close cycle.
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [openedUnreadIds, setOpenedUnreadIds] = useState([]);
+
+  const unreadAnnouncementIds = useMemo(
+    () => announcements.filter((a) => !announcementReadIds.includes(a.id)).map((a) => a.id),
+    [announcements, announcementReadIds],
+  );
+
+  const handleOpenNotifications = () => {
+    setOpenedUnreadIds(unreadAnnouncementIds);
+    setNotificationsOpen(true);
+    if (unreadAnnouncementIds.length > 0) markAnnouncementsRead(unreadAnnouncementIds);
+  };
+
+  const handleMarkAllRead = () => {
+    const stillUnread = announcements.filter((a) => !announcementReadIds.includes(a.id)).map((a) => a.id);
+    if (stillUnread.length > 0) markAnnouncementsRead(stillUnread);
+  };
 
   // Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -151,6 +184,50 @@ export function AdminApp() {
       message: t('deleteCategoryConfirmMessage'),
       onConfirm: () => deleteCategory(id),
     });
+  };
+
+  // Category ordering (categories.sort_order). Swaps the row with its
+  // neighbour locally, then persists the WHOLE resulting id order rather
+  // than patching two rows — every row was sitting at the default 0 before
+  // the first reorder, so a two-row swap alone would leave the rest
+  // ambiguous. `categoryReordering` disables the arrows while the awaited
+  // sequence of updates + refetch is in flight, so a fast double-tap can't
+  // race two reorders against each other.
+  // Name search for the Products and Categories tabs. Filtering is purely a
+  // view concern — it never touches the store, so the underlying arrays (and
+  // therefore category sort_order) are unaffected by what is typed here.
+  // matchesSearch folds Azerbaijani casing/diacritics so "isti" finds
+  // "İsti içkilər" and "sorba" finds "Şorbalar" — see lib/utils.js.
+  const [productQuery, setProductQuery] = useState('');
+  const [categoryQuery, setCategoryQuery] = useState('');
+
+  const visibleProducts = useMemo(
+    () => products.filter((product) => matchesSearch(product.name, productQuery)),
+    [products, productQuery],
+  );
+  const visibleCategories = useMemo(
+    () => categories.filter((category) => matchesSearch(category.name, categoryQuery)),
+    [categories, categoryQuery],
+  );
+  // Reordering swaps by position in the FULL categories array. While a
+  // filter hides rows, a "move up" would silently jump the row past
+  // whatever is hidden, so the arrows are withheld until the search is
+  // cleared rather than doing something the admin cannot see.
+  const categorySearchActive = categoryQuery.trim().length > 0;
+
+  const [categoryReordering, setCategoryReordering] = useState(false);
+  const [categoryReorderError, setCategoryReorderError] = useState(null);
+
+  const handleMoveCategory = async (index, direction) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= categories.length) return;
+    const reordered = [...categories];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    setCategoryReordering(true);
+    setCategoryReorderError(null);
+    const { error } = await reorderCategories(reordered.map((c) => c.id));
+    setCategoryReordering(false);
+    if (error) setCategoryReorderError(error.message || t('categoryReorderFailed'));
   };
 
   // Product Modal State
@@ -347,7 +424,7 @@ export function AdminApp() {
         // from the live plans/plan_features tables (0021_plan_subscription_
         // system.sql) — read by getEntitlements(restaurant) below (wallet
         // notice) and DesignTab's banner gate, same resolver either way.
-        await Promise.all([loadMenuData(), loadTables(), loadOrders(), loadAlerts(), loadPlans()]);
+        await Promise.all([loadMenuData(), loadTables(), loadOrders(), loadAlerts(), loadPlans(), loadAnnouncements()]);
       } catch (err) {
         console.error('Admin data load error:', err);
         setLoadError(err?.message || String(err));
@@ -356,7 +433,7 @@ export function AdminApp() {
       }
     };
     load();
-  }, [loadMenuData, loadTables, loadOrders, loadAlerts, loadPlans, isAdminAuthenticated, restaurantResolved, profile]);
+  }, [loadMenuData, loadTables, loadOrders, loadAlerts, loadPlans, loadAnnouncements, isAdminAuthenticated, restaurantResolved, profile]);
 
   // QR token-ləri yalnız "QR Kodlar" tabı açılanda yüklə (sütun səviyyəli
   // qorunmadadır, adi loadTables() ilə gəlmir — bax: 0008_qr_token_verification.sql)
@@ -367,7 +444,7 @@ export function AdminApp() {
   }, [activeTab, isAdminAuthenticated, restaurantResolved, loadQrTokens]);
 
   useEffect(() => {
-    let prodSub, catSub, tableSub, orderSub, alertSub;
+    let prodSub, catSub, tableSub, orderSub, alertSub, announcementSub;
     const restaurantId = profile?.restaurant_id || restaurant?.id || null;
 
     const start = async () => {
@@ -394,6 +471,13 @@ export function AdminApp() {
         alertSub = await subscribeAlerts(() => {
           loadAlerts();
         }, { restaurantId });
+
+        // Platform announcements are NOT restaurant-scoped (see realtime.js's
+        // own note), so this is the one subscribe call in this effect with no
+        // { restaurantId } — RLS alone decides what this admin receives.
+        announcementSub = await subscribeAnnouncements(() => {
+          loadAnnouncements();
+        });
       } catch (err) {
         console.warn('Admin realtime subscribe error', err);
       }
@@ -407,8 +491,9 @@ export function AdminApp() {
       if (tableSub && typeof tableSub.unsubscribe === 'function') tableSub.unsubscribe();
       if (orderSub && typeof orderSub.unsubscribe === 'function') orderSub.unsubscribe();
       if (alertSub && typeof alertSub.unsubscribe === 'function') alertSub.unsubscribe();
+      if (announcementSub && typeof announcementSub.unsubscribe === 'function') announcementSub.unsubscribe();
     };
-  }, [loadMenuData, loadTables, loadOrders, loadAlerts, profile?.restaurant_id, restaurant?.id]);
+  }, [loadMenuData, loadTables, loadOrders, loadAlerts, loadAnnouncements, profile?.restaurant_id, restaurant?.id]);
 
   if (!isMounted) return null;
 
@@ -529,20 +614,15 @@ export function AdminApp() {
         onCloseMobile={() => setMobileNavOpen(false)}
         breakpoint="md"
         header={
-          settings.restaurantLogo ? (
-            <div className="flex items-center gap-3 min-w-0">
-              <Image src={settings.restaurantLogo} alt="Logo" width={36} height={36} className="w-9 h-9 rounded-[var(--k-r)] object-cover shrink-0" unoptimized />
-              <div className="min-w-0">
-                <h2 className="font-semibold text-[15px] text-[var(--k-text)] leading-tight truncate">{settings.restaurantName}</h2>
-                <span className="text-[11px] text-[var(--k-text-3)] font-medium">{t('adminPanelLabel')}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="min-w-0">
-              <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={110} height={17} className="h-4 w-auto object-contain mb-1" unoptimized />
-              <span className="text-[11px] text-[var(--k-text-3)] font-medium truncate block">{settings.restaurantName ? `${settings.restaurantName} — ` : ''}{t('adminPanelLabel')}</span>
-            </div>
-          )
+          // Always the MenuFlow wordmark, never the tenant's own logo: an
+          // uploaded restaurant logo is scoped to the customer menu header
+          // and must not repaint the product chrome of the admin panel.
+          // The restaurant name still identifies the tenant on the line
+          // below, which is what this slot actually needs to convey.
+          <div className="min-w-0">
+            <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={110} height={17} className="h-4 w-auto object-contain mb-1" unoptimized />
+            <span className="text-[11px] text-[var(--k-text-3)] font-medium truncate block">{settings.restaurantName ? `${settings.restaurantName} — ` : ''}{t('adminPanelLabel')}</span>
+          </div>
         }
         footer={
           <>
@@ -581,25 +661,25 @@ export function AdminApp() {
                 still off-canvas and reaching the drawer just to change
                 language would be an extra step. */}
             <LanguageToggle profile={profile} className="hidden sm:inline-flex md:hidden" />
-            <Link
-              href="/staff"
-              className="hidden sm:flex items-center gap-2 px-3.5 h-9 bg-[var(--k-success-soft)] hover:bg-[var(--k-success)]/25 text-[var(--k-success)] border border-[color:var(--k-success)]/30 rounded-[var(--k-r)] text-xs font-medium transition-colors"
-              title={t('staffPanelLinkTitle')}
+            {/* The topbar used to carry its own "/staff" shortcut here,
+                duplicating the sidebar footer's staffPanelLink below —
+                both visible at once on desktop (md+, persistent sidebar).
+                Removed rather than the sidebar one: the sidebar link is
+                reachable at every breakpoint (persistent at md+, one tap
+                behind the hamburger below that), while this one only ever
+                covered the narrower sm..md gap. */}
+            <button
+              onClick={handleOpenNotifications}
+              aria-label={t('notificationsAriaLabel')(unreadAnnouncementIds.length)}
+              className="relative w-9 h-9 flex items-center justify-center rounded-[var(--k-r)] bg-[var(--k-surface-2)] border border-[var(--k-border)] hover:bg-[var(--k-surface-3)] transition-colors text-[var(--k-text-2)]"
             >
-              <UtensilsCrossed className="w-4 h-4" />
-              <span>{t('staffPanelShort')}</span>
-            </Link>
-            <div className="hidden lg:flex items-center gap-2 bg-[var(--k-surface-2)] border border-[var(--k-border)] rounded-[var(--k-r)] px-3.5 h-10 w-64">
-              <Search className="w-4 h-4 text-[var(--k-text-3)]" />
-              <input
-                type="text"
-                placeholder={t('searchPlaceholder')}
-                className="bg-transparent outline-none text-sm text-[var(--k-text)] placeholder:text-[var(--k-text-3)] w-full"
-              />
-            </div>
-            <button className="relative w-9 h-9 flex items-center justify-center rounded-[var(--k-r)] bg-[var(--k-surface-2)] border border-[var(--k-border)] hover:bg-[var(--k-surface-3)] transition-colors text-[var(--k-text-2)]">
               <Bell className="w-4 h-4" />
-              <span className="absolute top-2 right-2.5 w-1.5 h-1.5 rounded-full bg-[var(--k-danger)]" />
+              {/* Previously rendered unconditionally — a permanent "unread"
+                  dot regardless of whether anything existed to read. Now
+                  tied to the actual count this bell finally has behind it. */}
+              {unreadAnnouncementIds.length > 0 && (
+                <span className="absolute top-2 right-2.5 w-1.5 h-1.5 rounded-full bg-[var(--k-danger)]" />
+              )}
             </button>
             <div className="flex items-center gap-2.5 pl-3 sm:border-l border-[var(--k-border)]">
               <div className="w-8 h-8 rounded-full bg-[var(--k-accent)] text-[var(--k-accent-fg)] flex items-center justify-center font-semibold text-sm">
@@ -612,6 +692,57 @@ export function AdminApp() {
             </div>
           </div>
         </div>
+
+        {/* Bell -> platform announcements (SuperAdmin -> restoran sahibi).
+            theme="dark" is explicit, not incidental: Sheet portals its panel
+            straight to <body>, escaping the .kit-dark scope this whole panel
+            renders inside, so --k-* tokens would otherwise resolve to
+            nothing. */}
+        <Sheet
+          isOpen={notificationsOpen}
+          onClose={() => setNotificationsOpen(false)}
+          side="right"
+          size="md"
+          theme="dark"
+          ariaLabel={t('notificationsSheetTitle')}
+        >
+          <SheetHeader title={t('notificationsSheetTitle')} description={t('notificationsSheetDescription')} onClose={() => setNotificationsOpen(false)} />
+          <SheetBody className="space-y-3">
+            {announcements.length === 0 ? (
+              <EmptyState icon={<Bell className="w-5 h-5" />} title={t('noNotificationsTitle')} description={t('noNotificationsDescription')} />
+            ) : (
+              announcements.map((a) => {
+                const isNew = openedUnreadIds.includes(a.id);
+                const tone = a.level === 'critical' ? 'danger' : a.level === 'warning' ? 'warning' : 'info';
+                return (
+                  <div
+                    key={a.id}
+                    className={`p-3.5 rounded-[var(--k-r-lg)] border ${isNew ? 'bg-[var(--k-accent-soft)] border-[var(--k-accent)]/40' : 'bg-[var(--k-surface-2)] border-[var(--k-border)]'}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold text-[var(--k-text)]">{a.title}</p>
+                      {isNew && <Tag tone="accent" size="sm" className="shrink-0">{t('newNotificationBadge')}</Tag>}
+                    </div>
+                    <p className="text-sm text-[var(--k-text-2)] mt-1 whitespace-pre-wrap">{a.body}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Tag tone={tone} size="sm">{t(`notificationLevel${a.level.charAt(0).toUpperCase()}${a.level.slice(1)}`)}</Tag>
+                      <span className="text-[11px] text-[var(--k-text-3)]">
+                        {new Date(a.published_at || a.created_at).toLocaleDateString(LOCALE_TAGS[language] || 'az-AZ')}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </SheetBody>
+          {announcements.length > 0 && (
+            <SheetFooter>
+              <Button variant="secondary" className="w-full" onClick={handleMarkAllRead} disabled={unreadAnnouncementIds.length === 0}>
+                {t('markAllReadButton')}
+              </Button>
+            </SheetFooter>
+          )}
+        </Sheet>
 
         {showTrialBanner && (
           <Banner
@@ -719,7 +850,17 @@ export function AdminApp() {
                 }
               />
 
-              {products.length > 0 ? (
+              {products.length > 0 && (
+                <ListSearchBox
+                  value={productQuery}
+                  onChange={setProductQuery}
+                  placeholder={t('productSearchPlaceholder')}
+                  clearAriaLabel={t('clearSearchAriaLabel')}
+                  resultLabel={productQuery.trim() ? t('searchResultCount')(visibleProducts.length, products.length) : null}
+                />
+              )}
+
+              {visibleProducts.length > 0 ? (
                 <Card variant="plain" className="overflow-hidden">
                   <Table>
                     <TableHead>
@@ -729,7 +870,7 @@ export function AdminApp() {
                       <TableHeaderCell className="text-right">{t('colActions')}</TableHeaderCell>
                     </TableHead>
                     <TableBody>
-                      {products.map(product => (
+                      {visibleProducts.map(product => (
                         <TableRow key={product.id}>
                           <TableCell>
                             <div className="flex items-center gap-3 min-w-0">
@@ -778,6 +919,17 @@ export function AdminApp() {
                     </TableBody>
                   </Table>
                 </Card>
+              ) : productQuery.trim() ? (
+                <EmptyState
+                  icon={<Search className="w-5 h-5" />}
+                  title={t('noProductSearchResultsTitle')}
+                  description={t('noProductSearchResultsDescription')(productQuery.trim())}
+                  action={(
+                    <Button variant="secondary" onClick={() => setProductQuery('')}>
+                      {t('clearSearchButton')}
+                    </Button>
+                  )}
+                />
               ) : (
                 <EmptyState
                   title={t('productNotFoundTitle')}
@@ -815,14 +967,63 @@ export function AdminApp() {
                 }
               />
 
-              {categories.length > 0 ? (
+              {categoryReorderError && (
+                <Banner tone="danger" className="text-sm">{categoryReorderError}</Banner>
+              )}
+
+              {categories.length > 0 && (
+                <ListSearchBox
+                  value={categoryQuery}
+                  onChange={setCategoryQuery}
+                  placeholder={t('categorySearchPlaceholder')}
+                  clearAriaLabel={t('clearSearchAriaLabel')}
+                  resultLabel={categorySearchActive ? t('searchResultCount')(visibleCategories.length, categories.length) : null}
+                />
+              )}
+
+              {/* Reorder arrows are hidden while a search narrows the list
+                  (see categorySearchActive) — say so, otherwise they just
+                  look broken. */}
+              {categorySearchActive && visibleCategories.length > 0 && can[CAPABILITIES.PRODUCTS_EDIT] && categories.length > 1 && (
+                <p className="text-xs text-[var(--k-text-3)]">{t('reorderDisabledWhileSearching')}</p>
+              )}
+
+              {visibleCategories.length > 0 ? (
                 <Card variant="plain">
                   <CardBody className="space-y-3">
-                    {categories.map(category => {
+                    {visibleCategories.map((category, index) => {
                       const productCount = products.filter(p => p.category === category.id).length;
                       return (
                         <div key={category.id} className="flex items-center justify-between p-4 rounded-[var(--k-r-lg)] bg-[var(--k-surface-2)] border border-[var(--k-border)]">
                           <div className="flex items-center gap-4 min-w-0">
+                            {/* Reordering writes categories.sort_order, which
+                                fetchCategories now actually orders by. Up/down
+                                buttons rather than drag-and-drop: this list is
+                                short, and buttons stay keyboard- and touch-
+                                accessible with no extra dependency — the same
+                                choice SiteFaqTab already makes. */}
+                            {can[CAPABILITIES.PRODUCTS_EDIT] && categories.length > 1 && !categorySearchActive && (
+                              <div className="flex shrink-0 flex-col gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveCategory(index, -1)}
+                                  disabled={index === 0 || categoryReordering}
+                                  aria-label={t('moveCategoryUpAriaLabel')(category.name)}
+                                  className="rounded-[var(--k-r-sm)] p-1 text-[var(--k-text-3)] hover:bg-[var(--k-surface-3)] hover:text-[var(--k-text)] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                                >
+                                  <ChevronUp className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveCategory(index, 1)}
+                                  disabled={index === categories.length - 1 || categoryReordering}
+                                  aria-label={t('moveCategoryDownAriaLabel')(category.name)}
+                                  className="rounded-[var(--k-r-sm)] p-1 text-[var(--k-text-3)] hover:bg-[var(--k-surface-3)] hover:text-[var(--k-text)] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                                >
+                                  <ChevronDown className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
                             <span className="text-3xl bg-[var(--k-surface-3)] p-3 rounded-[var(--k-r)] shrink-0">{category.icon}</span>
                             <div className="min-w-0">
                               <span className="text-[var(--k-text)] font-semibold text-base truncate block">{category.name}</span>
@@ -852,6 +1053,17 @@ export function AdminApp() {
                     })}
                   </CardBody>
                 </Card>
+              ) : categorySearchActive ? (
+                <EmptyState
+                  icon={<Search className="w-5 h-5" />}
+                  title={t('noCategorySearchResultsTitle')}
+                  description={t('noCategorySearchResultsDescription')(categoryQuery.trim())}
+                  action={(
+                    <Button variant="secondary" onClick={() => setCategoryQuery('')}>
+                      {t('clearSearchButton')}
+                    </Button>
+                  )}
+                />
               ) : (
                 <EmptyState
                   title={t('categoryNotFoundTitle')}
@@ -914,18 +1126,12 @@ export function AdminApp() {
                         return (
                           <div key={table.id} id={`qr-card-${table.id}`} className="qr-code-card bg-white flex flex-col items-center justify-center gap-3 relative group p-4 border border-slate-200 rounded-2xl">
                             <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs uppercase tracking-wider">
-                              {settings.restaurantLogo ? (
-                                <Image
-                                  src={settings.restaurantLogo}
-                                  alt="Logo"
-                                  className="w-4 h-4 object-contain rounded"
-                                  width={16}
-                                  height={16}
-                                  unoptimized
-                                />
-                              ) : (
-                                <QrCode className="w-4 h-4 text-blue-600" />
-                              )}
+                              {/* MenuFlow's own mark, not the tenant logo —
+                                  an uploaded restaurant logo is scoped to the
+                                  customer menu header. The restaurant name
+                                  beside this already identifies the table's
+                                  owner on the printed card. */}
+                              <QrCode className="w-4 h-4 text-blue-600" />
                               <span>{settings.restaurantName || "MenuFlow"}</span>
                             </div>
 
@@ -1137,6 +1343,43 @@ function ProductOptionsEditor({ options, onChange }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Shared name-search box for the Products and Categories tabs. Kept as a
+// plain local component rather than a kit primitive: the clear-button +
+// result-count pairing is specific to these two list views, and
+// components/kit/ deliberately holds only cross-surface primitives.
+function ListSearchBox({ value, onChange, placeholder, clearAriaLabel, resultLabel }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--k-text-3)]" aria-hidden="true" />
+        <Input
+          type="search"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          className="pl-10 pr-10"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            aria-label={clearAriaLabel}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-[var(--k-r-sm)] p-1 text-[var(--k-text-3)] hover:bg-[var(--k-surface-3)] hover:text-[var(--k-text)] transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+      {/* aria-live so a screen reader hears the count change as the list
+          narrows — the visual result is otherwise silent. */}
+      {resultLabel && (
+        <p className="text-xs text-[var(--k-text-3)]" aria-live="polite">{resultLabel}</p>
+      )}
     </div>
   );
 }
@@ -2031,8 +2274,14 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
 function TablesManagement({ tables, orders, editingTableId, editingTableName, setEditingTableId, setEditingTableName, updateTableName }) {
   const { t } = useAdminTranslation();
   const { t: tc } = useCommonTranslation();
+  // `orders[].table` is the human-readable table NUMBER (normalizeOrder in
+  // supabaseService.js reads restaurant_tables.table_number), not this
+  // table's id — comparing it against `tableId` (a uuid) here never matched
+  // anything, so every row silently fell through to `t('statusEmpty')`
+  // regardless of what was actually happening on that table. `tableId` is
+  // the column that actually carries tables.id (order.table_id).
   const tableStatus = (tableId) => {
-    const active = orders.find(o => o.table === tableId && o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED);
+    const active = orders.find(o => o.tableId === tableId && o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED);
     return active ? active.status : null;
   };
   // A served-but-unpaid table used to read as "Boş" here — tableStatus()
@@ -2044,7 +2293,7 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
   // money" stay independently readable instead of one silently masking the
   // other.
   const tablePaymentStatus = (tableId) => {
-    const relevant = orders.filter(o => o.table === tableId && o.status !== ORDER_STATUS.CANCELLED);
+    const relevant = orders.filter(o => o.tableId === tableId && o.status !== ORDER_STATUS.CANCELLED);
     if (relevant.length === 0) return null;
     return relevant.some(o => o.paymentStatus === 'unpaid') ? 'unpaid' : 'paid';
   };

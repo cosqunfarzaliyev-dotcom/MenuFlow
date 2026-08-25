@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Palette, Image as ImageIcon, Plus, Trash2, CheckCircle2, Edit2, X, Eye, EyeOff } from "lucide-react";
+import { Palette, Image as ImageIcon, Plus, Trash2, CheckCircle2, Edit2, X, Eye, EyeOff, Video } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import { isVideoUrl } from "@/lib/utils";
 import { FEATURES } from "@/lib/services/entitlementService";
 import { useFeature } from "@/hooks/useEntitlement";
 import { CAPABILITIES } from "@/lib/services/capabilityService";
@@ -11,9 +12,9 @@ import { PageHeader, Card, CardHeader, CardBody, Button, Input, Select, Field, B
 import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
 import { useCommonTranslation } from "@/lib/i18n/dictionaries/common";
 
-// Banner CTA/action system (Phase C). 'campaign' and generic 'internal'
-// destinations are deliberately not offered here — CustomerApp has no
-// campaign detail view and no multi-page routing for either to point at yet
+// Banner CTA/action system (Phase C). A generic 'internal' destination is
+// deliberately not offered here — CustomerApp has no multi-page routing for
+// it to point at yet
 // (see supabase/migrations/0019_banner_actions.sql for the full reasoning).
 // Kept as a function (not a static array) now that labels are translated.
 const bannerActionTypes = (t) => [
@@ -85,7 +86,14 @@ export function DesignTab() {
   // action_target_id left over after switching product -> external).
   const handleSaveBanner = async (e) => {
     e.preventDefault();
-    if (!bannerForm.image_url.trim()) return;
+    // A banner IS its image, so this one stays mandatory (the title/subtitle
+    // are not). It used to `return` silently, which is indistinguishable from
+    // a dead button when the browser's own `required` bubble doesn't fire —
+    // e.g. after an upload failed and left the field empty.
+    if (!bannerForm.image_url.trim()) {
+      setBannerSaveError(t('bannerImageRequiredError'));
+      return;
+    }
     setBannerSaving(true);
     setBannerSaveError(null);
 
@@ -112,7 +120,7 @@ export function DesignTab() {
 
     setBannerSaving(false);
     if (error) {
-      setBannerSaveError(error.message || 'Banner yadda saxlanmadı.');
+      setBannerSaveError(error.message || t('bannerSaveFailedError'));
       return;
     }
 
@@ -215,19 +223,39 @@ export function DesignTab() {
           )}
 
           <fieldset disabled={!bannersEnabled || !(editingBannerId ? canEditBanners : canCreateBanners)} className="disabled:opacity-50">
+          {/* Image first, and labelled: it is the ONLY mandatory part of a
+              banner (a banner with no artwork has nothing to render), while
+              title/subtitle are optional overlay copy. The previous order —
+              two unlabelled text inputs above a bare URL box — read as
+              "title is the main field", so an admin who filled only the
+              title got a form that refused to submit with no explanation. */}
           <form onSubmit={handleSaveBanner} className="grid sm:grid-cols-2 gap-3 mb-5">
-            <Input type="text" value={bannerForm.title} onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })} placeholder={t('bannerTitlePlaceholder')} />
-            <Input type="text" value={bannerForm.subtitle} onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })} placeholder={t('bannerSubtitlePlaceholder')} />
-            <ImageUploadField
-              value={bannerForm.image_url}
-              onChange={(url) => setBannerForm({ ...bannerForm, image_url: url })}
-              restaurantId={restaurant?.id} folder="banners"
-              urlPlaceholder={t('bannerImageUrlPlaceholder')}
-              uploadLabel={t('imageUploadButton')}
-              previewAlt={t('imagePreviewAlt')}
-              invalidLabel={t('logoInvalidBadge')}
-              required className="sm:col-span-2"
-            />
+            <Field label={t('bannerImageFieldLabel')} required className="sm:col-span-2">
+              {(id, a11y) => (
+                <ImageUploadField
+                  id={id}
+                  value={bannerForm.image_url}
+                  onChange={(url) => setBannerForm({ ...bannerForm, image_url: url })}
+                  restaurantId={restaurant?.id} folder="banners"
+                  allowVideo
+                  urlPlaceholder={t('bannerImageUrlPlaceholder')}
+                  uploadLabel={t('imageUploadButton')}
+                  previewAlt={t('imagePreviewAlt')}
+                  invalidLabel={t('logoInvalidBadge')}
+                  {...a11y}
+                />
+              )}
+            </Field>
+            <Field label={t('bannerTitleFieldLabel')}>
+              {(id, a11y) => (
+                <Input id={id} type="text" value={bannerForm.title} onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })} placeholder={t('bannerTitlePlaceholder')} {...a11y} />
+              )}
+            </Field>
+            <Field label={t('bannerSubtitleFieldLabel')}>
+              {(id, a11y) => (
+                <Input id={id} type="text" value={bannerForm.subtitle} onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })} placeholder={t('bannerSubtitlePlaceholder')} {...a11y} />
+              )}
+            </Field>
 
             <Field label={t('bannerActionFieldLabel')} className="sm:col-span-2">
               {(id) => (
@@ -296,8 +324,29 @@ export function DesignTab() {
             <div className="space-y-2">
               {banners.map((b) => (
                 <div key={b.id} className={`flex items-center gap-3 bg-[var(--k-surface-2)] border rounded-[var(--k-r)] p-3 ${editingBannerId === b.id ? 'border-[var(--k-accent)]/60' : 'border-[var(--k-border)]'} ${b.is_active ? '' : 'opacity-60'}`}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={b.image_url} alt={b.title || t('bannerAltFallback')} className="w-16 h-10 object-cover rounded-[var(--k-r-sm)] border border-[var(--k-border)] shrink-0" />
+                  <div className="relative w-16 h-10 shrink-0">
+                    {isVideoUrl(b.image_url) ? (
+                      <video
+                        src={b.image_url}
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                        className="w-16 h-10 object-cover rounded-[var(--k-r-sm)] border border-[var(--k-border)]"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={b.image_url} alt={b.title || t('bannerAltFallback')} className="w-16 h-10 object-cover rounded-[var(--k-r-sm)] border border-[var(--k-border)]" />
+                    )}
+                    {/* Small badge so "this row is a video, not a static
+                        image" is obvious at a glance in a list of tiny
+                        autoplaying thumbnails. */}
+                    {isVideoUrl(b.image_url) && (
+                      <span className="pointer-events-none absolute bottom-0.5 right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-black/70 text-white">
+                        <Video className="w-2 h-2" />
+                      </span>
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[var(--k-text)] truncate">{b.title || t('untitledBannerInline')}</p>
                     {b.subtitle && <p className="text-xs text-[var(--k-text-3)] truncate">{b.subtitle}</p>}

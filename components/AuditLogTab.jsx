@@ -19,7 +19,7 @@ const formatWhen = (iso, localeTag) => {
 
 // audit_logs.action is always "<entityType>.<verb>" (see
 // lib/services/promotionsService.js's logAuditEvent) — e.g. 'product.create',
-// 'campaign.delete'. The verb is the part the Badge cares about; anything
+// 'discount.delete'. The verb is the part the Badge cares about; anything
 // that isn't create/update/delete (e.g. the one-off
 // 'restaurant.onboarding_complete') falls back to a neutral "Other" tone
 // rather than guessing at a color for a verb this table doesn't know about.
@@ -32,7 +32,7 @@ const ACTION_BADGE = {
 const actionVerb = (action) => (action || '').split('.').pop();
 
 // Audit Log: Kim / Nə vaxt / Nəyi dəyişib — hər admin əməliyyatından
-// (məhsul, kampaniya, endirim, banner, dizayn dəyişikliyi) sonra avtomatik
+// (məhsul, endirim, banner, dizayn dəyişikliyi) sonra avtomatik
 // qeyd olunur (bax: lib/store.js -> recordAudit).
 export function AuditLogTab() {
   const { t, language } = useAdminTranslation();

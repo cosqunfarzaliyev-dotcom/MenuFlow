@@ -11,6 +11,7 @@ import { useAppStore, ROLES } from '@/lib/store';
 import { fetchRestaurants, fetchRestaurantStats, fetchPlatformUsers } from '@/lib/services/superAdminService';
 import { fetchAllPlans, fetchPlanFeatures } from '@/lib/services/planService';
 import { fetchSiteContent, fetchFaqItems } from '@/lib/services/siteContentService';
+import { fetchAllAnnouncements } from '@/lib/services/announcementService';
 import { PageSkeleton, LanguageToggle, Card, Button } from '@/components/kit';
 import { buttonVariants } from '@/components/kit/variants';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,7 @@ import { PlansTab } from '@/components/superadmin/PlansTab';
 import { SubscriptionsTab } from '@/components/superadmin/SubscriptionsTab';
 import { AnalyticsTab } from '@/components/superadmin/AnalyticsTab';
 import { UsersTab } from '@/components/superadmin/UsersTab';
+import { AnnouncementsTab } from '@/components/superadmin/AnnouncementsTab';
 import { SitePagesTab } from '@/components/superadmin/SitePagesTab';
 import { SiteContactTab } from '@/components/superadmin/SiteContactTab';
 import { SiteFaqTab } from '@/components/superadmin/SiteFaqTab';
@@ -64,6 +66,13 @@ export function SuperAdminApp() {
   const [siteContentLoading, setSiteContentLoading] = useState(true);
   const [faqItems, setFaqItems] = useState([]);
   const [faqLoading, setFaqLoading] = useState(true);
+
+  // Announcements — own loading flag for the same reason siteContent/faq
+  // have theirs: the top-level skeleton only gates on `loading`
+  // (restaurants), so a slow announcements fetch must never blank the rest
+  // of the panel.
+  const [announcementsList, setAnnouncementsList] = useState([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
 
   // Mode + tab are derived from the URL DURING RENDER, not synced via a
   // useState+useEffect pair — that would be a 20th react-hooks/
@@ -164,6 +173,17 @@ export function SuperAdminApp() {
     setFaqLoading(false);
   }, []);
 
+  // SuperAdmin sees EVERY announcement (drafts included) via
+  // announcements_super_admin_all — same fetchAllAnnouncements() the RLS
+  // policy comment describes, distinct from AdminApp's restaurant-scoped
+  // fetchAnnouncements().
+  const refreshAnnouncements = useCallback(async () => {
+    setAnnouncementsLoading(true);
+    const rows = await fetchAllAnnouncements();
+    setAnnouncementsList(rows);
+    setAnnouncementsLoading(false);
+  }, []);
+
   useEffect(() => {
     if (isAdminAuthenticated && profile?.role === ROLES.SUPER_ADMIN) {
       refresh();
@@ -171,6 +191,7 @@ export function SuperAdminApp() {
       refreshPlans();
       refreshSiteContent();
       refreshFaq();
+      refreshAnnouncements();
       // Hydrates entitlementService's PLAN_FEATURE_DEFAULTS from the live
       // plans/plan_features tables — RestaurantsTab.jsx's per-restaurant
       // feature toggles (featureFlags() -> getEntitlements()) read the same
@@ -178,7 +199,7 @@ export function SuperAdminApp() {
       // /pricing and the customer/admin surfaces use.
       loadPlans();
     }
-  }, [isAdminAuthenticated, profile, refresh, refreshUsers, refreshPlans, refreshSiteContent, refreshFaq, loadPlans]);
+  }, [isAdminAuthenticated, profile, refresh, refreshUsers, refreshPlans, refreshSiteContent, refreshFaq, refreshAnnouncements, loadPlans]);
 
   const handleLogout = async () => {
     if (supabaseReady) await supabase.auth.signOut();
@@ -320,6 +341,14 @@ export function SuperAdminApp() {
                       {activeTab === 'subscriptions' && <SubscriptionsTab metrics={metrics} />}
                       {activeTab === 'analytics' && <AnalyticsTab metrics={metrics} />}
                       {activeTab === 'users' && <UsersTab users={users} loading={usersLoading} />}
+                      {activeTab === 'announcements' && (
+                        <AnnouncementsTab
+                          restaurants={restaurantsWithOwner}
+                          items={announcementsList}
+                          loading={announcementsLoading}
+                          refresh={refreshAnnouncements}
+                        />
+                      )}
                     </>
                   )}
                   {mode === MODES.WEBSITE && (

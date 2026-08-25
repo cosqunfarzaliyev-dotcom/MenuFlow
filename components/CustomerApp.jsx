@@ -5,14 +5,15 @@ import { useParams, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { ORDER_STATUS, useAppStore } from "@/lib/store";
 import {
-  subscribeOrders, subscribeProducts, subscribeBanners, subscribeCampaigns, subscribeDiscounts,
+  subscribeOrders, subscribeProducts, subscribeBanners, subscribeDiscounts,
 } from '@/lib/services/realtime';
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { CartDrawer } from "@/components/CartDrawer";
-import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight, XCircle, Search, X, Leaf, Megaphone } from "lucide-react";
+import { BannerCarousel } from "@/components/BannerCarousel";
+import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight, XCircle, Search, X, Leaf } from "lucide-react";
 import { getLocalizedText, getLocalizedCategoryName, getLocalizedProduct } from "@/lib/translations";
-import { applyDiscounts, isCampaignLive } from "@/lib/services/promotionsService";
+import { applyDiscounts } from "@/lib/services/promotionsService";
 import { requestWalletPayment } from "@/lib/services/paymentService";
 import { FEATURES, hasFeature } from "@/lib/services/entitlementService";
 import {
@@ -20,7 +21,7 @@ import {
   EmptyState, LoadingState, ErrorState,
 } from "@/components/kit";
 import { useLanguage } from "@/hooks/useLanguage";
-import { cn } from "@/lib/utils";
+import { cn, isVideoUrl } from "@/lib/utils";
 
 // Only ever render admin-supplied banner links as a real navigable <a href>
 // if they're http(s) — blocks javascript:/data: URI injection via a
@@ -53,8 +54,6 @@ export function CustomerApp() {
     loadRestaurantBySlug,
     banners,
     loadBanners,
-    campaigns,
-    loadCampaigns,
     discounts,
     loadDiscounts,
     setQrToken,
@@ -147,7 +146,7 @@ export function CustomerApp() {
         // anon SELECT policy at all). They're loaded once `resolvedTable` is
         // known, below, via the QR-token-gated loadTableOrders().
         await Promise.all([
-          loadMenuData(), loadAlerts(), loadTables(), loadBanners(), loadCampaigns(), loadDiscounts(), loadPlans(),
+          loadMenuData(), loadAlerts(), loadTables(), loadBanners(), loadDiscounts(), loadPlans(),
         ]);
       } catch (err) {
         console.error('CustomerApp load error', err);
@@ -158,7 +157,7 @@ export function CustomerApp() {
     };
 
     loadAppData();
-  }, [params, searchParams, loadMenuData, loadAlerts, loadTables, loadRestaurantBySlug, loadBanners, loadCampaigns, loadDiscounts, loadPlans]);
+  }, [params, searchParams, loadMenuData, loadAlerts, loadTables, loadRestaurantBySlug, loadBanners, loadDiscounts, loadPlans]);
 
   const resolvedTable = tables.find(
     (t) => t.table_number?.toString() === tableId?.toString() || t.id === tableId,
@@ -269,7 +268,7 @@ export function CustomerApp() {
     let pollInterval = null;
 
     const refreshPromotions = () => {
-      Promise.all([loadBanners(), loadCampaigns(), loadDiscounts()]).catch((err) => {
+      Promise.all([loadBanners(), loadDiscounts()]).catch((err) => {
         console.warn('Failed to refresh promotions:', err);
       });
     };
@@ -290,7 +289,6 @@ export function CustomerApp() {
       try {
         const created = await Promise.all([
           subscribeBanners(() => loadBanners(), options),
-          subscribeCampaigns(() => loadCampaigns(), options),
           subscribeDiscounts(() => loadDiscounts(), options),
         ]);
         if (disposed) {
@@ -321,7 +319,7 @@ export function CustomerApp() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       subscriptions.forEach((sub) => sub?.unsubscribe?.());
     };
-  }, [restaurant?.id, loadBanners, loadCampaigns, loadDiscounts]);
+  }, [restaurant?.id, loadBanners, loadDiscounts]);
 
   // Restore a persisted cart once we know which restaurant+table it belongs
   // to (guards against restoring the wrong table's cart, and against
@@ -566,6 +564,11 @@ export function CustomerApp() {
     }
   };
 
+  // Banner sistemi — yalnız aktiv bannerlər, BannerCarousel-ə keçirilməzdən
+  // əvvəl bir dəfə hesablanır (əvvəllər bu filter render zamanı İKİ dəfə,
+  // eyni nəticə üçün ayrı-ayrı çağırılırdı).
+  const activeBanners = useMemo(() => banners.filter((b) => b.is_active), [banners]);
+
   // Endirimlər: aktiv endirimləri məhsul qiymətlərinə avtomatik tətbiq edir
   // (bütün menyuya və ya seçilmiş məhsula tətbiq oluna bilər).
   const pricedProducts = useMemo(() => {
@@ -581,10 +584,6 @@ export function CustomerApp() {
   // göstərilən ad/təsvirə görə uyğunlaşır — getLocalizedProduct-un mövcud
   // DB tərcüməsi → köhnə demo map → AZ mənbə zənciri (lib/translations.js)
   // ilə eynidir, ona görə axtarış nəticələri ekranda görünənlə üst-üstə düşür.
-  const liveCampaigns = useMemo(
-    () => campaigns.filter(isCampaignLive),
-    [campaigns],
-  );
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
@@ -767,10 +766,26 @@ export function CustomerApp() {
         </section>
 
         {/* Banners (Banner sistemi) — SuperAdmin restoranın banner funksiyasını söndürsə heç göstərilmir, plan-dan asılı olmayaraq (bax: lib/services/entitlementService.js) */}
-        {hasFeature(restaurant, FEATURES.BANNERS) && banners.filter((b) => b.is_active).length > 0 && (
-          <section className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 no-scrollbar sm:-mx-6 sm:px-6">
-            {banners.filter((b) => b.is_active).map((banner) => {
-              const content = (
+        {hasFeature(restaurant, FEATURES.BANNERS) && activeBanners.length > 0 && (
+          <BannerCarousel
+            slides={activeBanners.map((banner) => {
+              // A banner is now either a static image OR a short looping
+              // video (Dizayn -> Banner sistemi) — isVideoUrl reads the
+              // uploaded file's own extension back off the URL, see its
+              // comment in lib/utils.js for why no separate DB column is
+              // needed. Muted/loop/playsInline: this is ambient background
+              // motion the customer never taps play on, same treatment
+              // browsers require for autoplay to even be allowed.
+              const content = isVideoUrl(banner.image_url) ? (
+                <video
+                  src={banner.image_url}
+                  className="h-full w-full object-cover"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                />
+              ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={banner.image_url}
@@ -809,11 +824,8 @@ export function CustomerApp() {
               const isClickable = Boolean(onClickAction || hrefAction);
               const interactiveClassName = "block h-full w-full text-left transition-transform duration-[var(--k-dur)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--k-focus)] focus-visible:ring-inset";
 
-              return (
-                <div
-                  key={banner.id}
-                  className="relative h-32 w-[280px] shrink-0 overflow-hidden rounded-[var(--k-r-lg)] border border-[var(--k-border)] sm:h-40 sm:w-[360px]"
-                >
+              const node = (
+                <div className="relative h-full w-full overflow-hidden">
                   {hrefAction ? (
                     <a
                       href={hrefAction}
@@ -842,15 +854,21 @@ export function CustomerApp() {
                     </span>
                   )}
                   {(banner.title || banner.subtitle) && (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-3">
+                    // Extra bottom padding whenever more than one banner is
+                    // active — BannerCarousel overlays its dot indicators
+                    // along the same bottom edge, and without the extra
+                    // room the subtitle text sat directly behind them.
+                    <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-3 ${activeBanners.length > 1 ? 'pb-6' : ''}`}>
                       {banner.title && <p className="text-[13px] font-semibold leading-tight text-white">{banner.title}</p>}
                       {banner.subtitle && <p className="mt-0.5 text-[11px] leading-tight text-white/75">{banner.subtitle}</p>}
                     </div>
                   )}
                 </div>
               );
+
+              return { key: banner.id, node };
             })}
-          </section>
+          />
         )}
 
         {/* Categories. Icon-tile row instead of a text-pill row: the category
@@ -859,54 +877,6 @@ export function CustomerApp() {
             treatment — each tile carries the admin's own emoji icon
             (categories.icon) on a tint of the restaurant's own accent colour,
             so this stays self-branded per tenant with zero new tokens. */}
-        {/* Campaigns are distinct from design banners: they carry the
-            restaurant's offer copy and optional artwork. Rendering them here
-            makes every active admin campaign visible in the customer menu,
-            including campaigns without an image. */}
-        {liveCampaigns.length > 0 && (
-          <section aria-labelledby="menu-campaigns-title">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--k-accent-soft)] text-[var(--k-accent)]">
-                <Megaphone className="h-4 w-4" aria-hidden="true" />
-              </span>
-              <h2 id="menu-campaigns-title" className="text-sm font-semibold text-[var(--k-text)]">
-                {getLocalizedText('activeCampaigns', lang)}
-              </h2>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {liveCampaigns.map((campaign) => (
-                <article
-                  key={campaign.id}
-                  className="relative min-h-28 overflow-hidden rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
-                >
-                  {campaign.banner_image_url && (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={campaign.banner_image_url}
-                        alt=""
-                        className="absolute inset-0 h-full w-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-black/10" />
-                    </>
-                  )}
-                  <div className="relative">
-                    <p className={cn(
-                      'text-sm font-semibold',
-                      campaign.banner_image_url ? 'text-white' : 'text-[var(--k-text)]',
-                    )}>{campaign.title}</p>
-                    {campaign.description && (
-                      <p className={cn(
-                        'mt-1 text-xs leading-relaxed',
-                        campaign.banner_image_url ? 'text-white/85' : 'text-[var(--k-text-3)]',
-                      )}>{campaign.description}</p>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
 
         <section id="menu-categories" className="scroll-mt-20">
           <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 no-scrollbar sm:-mx-6 sm:px-6">
@@ -1052,43 +1022,22 @@ export function CustomerApp() {
       <footer className="mt-10 border-t border-[var(--k-border)] px-4 py-6 text-center">
         <div className="mx-auto flex max-w-7xl flex-col items-center gap-1.5">
           <div className="flex items-center gap-1.5 text-[11px] text-[var(--k-text-3)]">
-            {settings.restaurantLogo ? (
-              <>
-                {/* Same logoDisplayMode as the header: 'logo' lets this
-                    credit-line icon widen to its real aspect ratio instead
-                    of the old forced 14×14 square — still tiny either way,
-                    this is a footer credit line, not the main branding
-                    slot, so the name text always stays next to it here. */}
-                <Image
-                  src={settings.restaurantLogo}
-                  alt=""
-                  className={
-                    settings.logoDisplayMode === 'logo'
-                      ? "h-3.5 w-auto max-w-[60px] object-contain"
-                      : "h-3.5 w-3.5 rounded object-contain"
-                  }
-                  width={settings.logoDisplayMode === 'logo' ? 60 : 14}
-                  height={14}
-                  unoptimized
-                />
-                <span>
-                  {getLocalizedText("poweredBy", lang)}{' '}
-                  <strong className="font-semibold text-[var(--k-text-2)]">{settings.restaurantName}</strong>
-                </span>
-              </>
-            ) : (
-              <span className="inline-flex items-center gap-1.5">
-                {getLocalizedText("poweredBy", lang)}
-                <Image
-                  src="/brand/menuflow-logo-light-bg-h48.png"
-                  alt="MenuFlow"
-                  width={64}
-                  height={11}
-                  className="h-2.5 w-auto object-contain opacity-60"
-                  unoptimized
-                />
-              </span>
-            )}
+            {/* Deliberately NOT the restaurant's own logo. A restaurant's
+                uploaded logo brands the customer menu HEADER only; this
+                footer is the MenuFlow product credit line and stays the
+                same on every tenant's menu, so a restaurant swapping its
+                logo can never repaint it. */}
+            <span className="inline-flex items-center gap-1.5">
+              {getLocalizedText("poweredBy", lang)}
+              <Image
+                src="/brand/menuflow-logo-light-bg-h48.png"
+                alt="MenuFlow"
+                width={64}
+                height={11}
+                className="h-2.5 w-auto object-contain opacity-60"
+                unoptimized
+              />
+            </span>
           </div>
           <p className="text-[11px] text-[var(--k-text-3)]">
             {settings.tagline || getLocalizedText("tagline", lang)}

@@ -438,13 +438,19 @@ export function StaffApp() {
           <div className="space-y-6">
             <PageHeader title={t('ordersTab')(pendingOrders.length)} description={t('ordersSubtitle')} />
 
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* Three columns, three grid tracks. This was `lg:grid-cols-5`
+                with only three children, so every order column rendered at
+                1/5 of the width with two empty tracks trailing it — the
+                single biggest reason the cards read as cramped on the
+                kitchen/pass screen they're meant to be read from across the
+                room. */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
               {/* Pending */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm text-[var(--k-text)] flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-[var(--k-warning)]" />
+                  <h3 className="font-semibold text-base text-[var(--k-text)] flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-[var(--k-warning)]" />
                     {t('pendingTitle')(pendingOrders.length)}
                   </h3>
                 </div>
@@ -466,8 +472,8 @@ export function StaffApp() {
               {/* Preparing */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm text-[var(--k-text)] flex items-center gap-2">
-                    <UtensilsCrossed className="w-4 h-4 text-[var(--k-accent)]" />
+                  <h3 className="font-semibold text-base text-[var(--k-text)] flex items-center gap-2">
+                    <UtensilsCrossed className="w-5 h-5 text-[var(--k-accent)]" />
                     {t('preparingTitle')(preparingOrders.length)}
                   </h3>
                 </div>
@@ -502,8 +508,8 @@ export function StaffApp() {
               {/* Completed */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm text-[var(--k-text)] flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[var(--k-success)]" />
+                  <h3 className="font-semibold text-base text-[var(--k-text)] flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-[var(--k-success)]" />
                     {t('finishedTitle')(finishedOrders.length)}
                   </h3>
                 </div>
