@@ -140,7 +140,37 @@ const rulesOf = (service_model) => getServiceRules({ service_model });
       && /service_model: serviceModel \|\| DEFAULT_SERVICE_MODEL/.test(service), true);
 }
 
-// --- 7. Nothing still reads the replaced column ------------------------------
+// --- 7. Self-service handover settles payment, and raises no bill alert ------
+// Three pieces that only make sense together: no bill alert is created at
+// checkout, so the Bildirişlər tab is hidden, so the handover tap is the only
+// remaining moment payment can be recorded. Break any one and a self-service
+// restaurant either spams invisible alerts or never registers a payment.
+{
+  const cart = readFileSync(path.join(ROOT, 'components', 'CartDrawer.jsx'), 'utf8');
+  const staff = readFileSync(path.join(ROOT, 'components', 'StaffApp.jsx'), 'utf8');
+  const migration = readFileSync(
+    path.join(ROOT, 'supabase', 'migrations', '0046_hand_over_order.sql'), 'utf8',
+  );
+
+  check('CartDrawer raises no bill alert in self-service',
+    /if \(!isPayingLater && !selfPickup\)/.test(cart), true);
+  check('StaffApp routes the self-service handover through handOverOrder',
+    /if \(selfPickup && nextStatus === ORDER_STATUS\.SERVED\)[\s\S]{0,120}?handOverOrder\(id\)/.test(staff), true);
+  check('the alerts tab is hidden in self-service once it is empty',
+    /showAlertsTab = !selfPickup \|\| activeAlerts\.length > 0/.test(staff), true);
+
+  check('hand_over_order sets both status and payment_status in one statement',
+    /set status = 'served',\s*payment_status = 'paid'/.test(migration), true);
+  check('hand_over_order re-derives the restaurant instead of trusting a parameter',
+    /hand_over_order\(p_order_id uuid\)/.test(migration)
+      && /is_staff_of\(v_restaurant_id\)/.test(migration), true);
+  check('hand_over_order refuses a cancelled order',
+    /if v_status = 'cancelled' then/.test(migration), true);
+  check('hand_over_order is revoked from anon',
+    /revoke all on function public\.hand_over_order\(uuid\) from anon;/.test(migration), true);
+}
+
+// --- 8. Nothing still reads the replaced column ------------------------------
 {
   const files = [
     ['components', 'CartDrawer.jsx'],

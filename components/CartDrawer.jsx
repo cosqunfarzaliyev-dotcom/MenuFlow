@@ -226,7 +226,14 @@ export const CartDrawer = ({
       // upsert_alert-in gözlənilən 5 saniyəlik eyni-masa cooldown-u
       // (0012_upsert_alert_token_fix.sql), ikinci sifariş bir neçə saniyə
       // sonra göndəriləndə.
-      if (!isPayingLater) {
+      //
+      // Özünəxidmətdə (0045/0046) göndərilmir: orada ödənişi təsdiqləmək üçün
+      // ayrıca bildiriş yoxdur — personal sifarişi təhvil verəndə hand_over_
+      // order() eyni tranzaksiyada ödənişi də bağlayır, Bildirişlər tabı isə
+      // ümumiyyətlə gizlidir. Göndərilsəydi, hər sifariş görünməyən bir sətir
+      // və "Hesab tələbi" başlıqlı push bildirişi yaradardı (0030-un
+      // alerts_push_notify trigger-i).
+      if (!isPayingLater && !selfPickup) {
         createAlert({
           tableId: table.id,
           type: 'bill',

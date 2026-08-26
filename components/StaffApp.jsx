@@ -29,6 +29,7 @@ export function StaffApp() {
     orders,
     updateOrderStatus,
     settleTablePayment,
+    handOverOrder,
     alerts,
     resolveAlert,
     tables,
@@ -52,11 +53,12 @@ export function StaffApp() {
   // exists so a future view-only staff tier is a role-matrix edit, not a
   // StaffApp rewrite.
   const canManageOrders = useCapability(CAPABILITIES.ORDERS_MANAGE);
-  // 0045 — in a self-service venue nobody serves anything: the customer takes
-  // the order off the counter. Only the wording changes here; the order flow
-  // (pending -> accepted -> preparing -> ready -> served) and the Alerts tab
-  // stay exactly as they are, because payment confirmation still runs through
-  // the same 'bill' alert CartDrawer raises at checkout.
+  // 0045/0046 — in a self-service venue nobody serves anything: the customer
+  // takes the order off the counter and pays right there. Three consequences
+  // below: the wording changes ("təhvil verildi", not "xidmət edildi"), the
+  // READY -> SERVED tap also settles payment (handleStatusChange), and the
+  // Bildirişlər tab is hidden — a waiter can't be called and no bill is
+  // requested afterwards, so it has nothing left to show.
   const { selfPickup } = getServiceRules(restaurant);
   const pushNotificationsEnabled = useFeature(FEATURES.PUSH_NOTIFICATIONS);
   // Order cancellation — see OrderCard.jsx's `onCancel` prop. Confirmed
@@ -244,6 +246,14 @@ export function StaffApp() {
 
   const activeAlerts = alerts.filter(a => a.status === 'active');
 
+  // Hidden for self-service — but only once nothing is left in it. A venue
+  // switched over from a waiter model can still have live alerts on screen,
+  // and hiding the tab outright would strand them with no way to resolve a
+  // real customer request. The tab disappears for good after the last one.
+  const showAlertsTab = !selfPickup || activeAlerts.length > 0;
+  // Guards the case where the tab vanishes while it is the one being viewed.
+  const visibleTab = showAlertsTab ? activeTab : 'orders';
+
   const handleStatusChange = (id) => {
     const order = orders.find((currentOrder) => currentOrder.id === id);
     // Forward-only progression. Cancellation is a distinct, explicit action
@@ -259,7 +269,19 @@ export function StaffApp() {
       [ORDER_STATUS.READY]: ORDER_STATUS.SERVED,
     }[order?.status];
 
-    if (nextStatus) updateOrderStatus(id, nextStatus);
+    if (!nextStatus) return;
+
+    // Self-service: handing the order over IS the payment. The customer takes
+    // the food off the counter and pays right there, so "təhvil verildi" and
+    // "ödəniş alındı" are one event — hand_over_order() (0046) does both in a
+    // single transaction. Order-scoped on purpose: settleTablePayment() would
+    // also close a second, still-cooking order from the same table.
+    if (selfPickup && nextStatus === ORDER_STATUS.SERVED) {
+      handOverOrder(id);
+      return;
+    }
+
+    updateOrderStatus(id, nextStatus);
   };
 
   // Previously there was no UI path anywhere (Staff or Admin) to ever set an
@@ -412,17 +434,19 @@ export function StaffApp() {
                 </Button>
 
                 <Tabs>
-                  <TabsTrigger active={activeTab === 'orders'} onClick={() => setActiveTab('orders')}>
+                  <TabsTrigger active={visibleTab === 'orders'} onClick={() => setActiveTab('orders')}>
                     {t('ordersTab')(pendingOrders.length)}
                   </TabsTrigger>
-                  <TabsTrigger active={activeTab === 'alerts'} onClick={() => setActiveTab('alerts')}>
-                    {t('alertsTab')}
-                    {activeAlerts.length > 0 && (
-                      <Tag tone="warning" size="sm" className="px-1.5 justify-center min-w-[18px]">
-                        {activeAlerts.length}
-                      </Tag>
-                    )}
-                  </TabsTrigger>
+                  {showAlertsTab && (
+                    <TabsTrigger active={visibleTab === 'alerts'} onClick={() => setActiveTab('alerts')}>
+                      {t('alertsTab')}
+                      {activeAlerts.length > 0 && (
+                        <Tag tone="warning" size="sm" className="px-1.5 justify-center min-w-[18px]">
+                          {activeAlerts.length}
+                        </Tag>
+                      )}
+                    </TabsTrigger>
+                  )}
                 </Tabs>
                 <div className="ml-3 hidden md:flex items-center">
                   <RealtimeStatusBadge />
@@ -441,7 +465,7 @@ export function StaffApp() {
             restructured (col-span-full hack → the same length ? content :
             EmptyState shape Alerts uses); Preparing/Completed intentionally
             still render nothing when empty — pre-existing behavior, unchanged. */}
-        {activeTab === 'orders' && (
+        {visibleTab === 'orders' && (
           <div className="space-y-6">
             <PageHeader title={t('ordersTab')(pendingOrders.length)} description={t('ordersSubtitle')} />
 
@@ -535,7 +559,7 @@ export function StaffApp() {
             branching shape AdminApp's Orders tab already uses (list.length
             ? <grid/table> : <EmptyState/>), replacing the old col-span-full
             wrapper hack that rendered EmptyState *inside* the grid. */}
-        {activeTab === 'alerts' && (
+        {visibleTab === 'alerts' && (
           <div className="space-y-6">
             <PageHeader title={t('alertsTab')} description={t('alertsSubtitle')} />
 
