@@ -11,7 +11,7 @@ import {
   Settings, Plus, Edit2, Trash2, QrCode, Lock, BarChart3, Users, Download, Printer,
   TrendingUp, Clock, Activity, CheckCircle2, LayoutDashboard, Table2, ListOrdered, FileBarChart2,
   Search, Bell, ChevronRight, UserCircle2, Package, DollarSign, Megaphone, Palette, ClipboardList,
-  Wallet, CreditCard, Smartphone, Plug, ChevronUp, ChevronDown, X,
+  Wallet, CreditCard, Smartphone, Plug, ChevronUp, ChevronDown, X, AlertTriangle,
 } from 'lucide-react';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
 import {
@@ -805,7 +805,7 @@ export function AdminApp() {
                 <TabsTrigger active={reportsSubTab === 'zx'} onClick={() => setReportsSubTab('zx')}>{t('reportsSubTabZX')}</TabsTrigger>
               </Tabs>
               {reportsSubTab === 'analytics' ? (
-                <AnalyticsDashboard orders={orders} tables={tables} />
+                <AnalyticsDashboard orders={orders} tables={tables} currencySymbol={settings.currencySymbol} />
               ) : (
                 <SalesReportView orders={orders} tables={tables} restaurantName={restaurant?.name} currencySymbol={settings.currencySymbol} />
               )}
@@ -1716,34 +1716,106 @@ function UtensilsCrossed({ className }) {
   return <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8"></path><path d="M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7"></path><path d="m2.1 21.8 6.4-6.3"></path><path d="m19 5-7 7"></path></svg>
 }
 
+// `orders[].table` is the human-readable table_number (normalizeOrder in
+// supabaseService.js reads restaurant_tables.table_number); the uuid lives on
+// `orders[].tableId`. Every lookup in this file used to search `tables` for
+// `tb.id === o.table` — a uuid compared against "5", which never matched, so
+// a renamed table ("Terras 1") always fell through to the generic "Masa 5"
+// fallback. Same shape StaffApp.jsx's getTableName already had right, and
+// reportService.js's getTableName uses for the Z/X report.
+const orderTableName = (tables, order, t) => {
+  const table = tables.find((tb) => tb.id === order.tableId);
+  return table ? table.name : t('tableFallbackName')(order.table ?? order.tableId);
+};
+
+// The single "when does today start" boundary for the admin panel's
+// right-now signals: the "Aktiv Masalar" KPI, and TablesManagement's overdue
+// markers. Browser-local midnight — the same calendar day
+// AnalyticsDashboard's 'day' filter and reportService.getDayRange() use; no
+// restaurant-level timezone column exists in the schema, so this is the
+// assumption the rest of the app already makes rather than a new one.
+//
+// Known limitation, deliberately kept in ONE place: a venue serving past
+// midnight sees its still-open tables drop out of the KPI and flip to
+// "Gecikmiş" at 00:00. Giving the panel a real business-day cutoff (e.g. 04:00,
+// or a per-restaurant column) is a change to this function alone.
+const startOfBusinessDay = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+// "Aktiv Masalar" — tables busy RIGHT NOW, shared by DashboardHome's KPI and
+// AnalyticsDashboard's. `orders` holds the restaurant's entire history
+// (fetchOrders applies no date filter) and ORDER_STATUS has no terminal state
+// after SERVED, so before the day bound a single order left in 'ready' last
+// month kept its table counted as active forever — the number only ever grew
+// and could exceed the tables actually occupied, or sit non-zero on an empty
+// restaurant.
+//
+// The same bound is deliberately NOT used to FILTER TablesManagement below:
+// there an older open order is flagged ("Gecikmiş") but still rendered, since
+// dropping it would hide a genuinely stuck order from the one screen where
+// staff would notice it — the opposite trade-off from an inflated count.
+// Between the two, an open table can never go unaccounted: it is either
+// counted here or flagged there.
+const countActiveTables = (orders) => {
+  const startOfToday = startOfBusinessDay();
+  return new Set(
+    orders
+      .filter((o) =>
+        o.status !== ORDER_STATUS.SERVED &&
+        o.status !== ORDER_STATUS.CANCELLED &&
+        new Date(o.time) >= startOfToday)
+      .map((o) => o.tableId || o.table)
+  ).size;
+};
+
 // Analytics Dashboard Component
-function AnalyticsDashboard({ orders, tables }) {
+function AnalyticsDashboard({ orders, tables, currencySymbol }) {
   const { t } = useAdminTranslation();
+  const symbol = currencySymbol || '₼';
   const [timeFilter, setTimeFilter] = useState('day'); // 'day', 'week', 'month'
 
   const stats = useMemo(() => {
     const now = new Date();
-    
-    let filteredOrders = [];
-    if (timeFilter === 'day') {
-      filteredOrders = orders.filter(o => new Date(o.time).toDateString() === now.toDateString());
-    } else if (timeFilter === 'week') {
-      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      filteredOrders = orders.filter(o => new Date(o.time) >= oneWeekAgo);
+
+    // Calendar-aligned periods, not rolling windows. The filter labels say
+    // "Bugün / Bu Həftə / Bu Ay" and the charts below bucket by hour-of-day,
+    // day-of-week and day-of-month — all calendar notions. A rolling 7x24h
+    // window folded last week's same weekday into today's bar, and a rolling
+    // 30-day window silently DROPPED a previous-month day 31 whenever the
+    // current month is shorter (the `if (monthData[day])` guard had no bucket
+    // for it), so the chart's bars summed to less than the KPI above them.
+    // Anchoring to the calendar makes period, buckets and label agree.
+    const periodStart = new Date(now);
+    periodStart.setHours(0, 0, 0, 0);
+    if (timeFilter === 'week') {
+      // Monday-first, matching the chart's own [1..6,0] bucket ordering.
+      periodStart.setDate(periodStart.getDate() - ((periodStart.getDay() + 6) % 7));
     } else if (timeFilter === 'month') {
-      const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      filteredOrders = orders.filter(o => new Date(o.time) >= oneMonthAgo);
+      periodStart.setDate(1);
     }
-    
-    const revenue = filteredOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+
+    // Cancelled orders are never revenue — the same rule
+    // reportService.buildSalesReport(), PaymentsManagement, DashboardHome and
+    // superAdminService.fetchRestaurantStats() all already apply. Without it
+    // this sub-tab reported a different revenue for today than the Z/X report
+    // sitting one click away inside the very same "Hesabat" tab.
+    const filteredOrders = orders.filter(
+      (o) => o.status !== ORDER_STATUS.CANCELLED && new Date(o.time) >= periodStart
+    );
+
+    const revenue = filteredOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
     const count = filteredOrders.length;
     const aov = count > 0 ? (revenue / count) : 0;
-    
-    const activeTables = new Set(
-      orders.filter(o => o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED).map(o => o.table)
-    ).size;
 
-    // Top dishes
+    const activeTables = countActiveTables(orders);
+
+    // Top dishes. Line revenue comes from order_items.price — the unit price
+    // place_order()/price_order_item() actually charged, including option
+    // extras and any discount live at order time — not products.price, which
+    // is today's base menu price and drifts the moment a price is edited.
     const dishCounts = {};
     filteredOrders.forEach(o => {
       o.items.forEach(item => {
@@ -1751,29 +1823,26 @@ function AnalyticsDashboard({ orders, tables }) {
         if (!dishCounts[id]) {
           dishCounts[id] = { name: item.product.name, count: 0, revenue: 0 };
         }
+        const unitPrice = Number(item.price ?? item.product.price) || 0;
         dishCounts[id].count += item.quantity;
-        dishCounts[id].revenue += (item.quantity * item.product.price);
+        dishCounts[id].revenue += (item.quantity * unitPrice);
       });
     });
-    
+
     const topDishes = Object.values(dishCounts).sort((a, b) => b.count - a.count).slice(0, 5);
     const totalItemsSold = Object.values(dishCounts).reduce((sum, d) => sum + d.count, 0);
 
-    // Table revenue
-    const tableRevenue = {};
+    // Table revenue — keyed by tableId (the uuid) so the pie slices carry the
+    // table's real name; `table` (the number) is only the display fallback.
+    const tableRevenue = new Map();
     filteredOrders.forEach(o => {
-      const tId = o.table;
-      if (!tableRevenue[tId]) {
-        tableRevenue[tId] = 0;
-      }
-      tableRevenue[tId] += (o.total || 0);
+      const key = o.tableId || o.table;
+      const entry = tableRevenue.get(key) || { name: orderTableName(tables, o, t), value: 0 };
+      entry.value += (Number(o.total) || 0);
+      tableRevenue.set(key, entry);
     });
 
-    const topTables = Object.entries(tableRevenue)
-      .map(([id, rev]) => {
-        const table = tables.find(tb => tb.id === id);
-        return { name: table ? table.name : t('tableFallbackName')(id), value: rev };
-      })
+    const topTables = [...tableRevenue.values()]
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
@@ -1781,17 +1850,24 @@ function AnalyticsDashboard({ orders, tables }) {
     let chartData = [];
     if (timeFilter === 'day') {
       const hourlyData = {};
-      for (let i = 8; i <= 23; i++) {
+      for (let i = 0; i <= 23; i++) {
         hourlyData[i] = { label: `${i}:00`, sales: 0, orders: 0 };
       }
       filteredOrders.forEach(o => {
         const hour = new Date(o.time).getHours();
-        if (hourlyData[hour]) {
-          hourlyData[hour].sales += (o.total || 0);
-          hourlyData[hour].orders += 1;
-        }
+        hourlyData[hour].sales += (Number(o.total) || 0);
+        hourlyData[hour].orders += 1;
       });
-      chartData = Object.values(hourlyData);
+      // All 24 hours are bucketed (the old 8..23 range silently discarded
+      // every after-midnight order, so a late-closing kitchen's bars never
+      // added up to the revenue KPI), then trimmed to the span that actually
+      // has sales so the axis stays readable. 8..23 remains the empty-day view.
+      const soldHours = Object.keys(hourlyData).map(Number).filter(h => hourlyData[h].orders > 0);
+      const firstHour = soldHours.length ? Math.min(...soldHours, 8) : 8;
+      const lastHour = soldHours.length ? Math.max(...soldHours, 23) : 23;
+      chartData = Object.entries(hourlyData)
+        .filter(([h]) => Number(h) >= firstHour && Number(h) <= lastHour)
+        .map(([, v]) => v);
     } else if (timeFilter === 'week') {
       const daysOfWeek = t('weekdayAbbreviations');
       const weekData = {};
@@ -1800,7 +1876,7 @@ function AnalyticsDashboard({ orders, tables }) {
       }
       filteredOrders.forEach(o => {
         const day = new Date(o.time).getDay();
-        weekData[day].sales += (o.total || 0);
+        weekData[day].sales += (Number(o.total) || 0);
         weekData[day].orders += 1;
       });
       chartData = [1,2,3,4,5,6,0].map(d => weekData[d]);
@@ -1812,10 +1888,8 @@ function AnalyticsDashboard({ orders, tables }) {
       }
       filteredOrders.forEach(o => {
         const day = new Date(o.time).getDate();
-        if(monthData[day]) {
-          monthData[day].sales += (o.total || 0);
-          monthData[day].orders += 1;
-        }
+        monthData[day].sales += (Number(o.total) || 0);
+        monthData[day].orders += 1;
       });
       chartData = Object.values(monthData);
     }
@@ -1824,11 +1898,11 @@ function AnalyticsDashboard({ orders, tables }) {
   }, [orders, tables, timeFilter, t]);
 
   const recentOrders = useMemo(() => {
-    return [...orders].reverse().slice(0, 5).map(o => {
-      const table = tables.find(t => t.id === o.table);
-      return { ...o, tableName: table ? table.name : `Masa ${o.table}` };
-    });
-  }, [orders, tables]);
+    return [...orders].reverse().slice(0, 5).map(o => ({
+      ...o,
+      tableName: orderTableName(tables, o, t),
+    }));
+  }, [orders, tables, t]);
 
   // Categorical palette drawn entirely from --k-* tokens (accent + the 4
   // semantic tones + muted text) rather than hardcoded hex — recharts takes
@@ -1854,9 +1928,9 @@ function AnalyticsDashboard({ orders, tables }) {
       </Tabs>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label={timeFilter === 'day' ? t('kpiDailyRevenue') : timeFilter === 'week' ? t('kpiWeeklyRevenue') : t('kpiMonthlyRevenue')} value={`${stats.revenue.toFixed(2)} ₼`} icon={<TrendingUp className="w-5 h-5 text-[var(--k-success)]" />} tint="bg-[var(--k-success-soft)]" />
+        <KpiCard label={timeFilter === 'day' ? t('kpiDailyRevenue') : timeFilter === 'week' ? t('kpiWeeklyRevenue') : t('kpiMonthlyRevenue')} value={`${stats.revenue.toFixed(2)} ${symbol}`} icon={<TrendingUp className="w-5 h-5 text-[var(--k-success)]" />} tint="bg-[var(--k-success-soft)]" />
         <KpiCard label={timeFilter === 'day' ? t('kpiTodayOrders') : timeFilter === 'week' ? t('kpiWeeklyOrders') : t('kpiMonthlyOrders')} value={stats.count} icon={<Activity className="w-5 h-5 text-[var(--k-accent)]" />} tint="bg-[var(--k-accent-soft)]" />
-        <KpiCard label={t('kpiAvgCheck')} value={`${stats.aov.toFixed(2)} ₼`} icon={<BarChart3 className="w-5 h-5 text-[var(--k-info)]" />} tint="bg-[var(--k-info-soft)]" />
+        <KpiCard label={t('kpiAvgCheck')} value={`${stats.aov.toFixed(2)} ${symbol}`} icon={<BarChart3 className="w-5 h-5 text-[var(--k-info)]" />} tint="bg-[var(--k-info-soft)]" />
         <KpiCard label={t('kpiActiveTables')} value={stats.activeTables} icon={<Users className="w-5 h-5 text-[var(--k-warning)]" />} tint="bg-[var(--k-warning-soft)]" />
       </div>
 
@@ -1870,7 +1944,7 @@ function AnalyticsDashboard({ orders, tables }) {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <XAxis dataKey="label" stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `₼${val}`} />
+                  <YAxis stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${symbol}${val}`} />
                   <Tooltip
                     contentStyle={tooltipStyle}
                     itemStyle={{ color: 'var(--k-text)', fontWeight: 600 }}
@@ -1906,7 +1980,7 @@ function AnalyticsDashboard({ orders, tables }) {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value) => `${value.toFixed(2)} ₼`}
+                      formatter={(value) => `${value.toFixed(2)} ${symbol}`}
                       contentStyle={tooltipStyle}
                     />
                   </PieChart>
@@ -1922,7 +1996,7 @@ function AnalyticsDashboard({ orders, tables }) {
                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                     <span className="text-[var(--k-text-2)]">{tableStat.name}</span>
                   </div>
-                  <span className="text-[var(--k-text)]">{tableStat.value.toFixed(2)} ₼</span>
+                  <span className="text-[var(--k-text)]">{tableStat.value.toFixed(2)} {symbol}</span>
                 </div>
               ))}
             </div>
@@ -1977,7 +2051,7 @@ function AnalyticsDashboard({ orders, tables }) {
                     <span className="text-[var(--k-text-3)] text-xs font-medium">{order.items.length} {t('itemsSuffix')}</span>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <span className="text-[var(--k-text)] font-semibold text-sm">{order.total ? order.total.toFixed(2) : "0.00"} ₼</span>
+                    <span className="text-[var(--k-text)] font-semibold text-sm">{order.total ? order.total.toFixed(2) : "0.00"} {symbol}</span>
                     <Tag tone={statusBadgeTone(order.status)}>
                       {orderStatusLabels(t)[order.status] || t('statusPending')}
                     </Tag>
@@ -2070,10 +2144,8 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
     // the platform-level number for the exact same data.
     const todayRevenue = today
       .filter(o => o.status !== ORDER_STATUS.CANCELLED)
-      .reduce((sum, o) => sum + (o.total || 0), 0);
-    const activeTables = new Set(
-      orders.filter(o => o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED).map(o => o.table)
-    ).size;
+      .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const activeTables = countActiveTables(orders);
 
     // Revenue over the last 7 days for the line chart
     const days = [];
@@ -2086,13 +2158,19 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
       const dayOrders = orders.filter(o => new Date(o.time).toDateString() === d.toDateString() && o.status !== ORDER_STATUS.CANCELLED);
       return {
         label: d.toLocaleDateString(LOCALE_TAGS[language] || 'az-AZ', { weekday: 'short' }),
-        revenue: dayOrders.reduce((sum, o) => sum + (o.total || 0), 0),
+        revenue: dayOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0),
       };
     });
 
+    // Both charts below count items SOLD, so a cancelled order's lines are
+    // not sales — todayRevenue above already excludes them and these two
+    // didn't, which let a cancelled order still push a dish into "ən çox
+    // satılan". Same non-cancelled rule as everywhere else in the panel.
+    const soldOrders = orders.filter(o => o.status !== ORDER_STATUS.CANCELLED);
+
     // Category split (by items sold) for the donut chart
     const categoryCounts = {};
-    orders.forEach(o => {
+    soldOrders.forEach(o => {
       o.items.forEach(item => {
         const catId = item.product.category;
         const cat = categories.find(c => c.id === catId);
@@ -2107,7 +2185,7 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
 
     // Best sellers for the bar chart
     const dishCounts = {};
-    orders.forEach(o => {
+    soldOrders.forEach(o => {
       o.items.forEach(item => {
         const id = item.product.id;
         if (!dishCounts[id]) dishCounts[id] = { name: item.product.name, count: 0 };
@@ -2121,8 +2199,7 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
 
   const recentOrders = useMemo(() => {
     return [...orders].reverse().slice(0, 8).map(o => {
-      const table = tables.find(tb => tb.id === o.table);
-      return { ...o, tableName: table ? table.name : t('tableFallbackName')(o.table) };
+      return { ...o, tableName: orderTableName(tables, o, t) };
     });
   }, [orders, tables, t]);
 
@@ -2272,7 +2349,7 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
 
 // Masalar — table management: rename tables, see live status.
 function TablesManagement({ tables, orders, editingTableId, editingTableName, setEditingTableId, setEditingTableName, updateTableName }) {
-  const { t } = useAdminTranslation();
+  const { t, language } = useAdminTranslation();
   const { t: tc } = useCommonTranslation();
   // `orders[].table` is the human-readable table NUMBER (normalizeOrder in
   // supabaseService.js reads restaurant_tables.table_number), not this
@@ -2280,9 +2357,20 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
   // anything, so every row silently fell through to `t('statusEmpty')`
   // regardless of what was actually happening on that table. `tableId` is
   // the column that actually carries tables.id (order.table_id).
+  // `isOverdue` flags — never filters out — an open order placed before
+  // today (same calendar-day boundary AnalyticsDashboard's 'day' filter and
+  // countActiveTables() use). A stuck order from last month still shows its
+  // real kitchen status here; this only adds a second, loud signal next to
+  // it so staff notice it instead of the table quietly reading as normal
+  // "Hazırlanır" forever. Dropping it from this screen (the way
+  // countActiveTables() drops it from the KPI) would hide the one order
+  // that actually needs someone's attention — the opposite of what an
+  // inflated KPI number needed.
   const tableStatus = (tableId) => {
     const active = orders.find(o => o.tableId === tableId && o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED);
-    return active ? active.status : null;
+    if (!active) return { status: null, isOverdue: false, since: null };
+    const startOfToday = startOfBusinessDay();
+    return { status: active.status, isOverdue: new Date(active.time) < startOfToday, since: active.time };
   };
   // A served-but-unpaid table used to read as "Boş" here — tableStatus()
   // above only tracks kitchen-pipeline status, so once the last order hit
@@ -2292,10 +2380,22 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
   // than folded into tableStatus(), so "what's cooking" and "who still owes
   // money" stay independently readable instead of one silently masking the
   // other.
+  //
+  // Same "flag it, never hide it" treatment as tableStatus() above, for the
+  // same reason: an unpaid bill left over from a previous day is still a real
+  // debt, so it must NOT be bounded away at midnight the way the "Aktiv
+  // Masalar" KPI is. But an hour-old bill and a three-day-old one both
+  // rendering as a plain "Ödənilməyib" tag made the stale one invisible in a
+  // long table, so the older one now carries the overdue marker too. `since`
+  // is the OLDEST unpaid order, since that is the one that has been waiting.
   const tablePaymentStatus = (tableId) => {
     const relevant = orders.filter(o => o.tableId === tableId && o.status !== ORDER_STATUS.CANCELLED);
-    if (relevant.length === 0) return null;
-    return relevant.some(o => o.paymentStatus === 'unpaid') ? 'unpaid' : 'paid';
+    if (relevant.length === 0) return { paymentStatus: null, isOverdue: false, since: null };
+    const unpaid = relevant.filter(o => o.paymentStatus === 'unpaid');
+    if (unpaid.length === 0) return { paymentStatus: 'paid', isOverdue: false, since: null };
+    const startOfToday = startOfBusinessDay();
+    const oldest = unpaid.reduce((a, b) => (new Date(a.time) <= new Date(b.time) ? a : b));
+    return { paymentStatus: 'unpaid', isOverdue: new Date(oldest.time) < startOfToday, since: oldest.time };
   };
 
   return (
@@ -2316,8 +2416,8 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
             </TableHead>
             <TableBody>
               {tables.map(table => {
-                const status = tableStatus(table.id);
-                const paymentStatus = tablePaymentStatus(table.id);
+                const { status, isOverdue, since } = tableStatus(table.id);
+                const { paymentStatus, isOverdue: isPaymentOverdue, since: unpaidSince } = tablePaymentStatus(table.id);
                 const isEditing = editingTableId === table.id;
                 return (
                   <TableRow key={table.id}>
@@ -2349,15 +2449,37 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
                       )}
                     </TableCell>
                     <TableCell>
-                      <Tag tone={status ? statusBadgeTone(status) : 'neutral'}>
-                        {status ? orderStatusLabels(t)[status] : t('statusEmpty')}
-                      </Tag>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Tag tone={status ? statusBadgeTone(status) : 'neutral'}>
+                          {status ? orderStatusLabels(t)[status] : t('statusEmpty')}
+                        </Tag>
+                        {isOverdue && (
+                          <Tag
+                            tone="danger"
+                            className="flex items-center gap-1"
+                            title={t('overdueTableTooltip')(new Date(since).toLocaleDateString(LOCALE_TAGS[language] || 'az-AZ'))}
+                          >
+                            <AlertTriangle className="w-3 h-3" /> {t('overdueTableLabel')}
+                          </Tag>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {paymentStatus ? (
-                        <Tag tone={paymentStatus === 'paid' ? 'success' : 'warning'}>
-                          {paymentStatus === 'paid' ? t('paidStatus') : t('unpaidStatus')}
-                        </Tag>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Tag tone={paymentStatus === 'paid' ? 'success' : 'warning'}>
+                            {paymentStatus === 'paid' ? t('paidStatus') : t('unpaidStatus')}
+                          </Tag>
+                          {isPaymentOverdue && (
+                            <Tag
+                              tone="danger"
+                              className="flex items-center gap-1"
+                              title={t('overduePaymentTooltip')(new Date(unpaidSince).toLocaleDateString(LOCALE_TAGS[language] || 'az-AZ'))}
+                            >
+                              <AlertTriangle className="w-3 h-3" /> {t('overdueTableLabel')}
+                            </Tag>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-[var(--k-text-3)]">—</span>
                       )}
@@ -2394,8 +2516,7 @@ function OrdersManagement({ orders, tables, currencySymbol }) {
   const symbol = currencySymbol || '₼';
   const sorted = useMemo(() => {
     return [...orders].reverse().map(o => {
-      const table = tables.find(tb => tb.id === o.table);
-      return { ...o, tableName: table ? table.name : t('tableFallbackName')(o.table) };
+      return { ...o, tableName: orderTableName(tables, o, t) };
     });
   }, [orders, tables, t]);
 
@@ -2531,8 +2652,7 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
 
   const withTableName = useMemo(() => {
     return [...orders].reverse().map(o => {
-      const table = tables.find(tb => tb.id === o.table);
-      return { ...o, tableName: table ? table.name : t('tableFallbackName')(o.table) };
+      return { ...o, tableName: orderTableName(tables, o, t) };
     });
   }, [orders, tables, t]);
 
