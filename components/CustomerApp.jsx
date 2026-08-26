@@ -1140,12 +1140,18 @@ export function CustomerApp() {
           <BottomNavButton
             icon={<Home className="h-[21px] w-[21px]" strokeWidth={2.2} />}
             label={getLocalizedText("navMenu", lang)}
-            active
+            /* Menyu reads as "active" only while neither Səbət nor Hesab is
+               open — a plain always-on `active` here made those two icons
+               never look selected even while their own sheet was the one
+               actually on screen, since only one tab-style highlight
+               should ever be lit at a time. */
+            active={!isCartOpen && !isBillModalOpen}
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           />
           <BottomNavButton
             icon={<ShoppingCart className="h-[21px] w-[21px]" strokeWidth={2.2} />}
             label={getLocalizedText("navCart", lang)}
+            active={isCartOpen}
             badge={cartTotalQty > 0 ? cartTotalQty : null}
             onClick={() => setIsCartOpen(true)}
           />
@@ -1159,6 +1165,7 @@ export function CustomerApp() {
           <BottomNavButton
             icon={<CreditCard className="h-[21px] w-[21px]" strokeWidth={2.2} />}
             label={getLocalizedText("navBill", lang)}
+            active={isBillModalOpen}
             onClick={() => setIsBillModalOpen(true)}
           />
         </div>
