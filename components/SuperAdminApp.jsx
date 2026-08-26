@@ -222,7 +222,13 @@ export function SuperAdminApp() {
     return restaurants.map((r) => ({ ...r, owner_email: ownerByRestaurant[r.id] || null }));
   }, [restaurants, users]);
 
-  const metrics = useMemo(() => computeMetrics(restaurantsWithOwner, users), [restaurantsWithOwner, users]);
+  // `plans` (the live plans table) is a real input, not decoration: MRR/ARR and
+  // the per-plan revenue cards are priced from price_monthly, so editing a plan
+  // in PlansTab moves the Dashboard/Subscriptions/Analytics numbers with it.
+  const metrics = useMemo(
+    () => computeMetrics(restaurantsWithOwner, users, plans),
+    [restaurantsWithOwner, users, plans]
+  );
 
   const goToRestaurant = (r) => {
     setOpenRestaurantId(r.id);

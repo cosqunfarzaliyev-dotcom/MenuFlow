@@ -4,21 +4,27 @@
 
 import { Sparkles, Rocket, Crown } from 'lucide-react';
 import { FEATURE_KEYS, FEATURE_REGISTRY, getEntitlements } from '@/lib/services/entitlementService';
+import { PLAN_ORDER, PLAN_FALLBACK_PRICES } from './planCatalog';
 
 // Only Basic/Pro are offered going forward. 'free'/'trial'/'enterprise' stay
 // mapped here (not in PLAN_ORDER) purely so any legacy row still renders a
 // sensible label instead of falling back silently — the create/edit UI never
 // offers them as a choice.
+//
+// `price` is the fallback price from planCatalog.js — see that file for why it
+// is only a fallback and never the number the panel reports revenue from.
 export const PLAN_META = {
-  free: { label: 'Free (legacy)', price: 0, color: '#94a3b8', icon: Sparkles },
-  trial: { label: 'Free (legacy)', price: 0, color: '#94a3b8', icon: Sparkles },
-  basic: { label: 'Basic', price: 29, color: '#38bdf8', icon: Rocket },
-  pro: { label: 'Pro', price: 79, color: '#a78bfa', icon: Crown },
-  enterprise: { label: 'Enterprise (legacy)', price: 199, color: '#fbbf24', icon: Crown },
+  free: { label: 'Free (legacy)', price: PLAN_FALLBACK_PRICES.free, color: '#94a3b8', icon: Sparkles },
+  trial: { label: 'Free (legacy)', price: PLAN_FALLBACK_PRICES.trial, color: '#94a3b8', icon: Sparkles },
+  basic: { label: 'Basic', price: PLAN_FALLBACK_PRICES.basic, color: '#38bdf8', icon: Rocket },
+  pro: { label: 'Pro', price: PLAN_FALLBACK_PRICES.pro, color: '#a78bfa', icon: Crown },
+  enterprise: { label: 'Enterprise (legacy)', price: PLAN_FALLBACK_PRICES.enterprise, color: '#fbbf24', icon: Crown },
 };
 
-// Selectable plans shown in create/edit dropdowns and the Subscriptions tab.
-export const PLAN_ORDER = ['basic', 'pro'];
+// Re-exported so existing `from '@/components/superadmin/constants'` imports
+// (RestaurantsTab, metrics) keep working — the value itself lives in
+// planCatalog.js.
+export { PLAN_ORDER };
 
 // `t` is optional (the superadmin translation dictionary's `t`, see
 // lib/i18n/dictionaries/superadmin.js) — omitted, this keeps returning the

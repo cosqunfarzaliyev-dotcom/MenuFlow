@@ -1,13 +1,16 @@
 "use client";
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, Landmark, Percent, Activity } from 'lucide-react';
-import { formatMoney } from './constants';
+import { formatMoney, LOCALE_TAGS } from './constants';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
-function MetricTile({ icon: Icon, label, value, delta, deltaGood, accent, index }) {
+// `trend` is direction only ('up' | 'down' | null). It used to also print a
+// number, which on the churn/growth tiles was the exact same percentage already
+// shown as the tile's value — the same figure twice, once with an arrow.
+function MetricTile({ icon: Icon, label, value, trend, trendGood, accent, index }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -19,10 +22,9 @@ function MetricTile({ icon: Icon, label, value, delta, deltaGood, accent, index 
         <div className="w-10 h-10 rounded-[var(--k-r)] flex items-center justify-center" style={{ backgroundColor: `${accent}1a`, border: `1px solid ${accent}33` }}>
           <Icon className="w-[18px] h-[18px]" style={{ color: accent }} />
         </div>
-        {delta !== undefined && (
-          <span className={`text-[13px] font-medium flex items-center gap-0.5 ${deltaGood ? 'text-[var(--k-success)]' : 'text-[var(--k-danger)]'}`}>
-            {deltaGood ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-            {Math.abs(delta)}%
+        {trend && (
+          <span className={trendGood ? 'text-[var(--k-success)]' : 'text-[var(--k-danger)]'}>
+            {trend === 'up' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
           </span>
         )}
       </div>
@@ -33,20 +35,40 @@ function MetricTile({ icon: Icon, label, value, delta, deltaGood, accent, index 
 }
 
 export function AnalyticsTab({ metrics }) {
-  const { t } = useSuperAdminTranslation();
+  const { t, language } = useSuperAdminTranslation();
+  const localeTag = LOCALE_TAGS[language] || 'az-AZ';
+
+  // metrics.js hands back an ISO month start, not a pre-formatted az-AZ label,
+  // so the x-axis follows the panel's selected language.
+  const chartData = useMemo(
+    () => (metrics.monthlySignups || []).map((row) => ({
+      month: new Date(row.monthStart).toLocaleDateString(localeTag, { month: 'short' }),
+      count: row.count,
+    })),
+    [metrics.monthlySignups, localeTag]
+  );
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <MetricTile index={0} icon={Wallet} label={t('mrrTileLabel')} value={formatMoney(metrics.mrr)} accent="#60A5FA" />
-        <MetricTile index={1} icon={Landmark} label={t('arrTileLabel')} value={formatMoney(metrics.arr)} accent="#F97316" />
-        <MetricTile index={2} icon={Percent} label={t('churnRateLabel')} value={`${metrics.churnRate}%`} delta={metrics.churnRate} deltaGood={metrics.churnRate === 0} accent="#F87171" />
+        <MetricTile index={0} icon={Wallet} label={t('mrrTileLabel')} value={formatMoney(metrics.mrr, '₼', localeTag)} accent="#60A5FA" />
+        <MetricTile index={1} icon={Landmark} label={t('arrTileLabel')} value={formatMoney(metrics.arr, '₼', localeTag)} accent="#F97316" />
+        <MetricTile
+          index={2}
+          icon={Percent}
+          label={t('churnRateLabel')}
+          value={`${metrics.churnRate}%`}
+          trend={metrics.churnRate > 0 ? 'up' : null}
+          trendGood={false}
+          accent="#F87171"
+        />
         <MetricTile
           index={3}
           icon={Activity}
           label={t('growthThisMonthLabel')}
           value={`${metrics.growthRate > 0 ? '+' : ''}${metrics.growthRate}%`}
-          delta={metrics.growthRate}
-          deltaGood={metrics.growthRate >= 0}
+          trend={metrics.growthRate > 0 ? 'up' : (metrics.growthRate < 0 ? 'down' : null)}
+          trendGood={metrics.growthRate >= 0}
           accent="#34D399"
         />
       </div>
@@ -60,7 +82,7 @@ export function AnalyticsTab({ metrics }) {
         <h3 className="text-[15px] font-semibold text-[var(--k-text)] mb-4">{t('last6MonthsTitle')}</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={metrics.monthlySignups} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="saGrowthFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="var(--k-accent)" stopOpacity={0.4} />
