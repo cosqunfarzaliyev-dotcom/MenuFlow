@@ -758,6 +758,68 @@ export function CustomerApp() {
 
       <main className="mx-auto max-w-7xl space-y-8 px-4 pt-6 sm:px-6">
 
+        {/* Active Orders — moved to the very top of the menu (was the last
+            section, after the whole product grid, so checking order status
+            meant scrolling past everything). Only rendered when there's
+            something to show — an empty-state placeholder here, before the
+            customer has browsed anything, would just be clutter at the most
+            prominent spot on the page, so the EmptyState/"Aktiv sifariş
+            yoxdur" branch is gone entirely along with it. */}
+        {activeOrders.length > 0 && (
+          <section>
+            <h2 className="mb-3.5 text-[15px] font-semibold text-[var(--k-text)]">
+              {getLocalizedText("activeOrders", lang)}
+            </h2>
+            <div className="space-y-2.5">
+              {activeOrders.map(order => {
+                const status = statusMap[order.status];
+                return (
+                  <div
+                    key={order.id}
+                    className="flex flex-col gap-3 rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="mb-2 flex items-center gap-2 text-[11px] text-[var(--k-text-3)]">
+                        <span className="k-nums">
+                          {new Date(order.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span className="k-nums font-semibold text-[var(--k-accent)]">
+                          {order.total} {settings.currencySymbol}
+                        </span>
+                      </div>
+                      <ul className="space-y-0.5">
+                        {order.items.map((item, idx) => {
+                          const locItem = getLocalizedProduct(item.product, lang);
+                          return (
+                            <li key={idx} className="text-[13px] text-[var(--k-text-2)]">
+                              <span className="k-nums mr-1.5 font-semibold text-[var(--k-text)]">{item.quantity}×</span>
+                              {locItem.name}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5 self-start sm:self-center">
+                      <Tag tone={status?.tone || 'neutral'} className="h-8 px-3">
+                        {status?.icon}
+                        {status?.label}
+                      </Tag>
+                      {/* Orthogonal to the status tag above — an order can be
+                          "Tamamlandı" (served) and still unpaid, which is
+                          exactly the "yeməyini bitirib sonra ödəyir"
+                          scenario this whole feature exists for. */}
+                      <Tag tone={order.paymentStatus === 'paid' ? 'success' : 'warning'} className="h-8 px-3">
+                        {order.paymentStatus === 'paid' ? getLocalizedText('paidStatus', lang) : getLocalizedText('unpaidStatus', lang)}
+                      </Tag>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         {/* Axtarış + VEG süzgəci. Kateqoriya sırasından ayrıca, birgə bir sırada:
             axtarış həmişəki kimi geniş kapsul, VEG düyməsi onun yanında sabit
             enli — hər ikisi eyni "kapsul" forma dilini paylaşır ki, aşağıdakı
@@ -998,67 +1060,6 @@ export function CustomerApp() {
           )}
         </section>
 
-        {/* Active Orders */}
-        <section className="border-t border-[var(--k-border)] pt-6">
-          <h2 className="mb-3.5 text-[15px] font-semibold text-[var(--k-text)]">
-            {getLocalizedText("activeOrders", lang)}
-          </h2>
-          {activeOrders.length > 0 ? (
-            <div className="space-y-2.5">
-              {activeOrders.map(order => {
-                const status = statusMap[order.status];
-                return (
-                  <div
-                    key={order.id}
-                    className="flex flex-col gap-3 rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <div className="mb-2 flex items-center gap-2 text-[11px] text-[var(--k-text-3)]">
-                        <span className="k-nums">
-                          {new Date(order.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span className="k-nums font-semibold text-[var(--k-accent)]">
-                          {order.total} {settings.currencySymbol}
-                        </span>
-                      </div>
-                      <ul className="space-y-0.5">
-                        {order.items.map((item, idx) => {
-                          const locItem = getLocalizedProduct(item.product, lang);
-                          return (
-                            <li key={idx} className="text-[13px] text-[var(--k-text-2)]">
-                              <span className="k-nums mr-1.5 font-semibold text-[var(--k-text)]">{item.quantity}×</span>
-                              {locItem.name}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5 self-start sm:self-center">
-                      <Tag tone={status?.tone || 'neutral'} className="h-8 px-3">
-                        {status?.icon}
-                        {status?.label}
-                      </Tag>
-                      {/* Orthogonal to the status tag above — an order can be
-                          "Tamamlandı" (served) and still unpaid, which is
-                          exactly the "yeməyini bitirib sonra ödəyir"
-                          scenario this whole feature exists for. */}
-                      <Tag tone={order.paymentStatus === 'paid' ? 'success' : 'warning'} className="h-8 px-3">
-                        {order.paymentStatus === 'paid' ? getLocalizedText('paidStatus', lang) : getLocalizedText('unpaidStatus', lang)}
-                      </Tag>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<CheckCircle2 className="w-5 h-5" />}
-              title="Aktiv sifariş yoxdur"
-              description="Masanız üçün heç bir açıq sifariş yoxdur. Yeni sifariş verdikdə burada görünəcək."
-            />
-          )}
-        </section>
       </main>
 
       {/* Footer */}
@@ -1157,7 +1158,10 @@ export function CustomerApp() {
         ariaLabel={getLocalizedText("paymentType", lang)}
         theme={null}
         panelClassName="kit-light sm:rounded-[var(--k-r-lg)] sm:border sm:max-w-sm sm:mx-auto sm:my-auto"
-        scrimClassName="sm:items-center sm:justify-center sm:p-4"
+        /* top/right/left/bottom-24 (not inset-0) keeps the fixed bottom nav
+           visible above the scrim — see CartDrawer.jsx's Sheet for the full
+           rationale (same 6rem the page's own pb-24 reserves for that nav). */
+        scrimClassName="top-0 right-0 left-0 bottom-24 sm:items-center sm:justify-center sm:p-4"
       >
         <div className="p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-center">
           <h2 className="text-[15px] font-semibold text-[var(--k-text)]">
