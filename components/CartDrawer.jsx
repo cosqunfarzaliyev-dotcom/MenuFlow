@@ -51,6 +51,7 @@ export const CartDrawer = ({
   lang = "az",
 }) => {
   const createOrder = useAppStore(state => state.createOrder);
+  const createAlert = useAppStore(state => state.createAlert);
   const tables = useAppStore(state => state.tables);
   const restaurant = useAppStore(state => state.restaurant);
   const currencySymbol = useAppStore(state => state.settings?.currencySymbol) || '₼';
@@ -186,6 +187,29 @@ export const CartDrawer = ({
         console.error('createOrder error:', error);
         setSubmitError(error.message || getLocalizedText('orderSubmitFailed', lang));
         return;
+      }
+
+      // Sifariş uğurla yaradıldı. Müştəri real ödəniş üsulu seçibsə (later
+      // yox), "Hesab" axınının yaratdığı EYNİ 'bill' tipli alerti yarat —
+      // StaffApp-ın Alerts tabında zəng çalıb "Ödənişi Təsdiqlə" kartı açan
+      // yeganə mexanizm budur (handleRequestBill, CustomerApp.jsx). Fire-
+      // and-forget: sifariş artıq uğurludur, bu heç vaxt submitError-a
+      // toxunmamalı və uğur ekranını gecikdirməməlidir — o cümlədən
+      // upsert_alert-in gözlənilən 5 saniyəlik eyni-masa cooldown-u
+      // (0012_upsert_alert_token_fix.sql), ikinci sifariş bir neçə saniyə
+      // sonra göndəriləndə.
+      if (!isPayingLater) {
+        createAlert({
+          tableId: table.id,
+          type: 'bill',
+          paymentMethod,
+          paymentMethodLabel: paymentLabels[paymentMethod] || paymentMethod,
+          note: getLocalizedText('checkoutPaymentDeclaredNote', lang),
+        }).then(({ error: alertError }) => {
+          if (alertError) console.error('createAlert (checkout payment) failed:', alertError);
+        }).catch((err) => {
+          console.error('createAlert (checkout payment) threw:', err);
+        });
       }
 
       // Snapshot BEFORE onClearCart() — see the submittedOrder useState note.
