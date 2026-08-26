@@ -25,6 +25,7 @@ import {
   ConfirmDialog, useConfirmDialog, Field, Input, Select, Tag, Button, EmptyState, Switch,
   Table, TableHead, TableHeaderCell, TableBody, TableCell,
 } from '@/components/kit';
+import { SERVICE_MODEL_ORDER, DEFAULT_SERVICE_MODEL } from '@/lib/services/serviceModelService';
 import { CAPABILITIES } from '@/lib/services/capabilityService';
 import { useCapability } from '@/hooks/useCapability';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
@@ -43,6 +44,21 @@ const translatedFeatureMeta = (key, meta, t) => {
   const [labelKey, descKey] = FEATURE_LABEL_KEYS[key] || [];
   if (!labelKey) return meta;
   return { label: t(labelKey), description: t(descKey) };
+};
+
+// Service model (0045). Same override approach as FEATURE_LABEL_KEYS above:
+// serviceModelService.js is shared infra consumed by the customer menu and the
+// staff panel too, so its display text is translated here rather than baked
+// into the module.
+const SERVICE_MODEL_LABEL_KEYS = {
+  waiter_pay_later: 'serviceModelWaiterPayLaterLabel',
+  waiter_prepay: 'serviceModelWaiterPrepayLabel',
+  self_service: 'serviceModelSelfServiceLabel',
+};
+const SERVICE_MODEL_HINT_KEYS = {
+  waiter_pay_later: 'serviceModelWaiterPayLaterHint',
+  waiter_prepay: 'serviceModelWaiterPrepayHint',
+  self_service: 'serviceModelSelfServiceHint',
 };
 
 // The super admin has to read this password off the screen and hand it to the
@@ -142,13 +158,20 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
                     className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)] transition-colors"
                   >
                     <TableCell>
+                      {/* Deliberately the generic icon, never `r.logo`. A
+                          restaurant's logo is content its OWN admin uploads
+                          (updateRestaurant writes `logo`, and unlike
+                          plan/is_active/feature_flags it is not covered by
+                          protect_restaurant_privileged_fields) and it belongs
+                          to the customer menu it was designed for. Rendering
+                          tenant-supplied images in the platform's
+                          highest-privilege panel gives every restaurant admin
+                          a picture slot in the super admin's view — the same
+                          reasoning CustomerApp.jsx's isSafeUrl() applies to
+                          admin-controlled banner media. The rows are
+                          identified by name + /slug beside this. */}
                       <div className="w-9 h-9 rounded-[var(--k-r)] bg-[var(--k-surface-3)] flex items-center justify-center overflow-hidden">
-                        {r.logo ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={r.logo} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <Building2 className="w-4 h-4 text-[var(--k-text-3)]" />
-                        )}
+                        <Building2 className="w-4 h-4 text-[var(--k-text-3)]" />
                       </div>
                     </TableCell>
                     <TableCell>
@@ -359,6 +382,11 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
     currencySymbol: initial?.currency_symbol || '₼',
     tableCount: initial?.table_count || 20,
     plan: initial?.plan && PLAN_ORDER.includes(initial.plan) ? initial.plan : 'basic',
+    // 0045 — unlike `plan` below (edit-only), this is offered in BOTH modes:
+    // it decides what the customer menu even renders, so starting every new
+    // restaurant on the waiter default and making the super admin come back to
+    // fix it would be the wrong way round.
+    serviceModel: SERVICE_MODEL_ORDER.includes(initial?.service_model) ? initial.service_model : DEFAULT_SERVICE_MODEL,
     // Create mode only — the restaurant's admin login is set up in the same
     // step now that there's no public sign-up for them to go through first.
     adminEmail: '',
@@ -448,6 +476,16 @@ function RestaurantModal({ title, initial, isEdit, onClose, onSave, onRefresh })
             )}
           </Field>
         </div>
+        <Field label={t('serviceModelFieldLabel')} hint={t(SERVICE_MODEL_HINT_KEYS[form.serviceModel])}>
+          {(id, a11y) => (
+            <Select id={id} {...a11y} value={form.serviceModel} onChange={(e) => setForm({ ...form, serviceModel: e.target.value })}>
+              {SERVICE_MODEL_ORDER.map((m) => (
+                <option key={m} value={m}>{t(SERVICE_MODEL_LABEL_KEYS[m])}</option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
         {isEdit && (
           <Field label={t('packageFieldLabel')}>
             {(id, a11y) => (
@@ -637,6 +675,11 @@ function RestaurantControlsPanel({ restaurant, onRefresh }) {
         disabled={pendingKey === 'past_due'}
         onChange={(val) => run('past_due', () => (val ? markRestaurantPastDue(local.id) : cancelRestaurantSubscription(local.id)), { subscription_status: val ? 'past_due' : 'canceled' })}
       />
+
+      {/* 0044's "Sonra ödəmə" switch lived here. It is gone: 0045 folded it into
+          the restaurant's service model, which the edit form above owns. Two
+          settings would have allowed contradictory states (self-service AND pay
+          later enabled), so there is exactly one control now. */}
 
       <div className="h-px bg-[var(--k-border)] my-2" />
       <p className="text-[11px] font-semibold text-[var(--k-text-3)] uppercase tracking-wider mb-1">{t('featuresTitle')}</p>

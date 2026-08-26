@@ -3,11 +3,17 @@
  * in the Super Admin panel's Dashboard / Subscriptions / Analytics tabs is
  * derived from.
  *
- * The invariant that matters most: revenue is priced from the LIVE `plans`
- * table (plans.price_monthly), not from constants.js's hardcoded PLAN_META.
- * Those two had silently drifted in production (PLAN_META said basic = 29
- * while the DB said 39), so MRR/ARR/per-plan revenue under-reported by 10 ₼
- * per basic restaurant and no edit in PlansTab could ever move them.
+ * Two invariants matter most, both of which were broken in production:
+ *
+ *   1. Revenue is priced from the LIVE `plans` table (plans.price_monthly), not
+ *      from a hardcoded catalog. Those two had silently drifted (the catalog
+ *      said basic = 29 while the DB said 39), so MRR/ARR/per-plan revenue
+ *      under-reported by 10 ₼ per basic restaurant and no edit in PlansTab
+ *      could ever move them.
+ *
+ *   2. A yearly subscriber is annualized at the plan's discounted price_yearly,
+ *      not price_monthly × 12. The live `pro` plan costs 790 ₼/year, but ARR
+ *      reported 79 × 12 = 948 ₼ because billing_interval was never read.
  *
  * Imports the real module directly (not a copy), same reasoning as
  * verify-entitlements.mjs. Node reparses the plain `.js` files in the import
@@ -20,6 +26,17 @@ import { computeMetrics } from '../components/superadmin/metrics.js';
 
 let failures = 0;
 let n = 0;
+
+// MRR is rounded to the qəpik for display, and 790/12 does not terminate, so
+// ARR and MRR x 12 agree to within a rounding error rather than exactly. A
+// tolerance well under 1 ₼ is the honest assertion here.
+const checkClose = (label, actual, expected, tolerance = 0.5) => {
+  n += 1;
+  if (!(Math.abs(actual - expected) <= tolerance)) {
+    failures += 1;
+    console.error(`FAIL ${n}. ${label}\n     expected: ${expected} (+/- ${tolerance})\n     actual:   ${actual}`);
+  }
+};
 
 const check = (label, actual, expected) => {
   n += 1;
@@ -125,7 +142,56 @@ const monthsAgo = (k) => { const d = new Date(); d.setDate(15); d.setHours(12, 0
     computeMetrics([{ id: 'a', plan: 'pro', subscription_status: 'active', created_at: iso(monthsAgo(4)) }], [], PLANS).growthRate, 0);
 }
 
-// --- 8. Users -----------------------------------------------------------------
+// --- 8. Yearly billing is annualized at price_yearly, not price_monthly x 12 --
+{
+  const restaurants = [{ id: 'a', plan: 'pro', subscription_status: 'active', created_at: iso(monthsAgo(0)) }];
+  const yearly = [{ restaurant_id: 'a', billing_interval: 'yearly', status: 'active' }];
+  const monthly = [{ restaurant_id: 'a', billing_interval: 'monthly', status: 'active' }];
+
+  const y = computeMetrics(restaurants, [], PLANS, yearly);
+  check('a yearly pro subscriber contributes price_yearly to ARR (790, not 948)', y.arr, 790);
+  check('...and one twelfth of it to MRR', y.mrr, 65.83);
+  check('...and that same twelfth to the plan card revenue', y.planRevenue.pro, 65.83);
+
+  const m = computeMetrics(restaurants, [], PLANS, monthly);
+  check('a monthly pro subscriber is still 79 / 948', [m.mrr, m.arr], [79, 948]);
+
+  check('no subscription row at all defaults to monthly', computeMetrics(restaurants, [], PLANS, []).arr, 948);
+  check('subscriptions omitted entirely defaults to monthly', computeMetrics(restaurants, [], PLANS).arr, 948);
+  check('yearlyCount tracks how many active subscribers bill annually', [y.yearlyCount, m.yearlyCount], [1, 0]);
+  check('a yearly subscriber still counts once as paying', y.payingCount, 1);
+}
+
+// --- 9. ARR and MRR can never contradict each other ---------------------------
+{
+  const restaurants = [
+    { id: 'a', plan: 'pro', subscription_status: 'active', created_at: iso(monthsAgo(0)) },
+    { id: 'b', plan: 'basic', subscription_status: 'active', created_at: iso(monthsAgo(0)) },
+    { id: 'c', plan: 'basic', subscription_status: 'active', created_at: iso(monthsAgo(0)) },
+  ];
+  const subs = [
+    { restaurant_id: 'a', billing_interval: 'yearly', status: 'active' },
+    { restaurant_id: 'b', billing_interval: 'yearly', status: 'active' },
+    { restaurant_id: 'c', billing_interval: 'monthly', status: 'active' },
+  ];
+  const m = computeMetrics(restaurants, [], PLANS, subs);
+  check('mixed billing: ARR is 790 + 390 + (39 x 12)', m.arr, 1648);
+  checkClose('mixed billing: ARR and MRR x 12 never contradict each other', m.mrr * 12, m.arr);
+}
+
+// --- 10. Yearly price falls back to monthly x 12 when there is none ----------
+{
+  const restaurants = [{ id: 'a', plan: 'basic', subscription_status: 'active', created_at: iso(monthsAgo(0)) }];
+  const subs = [{ restaurant_id: 'a', billing_interval: 'yearly', status: 'active' }];
+  const noYearly = [{ ...PLANS[0], price_yearly: '0' }, PLANS[1]];
+  check('a plan with no yearly price falls back to monthly x 12', computeMetrics(restaurants, [], noYearly, subs).arr, 468);
+
+  const legacy = [{ id: 'a', plan: 'enterprise', subscription_status: 'active', created_at: iso(monthsAgo(0)) }];
+  check('a legacy plan billed yearly falls back to its fallback price x 12',
+    computeMetrics(legacy, [], PLANS, subs).arr, 199 * 12);
+}
+
+// --- 11. Users ----------------------------------------------------------------
 {
   const users = [
     { id: '1', role: 'super_admin' },

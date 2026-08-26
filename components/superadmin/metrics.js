@@ -23,7 +23,16 @@ const startOfMonth = (offset = 0) => {
 // sat at 39 ₼ while the catalog still said 29.) PLAN_FALLBACK_PRICES covers a
 // legacy plan key with no row in `plans` any more, and offline/no-Supabase
 // mode where `plans` comes back empty.
-export function computeMetrics(restaurants, users, plans = []) {
+//
+// `subscriptions` is restaurant_subscriptions (planService.fetchAllSubscriptions()).
+// It is needed for ONE field — billing_interval — and nothing else can supply
+// it: restaurants.subscription_status never tracked monthly-vs-yearly. Without
+// it, a restaurant paying 790 ₼/year gets reported as 79 × 12 = 948 ₼/year.
+// The plan itself still comes from restaurants.plan (the 0021 sync trigger
+// keeps restaurant_subscriptions.plan_id mirrored from it), so this argument
+// can never change which plan bucket a restaurant lands in — only how its
+// price is annualized.
+export function computeMetrics(restaurants, users, plans = [], subscriptions = []) {
   const total = restaurants.length;
   const active = restaurants.filter((r) => r.subscription_status === 'active').length;
   const trialing = restaurants.filter((r) => r.subscription_status === 'trialing').length;
@@ -31,6 +40,7 @@ export function computeMetrics(restaurants, users, plans = []) {
   const pastDue = restaurants.filter((r) => r.subscription_status === 'past_due').length;
 
   const dbPrice = {};
+  const dbYearly = {};
   // Display name straight from the plans table, so a plan a super_admin created
   // (a key PLAN_META has never heard of) shows its own name instead of falling
   // back to planMeta()'s "Basic" default.
@@ -38,10 +48,21 @@ export function computeMetrics(restaurants, users, plans = []) {
   for (const p of plans || []) {
     if (!p?.key) continue;
     dbPrice[p.key] = Number(p.price_monthly) || 0;
+    dbYearly[p.key] = Number(p.price_yearly) || 0;
     if (p.name) planNames[p.key] = p.name;
   }
   const priceOf = (key) => (key in dbPrice ? dbPrice[key] : (PLAN_FALLBACK_PRICES[key] ?? 0));
+  // The yearly list price is its own number, NOT monthly × 12 — a yearly plan
+  // is normally discounted (pro: 790, not 948). Falls back to monthly × 12 only
+  // when the plan has no yearly price at all (a legacy key with no `plans` row,
+  // or price_yearly left at 0).
+  const yearlyPriceOf = (key) => (dbYearly[key] > 0 ? dbYearly[key] : priceOf(key) * 12);
   const isKnownPlan = (key) => Boolean(key) && (key in dbPrice || key in PLAN_FALLBACK_PRICES);
+
+  const intervalOf = {};
+  for (const s of subscriptions || []) {
+    if (s?.restaurant_id) intervalOf[s.restaurant_id] = s.billing_interval;
+  }
 
   const planCounts = {};
   const planRevenue = {};
@@ -55,7 +76,9 @@ export function computeMetrics(restaurants, users, plans = []) {
   }
 
   let mrr = 0;
+  let arr = 0;
   let payingCount = 0;
+  let yearlyCount = 0;
   for (const r of restaurants) {
     // A legacy key ('free'/'trial'/'enterprise') keeps its own bucket instead
     // of being folded into 'free' — folding an enterprise row into 'free' both
@@ -70,12 +93,27 @@ export function computeMetrics(restaurants, users, plans = []) {
     // a restaurant sitting on a paid plan while trialing/past_due/cancelled
     // isn't actually billing yet.
     if (r.subscription_status === 'active') {
-      mrr += price;
-      planRevenue[plan] += price;
-      if (price > 0) payingCount += 1;
+      // Standard SaaS normalization: each subscriber contributes its real
+      // annual contract value to ARR, and one twelfth of it to MRR. A yearly
+      // subscriber on `pro` therefore adds 790 (not 79 × 12 = 948) to ARR and
+      // 65.83 to MRR — so the two figures shown side by side stay consistent
+      // (up to the qəpik rounding below; 790/12 does not terminate).
+      const isYearly = intervalOf[r.id] === 'yearly';
+      const annual = isYearly ? yearlyPriceOf(plan) : price * 12;
+      const monthly = annual / 12;
+      mrr += monthly;
+      arr += annual;
+      planRevenue[plan] += monthly;
+      if (annual > 0) payingCount += 1;
+      if (isYearly) yearlyCount += 1;
     }
   }
-  const arr = mrr * 12;
+  // Float noise: 790/12 is not exact in binary. Round the aggregates once,
+  // here, rather than letting 65.83333333333333 reach a tooltip.
+  const round2 = (v) => Math.round(v * 100) / 100;
+  mrr = round2(mrr);
+  arr = round2(arr);
+  for (const key of Object.keys(planRevenue)) planRevenue[key] = round2(planRevenue[key]);
 
   // Render order for the Subscriptions tab: the sellable plans, then any other
   // plan key that actually has restaurants on it.
@@ -113,7 +151,7 @@ export function computeMetrics(restaurants, users, plans = []) {
 
   return {
     total, active, trialing, cancelled, pastDue,
-    mrr, arr, growthRate, churnRate, activeUsers, payingCount,
+    mrr, arr, growthRate, churnRate, activeUsers, payingCount, yearlyCount,
     planCounts, planRevenue, planPrices, planNames, planKeys, monthlySignups,
   };
 }

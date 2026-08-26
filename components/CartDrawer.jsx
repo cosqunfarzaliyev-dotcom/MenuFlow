@@ -9,6 +9,7 @@ import { fetchTableByNumber } from '@/lib/services/supabaseService';
 import { getLocalizedProduct, getLocalizedText } from '@/lib/translations';
 import { requestWalletPayment } from '@/lib/services/paymentService';
 import { FEATURES, hasFeature } from '@/lib/services/entitlementService';
+import { getServiceRules } from '@/lib/services/serviceModelService';
 import { Sheet, SheetHeader, Button, Input, Field, Tag, Banner, EmptyState } from '@/components/kit';
 import { cn } from '@/lib/utils';
 
@@ -73,15 +74,32 @@ export const CartDrawer = ({
   // in CustomerApp.jsx (hasFeature(restaurant, FEATURES.GOOGLE_PAY/APPLE_PAY))
   // — cash/card are never gated. Without this, a restaurant with the wallet
   // switches turned off in SuperAdmin still had them selectable at checkout.
+  //
+  // 'later' is gated differently: by the restaurant's SERVICE MODEL (0045), not
+  // an entitlement. Only a waiter-service venue that settles up afterwards has
+  // any use for "I'll pay later" — see serviceModelService.js for the rule table
+  // and for why an operating mode is not something a plan sells.
+  // getServiceRules() falls back to the default model for a null/unknown value,
+  // so offline mode (supabaseReady === false, the data/menu.json seed) keeps the
+  // option exactly as before.
+  const serviceRules = getServiceRules(restaurant);
+  const payLaterEnabled = serviceRules.payLaterAllowed;
+  const selfPickup = serviceRules.selfPickup;
   const availablePaymentMethods = useMemo(
     () =>
       PAYMENT_METHODS.filter((m) => {
+        if (m.key === 'later') return payLaterEnabled;
         if (m.key === 'google_pay') return hasFeature(restaurant, FEATURES.GOOGLE_PAY);
         if (m.key === 'apple_pay') return hasFeature(restaurant, FEATURES.APPLE_PAY);
         return true;
       }),
-    [restaurant],
+    [restaurant, payLaterEnabled],
   );
+  // With 'later' gone there is no neutral "haven't decided" option left, so
+  // nothing is preselected and the send button stays locked until the customer
+  // picks one — deliberately one extra tap, rather than silently declaring
+  // "cash" on behalf of someone who never looked at the row.
+  const fallbackMethod = payLaterEnabled ? 'later' : null;
   // 5 buttons in a row is too tight on a phone with icon+text — 3 columns
   // wraps a 4th/5th button to a second row instead of shrinking every button.
   const PAYMENT_GRID_COLS = { 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-3', 5: 'grid-cols-3' };
@@ -89,11 +107,15 @@ export const CartDrawer = ({
   if (!isOpen) return null;
 
   // If the previously selected method just got filtered out (e.g. the
-  // restaurant's wallet entitlement resolved to off after mount), fall back
-  // to 'later' (always present, like cash/card) instead of silently
-  // submitting a method that's no longer offered.
-  if (!availablePaymentMethods.some((m) => m.key === paymentMethod) && paymentMethod !== 'later') {
-    setPaymentMethod('later');
+  // restaurant's entitlements resolved after mount), fall back rather than
+  // silently submitting a method that's no longer offered.
+  //
+  // The `!== null` guard is load-bearing: null is never in the list, so
+  // without it this would setState on every render once pay-later is off.
+  // The old code used `paymentMethod !== 'later'` for exactly that job, which
+  // only worked while 'later' could never itself be filtered out.
+  if (paymentMethod !== null && !availablePaymentMethods.some((m) => m.key === paymentMethod)) {
+    setPaymentMethod(fallbackMethod);
   }
 
   const calculateItemPrice = (item) => {
@@ -111,7 +133,7 @@ export const CartDrawer = ({
   const handleResetOrder = () => {
     setSubmittedOrder(null);
     setKitchenNote("");
-    setPaymentMethod('later');
+    setPaymentMethod(fallbackMethod);
     if (typeof onClearCart === 'function') onClearCart();
     if (typeof onClose === 'function') onClose();
   };
@@ -126,6 +148,12 @@ export const CartDrawer = ({
 
   const handleSendOrder = async () => {
     setSubmitError("");
+
+    // Pay-later is off for this service model and nothing is picked yet. The button is already
+    // disabled in that state; this is the belt-and-suspenders half, so a
+    // keyboard/programmatic submit can't send an order with no declared
+    // method on a restaurant that requires one.
+    if (paymentMethod === null) return;
 
     // Wallet methods need the native Payment Request sheet approved before
     // the order is created — cash/card just tag the order and send.
@@ -273,7 +301,10 @@ export const CartDrawer = ({
           </h3>
           <p className="mt-2 max-w-xs text-[13px] leading-relaxed text-[var(--k-text-3)]">
             <strong className="font-medium text-[var(--k-accent)]">{submittedOrder.tableName}</strong>{' '}
-            {getLocalizedText("orderSuccessDesc", lang)}
+            {/* The default copy literally says "delivered to the waiter" — the
+                one thing that does not happen in a self-service venue, where
+                the customer collects it from the counter themselves. */}
+            {getLocalizedText(selfPickup ? "orderSuccessDescSelfService" : "orderSuccessDesc", lang)}
           </p>
 
           <dl className="mt-6 w-full space-y-2.5 rounded-[var(--k-r)] border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-left text-[13px]">
@@ -473,13 +504,20 @@ export const CartDrawer = ({
                 );
               })}
             </div>
+            {/* Only reachable when the service model forbids pay-later (0045) — with
+                "Sonra ödəyəcəyəm" available, something is always selected. */}
+            {paymentMethod === null && (
+              <p className="mt-1.5 text-[11px] text-[var(--k-text-3)]">
+                {getLocalizedText("selectPaymentMethodRequired", lang)}
+              </p>
+            )}
           </div>
 
           <Button
             variant="primary"
             size="block"
             onClick={handleSendOrder}
-            disabled={items.length === 0 || walletAuthorizing}
+            disabled={items.length === 0 || walletAuthorizing || paymentMethod === null}
             loading={walletAuthorizing}
             icon={<Send className="w-4 h-4" />}
             id="cart-submit-order-btn"

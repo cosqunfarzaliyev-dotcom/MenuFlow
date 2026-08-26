@@ -48,13 +48,11 @@ export function DashboardTab({ restaurants, metrics, onOpenRestaurant }) {
                   onClick={() => onOpenRestaurant?.(r)}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--k-r)] hover:bg-[var(--k-surface-2)] transition-colors text-left"
                 >
+                  {/* Generic icon only — see RestaurantsTab.jsx's row avatar
+                      for why a restaurant's own logo is never rendered in the
+                      super admin panel. */}
                   <div className="w-9 h-9 rounded-[var(--k-r)] bg-[var(--k-surface-3)] flex items-center justify-center overflow-hidden shrink-0">
-                    {r.logo ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.logo} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <Building2 className="w-4 h-4 text-[var(--k-text-3)]" />
-                    )}
+                    <Building2 className="w-4 h-4 text-[var(--k-text-3)]" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[var(--k-text)] text-sm font-medium truncate">{r.name}</p>

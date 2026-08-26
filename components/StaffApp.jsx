@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { CAPABILITIES } from '@/lib/services/capabilityService';
 import { useCapability } from '@/hooks/useCapability';
 import { FEATURES } from '@/lib/services/entitlementService';
+import { getServiceRules } from '@/lib/services/serviceModelService';
 import { useFeature } from '@/hooks/useEntitlement';
 import { useStaffTranslation } from '@/lib/i18n/dictionaries/staff';
 import { useCommonTranslation } from '@/lib/i18n/dictionaries/common';
@@ -51,6 +52,12 @@ export function StaffApp() {
   // exists so a future view-only staff tier is a role-matrix edit, not a
   // StaffApp rewrite.
   const canManageOrders = useCapability(CAPABILITIES.ORDERS_MANAGE);
+  // 0045 — in a self-service venue nobody serves anything: the customer takes
+  // the order off the counter. Only the wording changes here; the order flow
+  // (pending -> accepted -> preparing -> ready -> served) and the Alerts tab
+  // stay exactly as they are, because payment confirmation still runs through
+  // the same 'bill' alert CartDrawer raises at checkout.
+  const { selfPickup } = getServiceRules(restaurant);
   const pushNotificationsEnabled = useFeature(FEATURES.PUSH_NOTIFICATIONS);
   // Order cancellation — see OrderCard.jsx's `onCancel` prop. Confirmed
   // before it fires (irreversible, and the customer-facing menu shows the
@@ -391,7 +398,7 @@ export function StaffApp() {
             title={
               <span className="flex items-center gap-3">
                 <UserSquare2 className="w-7 h-7 text-[var(--k-accent)]" />
-                {t('panelTitle')}
+                {t(selfPickup ? 'panelTitleSelfService' : 'panelTitle')}
               </span>
             }
             description={t('panelSubtitle')(settings.restaurantName || "MenuFlow")}
@@ -510,12 +517,12 @@ export function StaffApp() {
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-base text-[var(--k-text)] flex items-center gap-2">
                     <CheckCircle2 className="w-5 h-5 text-[var(--k-success)]" />
-                    {t('finishedTitle')(finishedOrders.length)}
+                    {t(selfPickup ? 'finishedTitleSelfService' : 'finishedTitle')(finishedOrders.length)}
                   </h3>
                 </div>
                 <div className="space-y-4">
                   {finishedOrders.slice(0, 10).map(order => (
-                    <OrderCard key={order.id} order={order} tableName={getTableName(order.tableId, order.table)} onStatusChange={handleStatusChange} isCompleted={order.status === ORDER_STATUS.SERVED} nextLabel={t('servedButton')} readOnly={!canManageOrders} />
+                    <OrderCard key={order.id} order={order} tableName={getTableName(order.tableId, order.table)} onStatusChange={handleStatusChange} isCompleted={order.status === ORDER_STATUS.SERVED} nextLabel={t(selfPickup ? 'handedOverButton' : 'servedButton')} readOnly={!canManageOrders} />
                   ))}
                 </div>
               </div>

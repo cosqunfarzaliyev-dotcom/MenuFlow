@@ -11,7 +11,7 @@ import {
   Settings, Plus, Edit2, Trash2, QrCode, Lock, BarChart3, Users, Download, Printer,
   TrendingUp, Clock, Activity, CheckCircle2, LayoutDashboard, Table2, ListOrdered, FileBarChart2,
   Search, Bell, ChevronRight, UserCircle2, Package, DollarSign, Megaphone, Palette, ClipboardList,
-  Wallet, CreditCard, Smartphone, Plug, ChevronUp, ChevronDown, X, AlertTriangle,
+  Wallet, CreditCard, Smartphone, Plug, ChevronUp, ChevronDown, X, AlertTriangle, LifeBuoy,
 } from 'lucide-react';
 import RealtimeStatusBadge from '@/components/RealtimeStatusBadge';
 import {
@@ -49,7 +49,7 @@ export function AdminApp() {
     qrTokensByTableId, loadQrTokens,
     announcements, announcementReadIds, loadAnnouncements, markAnnouncementsRead,
     settings: rawSettings, updateRestaurantProfile, profile, loadProfile, restaurant,
-    loadPlans,
+    loadPlans, supportContactUrl, loadSupportContact,
   } = useAppStore();
 
   const settings = restaurant
@@ -435,6 +435,20 @@ export function AdminApp() {
     load();
   }, [loadMenuData, loadTables, loadOrders, loadAlerts, loadPlans, loadAnnouncements, isAdminAuthenticated, restaurantResolved, profile]);
 
+  // The platform's support link (site_content 'contact.whatsapp_url', edited in
+  // SuperAdmin → Veb sayt → Əlaqə). Loaded on its own rather than inside the
+  // Promise.all above on purpose: that one sets `loadError` on any rejection,
+  // and a CMS hiccup must not blank the whole admin panel over a contact link —
+  // the store's built-in default stays in place instead. Also deliberately NOT
+  // gated on `profile.role`, so the subscription lock screen (rendered before
+  // most of this component) still gets a real number.
+  useEffect(() => {
+    if (!isAdminAuthenticated) return;
+    loadSupportContact().catch((err) => {
+      console.warn('Failed to load support contact:', err);
+    });
+  }, [isAdminAuthenticated, loadSupportContact]);
+
   // QR token-ləri yalnız "QR Kodlar" tabı açılanda yüklə (sütun səviyyəli
   // qorunmadadır, adi loadTables() ilə gəlmir — bax: 0008_qr_token_verification.sql)
   useEffect(() => {
@@ -601,7 +615,15 @@ export function AdminApp() {
   };
 
   return (
-    <div className="kit-dark min-h-screen bg-[var(--k-bg)] text-[var(--k-text)] font-sans flex">
+    // App-shell scrolling from `md` up — the breakpoint where the sidebar
+    // stops being an off-canvas drawer and becomes a persistent rail. Without
+    // the fixed height + overflow-hidden here, the BODY was the only scroll
+    // container: the content area's own `overflow-y-auto` (below) could never
+    // engage, because its parents grew with the content instead of being
+    // bounded, so scrolling the content dragged the whole page — sidebar
+    // included. Below `md` the sidebar is `fixed`, so there is no second pane
+    // to fight over and normal page scrolling is left exactly as it was.
+    <div className="kit-dark min-h-screen md:min-h-0 md:h-dvh md:overflow-hidden bg-[var(--k-bg)] text-[var(--k-text)] font-sans flex">
 
       {/* Sidebar — kit's Sidebar (ported from the old primitive kit for
           this panel, see components/kit/Sidebar.jsx) keeps the same mobile
@@ -642,7 +664,7 @@ export function AdminApp() {
       />
 
       {/* Main Area */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col md:overflow-hidden">
 
         {/* Topbar */}
         <div className="h-16 shrink-0 bg-[var(--k-surface)]/90 backdrop-blur-xl border-b border-[var(--k-border)] px-4 sm:px-8 flex items-center justify-between gap-4 sticky top-0 z-10">
@@ -668,6 +690,21 @@ export function AdminApp() {
                 reachable at every breakpoint (persistent at md+, one tap
                 behind the hamburger below that), while this one only ever
                 covered the narrower sm..md gap. */}
+            {/* Support link, always on screen. It used to live only at the
+                bottom of the Users tab and on the subscription lock screen —
+                i.e. exactly where an admin who needs help is least likely to
+                be looking. Same store-held site_content URL all three use. */}
+            <a
+              href={supportContactUrl}
+              target="_blank"
+              rel="noreferrer"
+              title={t('contactSupportButton')}
+              aria-label={t('contactSupportButton')}
+              className="flex items-center gap-2 h-9 px-2.5 lg:px-3 rounded-[var(--k-r)] bg-[var(--k-surface-2)] border border-[var(--k-border)] hover:bg-[var(--k-surface-3)] transition-colors text-[var(--k-text-2)] hover:text-[var(--k-text)]"
+            >
+              <LifeBuoy className="w-4 h-4 shrink-0" />
+              <span className="hidden lg:inline text-xs font-medium whitespace-nowrap">{t('contactSupportButton')}</span>
+            </a>
             <button
               onClick={handleOpenNotifications}
               aria-label={t('notificationsAriaLabel')(unreadAnnouncementIds.length)}
@@ -749,7 +786,7 @@ export function AdminApp() {
             tone="warning"
             className="mx-4 sm:mx-8 mt-4 justify-between items-center"
             action={
-              <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className="whitespace-nowrap text-xs font-semibold bg-[var(--k-warning)] hover:opacity-90 text-[var(--k-bg)] px-3.5 py-1.5 rounded-[var(--k-r-sm)] transition-opacity">
+              <a href={supportContactUrl} target="_blank" rel="noreferrer" className="whitespace-nowrap text-xs font-semibold bg-[var(--k-warning)] hover:opacity-90 text-[var(--k-bg)] px-3.5 py-1.5 rounded-[var(--k-r-sm)] transition-opacity">
                 {t('upgradeToSubscription')}
               </a>
             }
@@ -765,7 +802,10 @@ export function AdminApp() {
             inside the scrollable content area) — this strip they used to
             share is retired now that neither tab needs it. */}
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+        {/* min-h-0 so this flex child may shrink below its content height —
+            without it `flex-1` keeps the automatic minimum size and the
+            overflow-y-auto above never gets a bounded box to scroll inside. */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-8">
 
           {/* Dashboard */}
           {activeTab === 'dashboard' && (
@@ -2768,7 +2808,7 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
 // mövcuddur, sadəcə bu tabdan görünmürdü.
 function UsersTab({ profile, restaurant, settings }) {
   const { t } = useAdminTranslation();
-  const { restaurantStaff, loadRestaurantStaff } = useAppStore();
+  const { restaurantStaff, loadRestaurantStaff, supportContactUrl } = useAppStore();
   const [loading, setLoading] = useState(true);
 
   // No setLoading(true) here: `loading` already starts true (useState(true)
@@ -2857,7 +2897,7 @@ function UsersTab({ profile, restaurant, settings }) {
         description={t('contactSupportToAddStaffDescription')}
         action={
           <a
-            href="https://wa.me/994000000000"
+            href={supportContactUrl}
             target="_blank"
             rel="noreferrer"
             className={buttonVariants({ variant: 'secondary' })}
@@ -2872,6 +2912,7 @@ function UsersTab({ profile, restaurant, settings }) {
 
 function SubscriptionLockedScreen({ restaurant, onLogout }) {
   const { t } = useAdminTranslation();
+  const supportContactUrl = useAppStore((s) => s.supportContactUrl);
   const reason = accessBlockReason(restaurant);
   const copy = {
     deactivated: {
@@ -2902,7 +2943,7 @@ function SubscriptionLockedScreen({ restaurant, onLogout }) {
         <p className="text-[var(--k-text-3)] text-sm mb-6">{body}</p>
         <div className="flex flex-col gap-2">
           {reason !== 'deactivated' && (
-            <a href="https://wa.me/994000000000" target="_blank" rel="noreferrer" className={buttonVariants({ variant: 'primary', size: 'block' })}>
+            <a href={supportContactUrl} target="_blank" rel="noreferrer" className={buttonVariants({ variant: 'primary', size: 'block' })}>
               {t('upgradeToSubscription')}
             </a>
           )}

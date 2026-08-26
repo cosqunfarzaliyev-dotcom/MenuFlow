@@ -11,11 +11,12 @@ import { ProductCard } from "@/components/ProductCard";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { CartDrawer } from "@/components/CartDrawer";
 import { BannerCarousel } from "@/components/BannerCarousel";
-import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight, XCircle, Search, X, Leaf } from "lucide-react";
+import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight, XCircle, Search, X, Leaf, QrCode, ShoppingBag } from "lucide-react";
 import { getLocalizedText, getLocalizedCategoryName, getLocalizedProduct } from "@/lib/translations";
 import { applyDiscounts } from "@/lib/services/promotionsService";
 import { requestWalletPayment } from "@/lib/services/paymentService";
 import { FEATURES, hasFeature } from "@/lib/services/entitlementService";
+import { getServiceRules } from "@/lib/services/serviceModelService";
 import {
   Sheet, Button, Tag, Pill, Input, LanguageToggle,
   EmptyState, LoadingState, ErrorState,
@@ -37,6 +38,17 @@ const isSafeUrl = (url) => {
     return false;
   }
 };
+
+// `tables` starts out as the generic seed (ids "1".."50", not UUIDs) before the
+// real restaurant-scoped fetch resolves, so `resolvedTable.id` can briefly be a
+// plain "1". store.loadTableOrders() already refuses that (it would hit a
+// uuid-typed RPC parameter), and the orders effect below needs to know the same
+// thing so it doesn't report "orders loaded" for a fetch that never ran.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Written out in full, never built as `grid-cols-${n}` — Tailwind scans source
+// text for class names and would emit nothing for an interpolated one.
+const NAV_GRID_COLS = { 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' };
 
 export function CustomerApp() {
   const {
@@ -99,6 +111,26 @@ export function CustomerApp() {
   const [tableId, setTableId] = useState(() => params?.table || searchParams?.get('table') || "1");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+
+  // How this venue operates (0045): waiter + pay later, waiter + prepay, or
+  // self-service. Everything conditional below reads these resolved rules
+  // rather than comparing `service_model` strings inline.
+  const serviceRules = getServiceRules(restaurant);
+  // Menyu + Səbət always render; the other two are service-model dependent.
+  const navButtonCount = 2 + (serviceRules.waiterCallEnabled ? 1 : 0) + (serviceRules.billRequestEnabled ? 1 : 0);
+
+  // Session expiry — set by the background-clear effect further down (see its
+  // comment block). While true, the whole menu is replaced by a "rescan the QR"
+  // screen. This is a RENDER GATE, not a store wipe, and deliberately so:
+  // emptying products/categories/banners in the store cannot work, because the
+  // promotions poller re-fetches them the instant the tab becomes visible
+  // again, subscribeProducts re-fetches on any menu edit, and both pollers
+  // restart on `visible`. Gating the render sidesteps that race entirely and
+  // leaves the store untouched.
+  const [sessionExpired, setSessionExpired] = useState(false);
+  // True once loadTableOrders has actually resolved at least once. The stale
+  // -stamp check on mount MUST wait for this — see its own comment.
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
 
   // Cart persistence: keyed by restaurant + table so a page refresh (or an
   // accidental tab close/reopen in the same session) doesn't wipe an
@@ -167,9 +199,19 @@ export function CustomerApp() {
   // route's table number/id into a real DB table UUID (loadTableOrders
   // needs that, not the route param). Re-runs if the resolved table changes
   // (e.g. `tables` refetches after being empty).
+  //
+  // `setOrdersLoaded(true)` fires only after the fetch RESOLVES, never before:
+  // until then `orders` is still the store's initial [], which would make
+  // `activeOrders` look empty for a customer who actually has a live order.
+  // The background-clear effect below keys its mount-path decision off this.
   useEffect(() => {
-    if (!resolvedTable?.id || !restaurant?.id) return;
-    loadTableOrders(resolvedTable.id);
+    if (!resolvedTable?.id || !restaurant?.id) return undefined;
+    if (!UUID_RE.test(String(resolvedTable.id))) return undefined;
+    let cancelled = false;
+    loadTableOrders(resolvedTable.id).finally(() => {
+      if (!cancelled) setOrdersLoaded(true);
+    });
+    return () => { cancelled = true; };
   }, [resolvedTable?.id, restaurant?.id, loadTableOrders]);
 
   useEffect(() => {
@@ -219,8 +261,12 @@ export function CustomerApp() {
   // keeps that boundary intact instead of opening anon SELECT on `orders`.
   // Paused while the tab is hidden (visibilitychange) so a customer who
   // background-tabs the menu isn't quietly polling every 10s forever.
+  // `sessionExpired` short-circuits this (and the two effects below) for the
+  // same reason the hidden-tab pause exists: nobody is looking at the menu any
+  // more, so polling Supabase every 10s for it is pure waste. Safe to stop —
+  // the session can only expire when there is no active order to track.
   useEffect(() => {
-    if (!resolvedTable?.id) return undefined;
+    if (!resolvedTable?.id || sessionExpired) return undefined;
 
     let iv = null;
     const tick = () => loadTableOrders(resolvedTable.id);
@@ -238,9 +284,10 @@ export function CustomerApp() {
       stop();
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [resolvedTable?.id, loadTableOrders]);
+  }, [resolvedTable?.id, loadTableOrders, sessionExpired]);
 
   useEffect(() => {
+    if (sessionExpired) return undefined;
     let prodSub;
     const start = async () => {
       try {
@@ -255,7 +302,7 @@ export function CustomerApp() {
     return () => {
       if (prodSub && typeof prodSub.unsubscribe === 'function') prodSub.unsubscribe();
     };
-  }, [loadMenuData, restaurant?.id]);
+  }, [loadMenuData, restaurant?.id, sessionExpired]);
 
   // Promotions are owned by the admin panel but displayed to anonymous menu
   // visitors. Realtime events update an already-open QR menu immediately;
@@ -263,6 +310,7 @@ export function CustomerApp() {
   // Realtime publication has not yet been configured. Discounts are included
   // because their changes affect the product prices rendered below.
   useEffect(() => {
+    if (sessionExpired) return undefined;
     let subscriptions = [];
     let disposed = false;
     let pollInterval = null;
@@ -319,7 +367,7 @@ export function CustomerApp() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       subscriptions.forEach((sub) => sub?.unsubscribe?.());
     };
-  }, [restaurant?.id, loadBanners, loadDiscounts]);
+  }, [restaurant?.id, loadBanners, loadDiscounts, sessionExpired]);
 
   // Restore a persisted cart once we know which restaurant+table it belongs
   // to (guards against restoring the wrong table's cart, and against
@@ -500,16 +548,44 @@ export function CustomerApp() {
       setSelectedCategory("all");
       setSearchQuery("");
       setVegOnly(false);
+      // Closes the menu itself, not just the cart/UI state above. Everything
+      // else here was already being cleared; without this the customer came
+      // back to a full menu that merely looked "reset", which is the gap this
+      // was reported for.
+      setSessionExpired(true);
     };
 
     // A stamp left over from a previous life of this tab (real close +
     // reopen, or a hard reload) — resolve it against wall-clock time as
     // soon as this effect can actually run, instead of trusting a timer
     // that never got the chance to.
-    const staleHiddenAt = Number(window.sessionStorage.getItem(hiddenAtKey));
-    window.sessionStorage.removeItem(hiddenAtKey);
-    if (staleHiddenAt && Date.now() - staleHiddenAt >= BACKGROUND_CLEAR_DELAY_MS) {
-      clearBackgroundedState();
+    //
+    // Two guards on this path that the `visible` transition below does NOT
+    // need, because both are about a FRESH MOUNT specifically:
+    //
+    // 1. `ordersLoaded` — on a fresh mount `orders` is still the store's
+    //    initial [], so hasActiveOrderRef would read false for a customer who
+    //    genuinely has a live order. That only cost a wiped cart before; now
+    //    it would lock them out of their own order behind the expiry screen.
+    //    The stamp sits in sessionStorage, so deferring the read is free.
+    //
+    // 2. `wasFreshNavigation` — rescanning the QR is the ONLY way out of the
+    //    expiry screen (it has no button, by product decision), so a scan must
+    //    never land straight back on it. sessionStorage is per-tab, so a scan
+    //    opening a NEW tab has no stamp anyway; this covers the scan that
+    //    reuses the same tab. 'reload'/'back_forward' (bfcache restore, an
+    //    OS-killed tab coming back) still honour the stamp — those are
+    //    resumptions, not a new visit.
+    const wasFreshNavigation =
+      typeof performance !== 'undefined' &&
+      performance.getEntriesByType('navigation')[0]?.type === 'navigate';
+
+    if (ordersLoaded) {
+      const staleHiddenAt = Number(window.sessionStorage.getItem(hiddenAtKey));
+      window.sessionStorage.removeItem(hiddenAtKey);
+      if (!wasFreshNavigation && staleHiddenAt && Date.now() - staleHiddenAt >= BACKGROUND_CLEAR_DELAY_MS) {
+        clearBackgroundedState();
+      }
     }
 
     const handleVisibilityChange = () => {
@@ -537,7 +613,7 @@ export function CustomerApp() {
         clearTimeout(backgroundClearTimeoutRef.current);
       }
     };
-  }, [hiddenAtKey]);
+  }, [hiddenAtKey, ordersLoaded]);
 
   const handleRequestBill = async (methodKey) => {
     if (billRequesting) return;
@@ -632,7 +708,13 @@ export function CustomerApp() {
     [ORDER_STATUS.PENDING]: { label: getLocalizedText("statusPending", lang), icon: <Clock className="w-3.5 h-3.5" />, tone: 'warning' },
     [ORDER_STATUS.ACCEPTED]: { label: getLocalizedText("statusPreparing", lang), icon: <Clock className="w-3.5 h-3.5" />, tone: 'accent' },
     [ORDER_STATUS.PREPARING]: { label: getLocalizedText("statusPreparing", lang), icon: <UtensilsCrossed className="w-3.5 h-3.5" />, tone: 'accent' },
-    [ORDER_STATUS.READY]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-3.5 h-3.5" />, tone: 'success' },
+    // READY is the one status the service model changes. With a waiter it is
+    // an internal kitchen step the customer has no action on, so it shares
+    // "Tamamlandı" with SERVED. In self-service it is THE moment that matters —
+    // the food is on the counter and nobody is bringing it over.
+    [ORDER_STATUS.READY]: serviceRules.selfPickup
+      ? { label: getLocalizedText("statusReadyForPickup", lang), icon: <ShoppingBag className="w-3.5 h-3.5" />, tone: 'success' }
+      : { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-3.5 h-3.5" />, tone: 'success' },
     [ORDER_STATUS.SERVED]: { label: getLocalizedText("statusCompleted", lang), icon: <CheckCircle2 className="w-3.5 h-3.5" />, tone: 'success' },
     [ORDER_STATUS.CANCELLED]: { label: getLocalizedText("statusCancelled", lang), icon: <XCircle className="w-3.5 h-3.5" />, tone: 'danger' },
   };
@@ -723,6 +805,22 @@ export function CustomerApp() {
           description={loadError}
           actionLabel="Təkrar cəhd et"
           onRetry={() => window.location.reload()}
+        />
+      </div>
+    );
+  }
+
+  // The whole menu is gone once the session has expired — products, banners,
+  // categories, cart, everything. No retry button on purpose: the customer is
+  // expected to rescan the table's QR code, which is a fresh navigation and so
+  // is never caught by the stale-stamp check above.
+  if (sessionExpired) {
+    return (
+      <div className="kit-light min-h-screen bg-[var(--k-bg)]" style={themeStyle}>
+        <EmptyState
+          icon={<QrCode className="w-5 h-5" />}
+          title={getLocalizedText("sessionExpiredTitle", lang)}
+          description={getLocalizedText("sessionExpiredDescription", lang)}
         />
       </div>
     );
@@ -1136,7 +1234,10 @@ export function CustomerApp() {
           frosted-glass bar; on a scrolling photo grid the blur was reading as
           smear rather than depth. */}
       <nav ref={setNavEl} className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--k-border)] bg-[var(--k-surface)] pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto grid max-w-md grid-cols-4">
+        {/* Column count follows how many buttons the service model actually
+            renders — a hardcoded grid-cols-4 left a self-service venue (Menyu +
+            Səbət only) with half the bar empty. */}
+        <div className={cn('mx-auto grid max-w-md', NAV_GRID_COLS[navButtonCount] || 'grid-cols-4')}>
           <BottomNavButton
             icon={<Home className="h-[21px] w-[21px]" strokeWidth={2.2} />}
             label={getLocalizedText("navMenu", lang)}
@@ -1155,19 +1256,28 @@ export function CustomerApp() {
             badge={cartTotalQty > 0 ? cartTotalQty : null}
             onClick={() => setIsCartOpen(true)}
           />
-          <BottomNavButton
-            icon={<Bell className="h-[21px] w-[21px]" strokeWidth={2.2} />}
-            label={waiterCooldownLeft > 0 ? `${waiterCooldownLeft}s` : getLocalizedText("navWaiter", lang)}
-            loading={waiterCalling}
-            disabled={waiterCooldownLeft > 0}
-            onClick={handleCallWaiter}
-          />
-          <BottomNavButton
-            icon={<CreditCard className="h-[21px] w-[21px]" strokeWidth={2.2} />}
-            label={getLocalizedText("navBill", lang)}
-            active={isBillModalOpen}
-            onClick={() => setIsBillModalOpen(true)}
-          />
+          {/* Both hidden in self-service (0045): there is no waiter to call, and
+              no bill to ask for afterwards because the payment method is already
+              declared at checkout — "Hesab" would only ever say "nothing to
+              pay". Staff still get their payment-confirmation alert; that rides
+              on the order itself, not on this button (CartDrawer.jsx). */}
+          {serviceRules.waiterCallEnabled && (
+            <BottomNavButton
+              icon={<Bell className="h-[21px] w-[21px]" strokeWidth={2.2} />}
+              label={waiterCooldownLeft > 0 ? `${waiterCooldownLeft}s` : getLocalizedText("navWaiter", lang)}
+              loading={waiterCalling}
+              disabled={waiterCooldownLeft > 0}
+              onClick={handleCallWaiter}
+            />
+          )}
+          {serviceRules.billRequestEnabled && (
+            <BottomNavButton
+              icon={<CreditCard className="h-[21px] w-[21px]" strokeWidth={2.2} />}
+              label={getLocalizedText("navBill", lang)}
+              active={isBillModalOpen}
+              onClick={() => setIsBillModalOpen(true)}
+            />
+          )}
         </div>
       </nav>
 

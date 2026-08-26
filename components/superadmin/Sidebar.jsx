@@ -97,7 +97,11 @@ export function Sidebar({
             from flying across the whole sidebar when the mode itself
             changes — without both, framer-motion treats every tab across
             both modes as one shared-layout group. */}
-        <nav key={mode} className="flex-1 space-y-0.5 mt-3">
+        {/* min-h-0 + overflow-y-auto: the rail now lives inside a fixed-height
+            shell, so a tab list taller than the viewport (Website mode) must
+            scroll HERE rather than pushing the collapse/logout footer below the
+            fold with no page scroll left to reach it. */}
+        <nav key={mode} className="flex-1 min-h-0 overflow-y-auto space-y-0.5 mt-3">
           {tabs.map((tab, i) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;

@@ -9,7 +9,7 @@ import { Menu, AlertTriangle } from 'lucide-react';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { useAppStore, ROLES } from '@/lib/store';
 import { fetchRestaurants, fetchRestaurantStats, fetchPlatformUsers } from '@/lib/services/superAdminService';
-import { fetchAllPlans, fetchPlanFeatures } from '@/lib/services/planService';
+import { fetchAllPlans, fetchPlanFeatures, fetchAllSubscriptions } from '@/lib/services/planService';
 import { fetchSiteContent, fetchFaqItems } from '@/lib/services/siteContentService';
 import { fetchAllAnnouncements } from '@/lib/services/announcementService';
 import { PageSkeleton, LanguageToggle, Card, Button } from '@/components/kit';
@@ -56,6 +56,12 @@ export function SuperAdminApp() {
   const [plans, setPlans] = useState([]);
   const [planFeatures, setPlanFeatures] = useState([]);
   const [plansLoading, setPlansLoading] = useState(true);
+  // Every restaurant's subscription row. computeMetrics needs exactly one field
+  // from it — `billing_interval` — because a yearly subscriber's annual revenue
+  // is the plan's discounted price_yearly (790), not price_monthly × 12 (948),
+  // and restaurants.subscription_status never tracked monthly-vs-yearly at all.
+  // Loaded by refresh() below, with the restaurants. Nothing else reads it.
+  const [subscriptions, setSubscriptions] = useState([]);
 
   // Website mode (Phase 4) — supabase/migrations/0032_site_content_cms.sql.
   // Own loading flags, deliberately NOT folded into `loading` above: the
@@ -118,11 +124,22 @@ export function SuperAdminApp() {
     return () => { active = false; listener?.subscription?.unsubscribe(); };
   }, [setIsAdminAuthenticated, loadProfile]);
 
+  // Subscriptions are refetched here, with the restaurants, not with the plans:
+  // every existing plan/status write goes through superAdminService and the
+  // 0021 sync trigger mirrors it into restaurant_subscriptions, and
+  // RestaurantsTab's billing-interval control writes that table directly — all
+  // of which reach this same `refresh` prop. Fetching them alongside the plans
+  // instead would leave MRR/ARR stale until a full reload.
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [list, statMap] = await Promise.all([fetchRestaurants(), fetchRestaurantStats()]);
+    const [list, statMap, subsData] = await Promise.all([
+      fetchRestaurants(),
+      fetchRestaurantStats(),
+      fetchAllSubscriptions(),
+    ]);
     setRestaurants(list);
     setStats(statMap);
+    setSubscriptions(subsData);
     setLoading(false);
   }, []);
 
@@ -226,8 +243,8 @@ export function SuperAdminApp() {
   // the per-plan revenue cards are priced from price_monthly, so editing a plan
   // in PlansTab moves the Dashboard/Subscriptions/Analytics numbers with it.
   const metrics = useMemo(
-    () => computeMetrics(restaurantsWithOwner, users, plans),
-    [restaurantsWithOwner, users, plans]
+    () => computeMetrics(restaurantsWithOwner, users, plans, subscriptions),
+    [restaurantsWithOwner, users, plans, subscriptions]
   );
 
   const goToRestaurant = (r) => {
@@ -267,7 +284,13 @@ export function SuperAdminApp() {
 
   return (
     <ToastProvider>
-      <div className="kit-dark min-h-screen bg-[var(--k-bg)] text-[var(--k-text)] font-sans lg:flex">
+      {/* App-shell scrolling from `lg` up — the breakpoint where Sidebar.jsx
+          switches from `fixed` (off-canvas drawer) to `lg:sticky` (persistent
+          rail). Same fix as AdminApp: without the bounded height the body was
+          the only scroll container, so scrolling the content moved the whole
+          page and the sidebar with it. Below `lg` the sidebar is `fixed` and
+          nothing changes. */}
+      <div className="kit-dark min-h-screen lg:min-h-0 lg:h-dvh lg:overflow-hidden bg-[var(--k-bg)] text-[var(--k-text)] font-sans lg:flex">
         <Sidebar
           activeTab={activeTab}
           onTabChange={(nextTab) => navigate(mode, nextTab)}
@@ -281,8 +304,8 @@ export function SuperAdminApp() {
           onCloseMobile={() => setMobileOpen(false)}
         />
 
-        <div className="flex-1 min-w-0">
-          <header className="sticky top-0 z-30 flex items-center gap-3 px-4 sm:px-8 py-4 bg-[var(--k-bg)]/90 backdrop-blur-xl border-b border-[var(--k-border)]">
+        <div className="flex-1 min-w-0 lg:flex lg:flex-col lg:overflow-hidden">
+          <header className="sticky top-0 z-30 lg:shrink-0 flex items-center gap-3 px-4 sm:px-8 py-4 bg-[var(--k-bg)]/90 backdrop-blur-xl border-b border-[var(--k-border)]">
             <button
               onClick={() => setMobileOpen(true)}
               className="lg:hidden p-2 -ml-2 rounded-[var(--k-r)] hover:bg-[var(--k-surface-2)] text-[var(--k-text-2)]"
@@ -305,7 +328,7 @@ export function SuperAdminApp() {
             </div>
           </header>
 
-          <main className="px-4 sm:px-8 py-6 max-w-[1400px]">
+          <main className="px-4 sm:px-8 py-6 max-w-[1400px] lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:w-full">
             {/* Only the RESTAURANTS-mode tabs depend on `loading` (the
                 restaurants fetch) — website-mode tabs have their own
                 siteContentLoading/faqLoading flags (passed as props below,

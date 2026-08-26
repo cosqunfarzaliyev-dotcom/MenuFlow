@@ -76,11 +76,17 @@ export function SubscriptionsTab({ metrics }) {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-        className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-5 grid grid-cols-2 sm:grid-cols-3 gap-4"
+        className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-5 grid grid-cols-2 sm:grid-cols-4 gap-4"
       >
         <div>
           <p className="text-[13px] text-[var(--k-text-3)] mb-1">{t('payingRestaurantsLabel')}</p>
           <p className="text-lg font-semibold text-[var(--k-text)]">{totalPaying}</p>
+        </div>
+        {/* Why MRR can sit below the plan's list price: a yearly subscriber is
+            counted at price_yearly/12, and the yearly price is discounted. */}
+        <div>
+          <p className="text-[13px] text-[var(--k-text-3)] mb-1">{t('yearlyBillingLabel')}</p>
+          <p className="text-lg font-semibold text-[var(--k-text)]">{metrics.yearlyCount}</p>
         </div>
         <div>
           <p className="text-[13px] text-[var(--k-text-3)] mb-1">{t('mrrLabel')}</p>
