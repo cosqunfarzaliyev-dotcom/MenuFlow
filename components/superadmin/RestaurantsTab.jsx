@@ -334,9 +334,14 @@ export function RestaurantsTab({ restaurants, stats, origin, refresh, openRestau
                 return;
               }
 
+              // NOTE: this object is a SECOND field whitelist, on top of
+              // updateRestaurant()'s own. A field missing here is dropped
+              // silently — the modal saves, the toast says success, and the
+              // value never reaches the database. Anything added to the form
+              // above has to be listed here too.
               const { error: err2 } = await updateRestaurant({
                 id: editingRestaurant.id, name: form.name, tagline: form.tagline, currencySymbol: form.currencySymbol,
-                tableCount: form.tableCount,
+                tableCount: form.tableCount, serviceModel: form.serviceModel,
               });
               if (error || err2) {
                 notify(t('saveFailedToast')((error || err2).message), 'error');

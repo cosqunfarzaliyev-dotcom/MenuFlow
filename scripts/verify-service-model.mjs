@@ -118,7 +118,29 @@ const rulesOf = (service_model) => getServiceRules({ service_model });
     /new\.service_model := old\.service_model;/.test(migration), true);
 }
 
-// --- 6. Nothing still reads the replaced column ------------------------------
+// --- 6. The SuperAdmin save path actually forwards the value -----------------
+// RestaurantsTab's edit-mode onSave builds its own explicit object for
+// updateRestaurant() — a SECOND whitelist on top of updateRestaurant()'s. A
+// field missing from it is dropped in silence: the modal closes, the success
+// toast fires, and nothing changes. That is exactly what happened when
+// service_model was first wired up, and it is invisible to lint, to the build
+// and to every other check in this file.
+{
+  const tab = readFileSync(path.join(ROOT, 'components', 'superadmin', 'RestaurantsTab.jsx'), 'utf8');
+  const service = readFileSync(path.join(ROOT, 'lib', 'services', 'superAdminService.js'), 'utf8');
+
+  check('RestaurantModal keeps serviceModel in its form state',
+    /serviceModel:\s*SERVICE_MODEL_ORDER\.includes/.test(tab), true);
+  check('the edit-mode save forwards serviceModel to updateRestaurant',
+    /updateRestaurant\(\{[\s\S]*?serviceModel:\s*form\.serviceModel[\s\S]*?\}\)/.test(tab), true);
+  check('updateRestaurant maps serviceModel onto the service_model column',
+    /if \(serviceModel !== undefined\) payload\.service_model = serviceModel;/.test(service), true);
+  check('createRestaurant accepts and writes serviceModel',
+    /createRestaurant = async \(\{[^}]*serviceModel[^}]*\}\)/.test(service)
+      && /service_model: serviceModel \|\| DEFAULT_SERVICE_MODEL/.test(service), true);
+}
+
+// --- 7. Nothing still reads the replaced column ------------------------------
 {
   const files = [
     ['components', 'CartDrawer.jsx'],
