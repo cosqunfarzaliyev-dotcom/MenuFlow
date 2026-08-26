@@ -238,15 +238,17 @@ export const CartDrawer = ({
       theme={null}
       panelClassName="kit-light max-w-md flex flex-col"
       /* Stops the scrim (and, since the panel stretches to fill it, the
-         panel itself) 6rem short of the viewport bottom — the same 6rem
-         CustomerApp's root div reserves for its fixed bottom nav (pb-24) —
-         so that nav stays visible and clickable while the cart is open
-         instead of getting painted over by the scrim's z-[60] (nav is
-         z-50). All four sides must be spelled out: tailwind-merge treats
-         `inset` as conflicting with `top`/`right`/`bottom`/`left`, so a
-         bare `bottom-24` would strip `inset-0` entirely and leave the
-         other three sides unset. */
-      scrimClassName="top-0 right-0 left-0 bottom-24"
+         panel itself) short of the viewport bottom by exactly the fixed
+         bottom nav's real measured height — CustomerApp.jsx sets
+         --customer-nav-h from the nav's own getBoundingClientRect(), so
+         this lands flush against the nav's top edge with no gap and no
+         overlap, instead of a guessed flat number. That keeps the nav
+         visible and clickable while the cart is open instead of getting
+         painted over by the scrim's z-[60] (nav is z-50). All four sides
+         must be spelled out: tailwind-merge treats `inset` as conflicting
+         with `top`/`right`/`bottom`/`left`, so a bare `bottom-[...]` would
+         strip `inset-0` entirely and leave the other three sides unset. */
+      scrimClassName="top-0 right-0 left-0 bottom-[var(--customer-nav-h,4.5rem)]"
     >
       <SheetHeader onClose={onClose}>
         <div className="flex min-w-0 items-center gap-2.5">

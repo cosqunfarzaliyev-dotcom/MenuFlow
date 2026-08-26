@@ -95,10 +95,12 @@ export const ProductDetailModal = ({
          and every accent in here would resolve to nothing. */
       theme={null}
       panelClassName="kit-light sm:rounded-[var(--k-r-lg)] sm:border sm:max-w-2xl sm:mx-auto sm:my-auto"
-      /* top/right/left/bottom-24 (not inset-0) keeps CustomerApp's fixed
+      /* top/right/left/bottom (not inset-0) keeps CustomerApp's fixed
          bottom nav visible above the scrim — see CartDrawer.jsx's Sheet for
-         the full rationale (same 6rem the page's own pb-24 reserves). */
-      scrimClassName="top-0 right-0 left-0 bottom-24 sm:items-center sm:justify-center sm:p-4"
+         the full rationale. bottom uses the same measured --customer-nav-h
+         the page's root div reserves for that nav, landing flush against
+         its top edge with no gap. */
+      scrimClassName="top-0 right-0 left-0 bottom-[var(--customer-nav-h,4.5rem)] sm:items-center sm:justify-center sm:p-4"
     >
       {/* Hero. Contained on a soft tint rather than edge-to-edge cover, so the
           whole dish stays visible the way the reference's cut-out product shot

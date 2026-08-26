@@ -637,6 +637,45 @@ export function CustomerApp() {
     [ORDER_STATUS.CANCELLED]: { label: getLocalizedText("statusCancelled", lang), icon: <XCircle className="w-3.5 h-3.5" />, tone: 'danger' },
   };
 
+  // Real, measured height of the fixed bottom nav (Menyu/Səbət/Garson/Hesab)
+  // — read off the actual rendered element (border+padding included, so
+  // env(safe-area-inset-bottom) is baked in) rather than guessed as a flat
+  // Tailwind number. A guessed value (the previous `pb-24`/`bottom-24`, 6rem)
+  // was bigger than the real nav (~4.1-4.4rem depending on safe-area),
+  // leaving a visible empty strip between the Cart/Bill sheet's bottom edge
+  // and the nav's top edge.
+  //
+  // A plain useRef would never trigger the effect below: it would run once
+  // on mount with `[]` deps, and on that very first mount the component is
+  // almost always still in the `loading` branch (data fetch hasn't resolved
+  // yet) — the real <nav> doesn't exist yet, so `.current` would stay null
+  // forever with no re-render to retry it once <nav> actually mounts. A
+  // callback ref backed by state fixes this: React calls it with the real
+  // node the moment <nav> mounts, that setState triggers a re-render, and
+  // the effect (depending on `navEl`) re-runs.
+  //
+  // The only setState here happens inside the ResizeObserver's own
+  // callback — the "subscribe to an external system, setState when it
+  // reports a change" shape react-hooks/set-state-in-effect expects, not a
+  // synchronous call in the effect body itself. ResizeObserver's spec
+  // guarantees an initial callback for the element's current size as soon
+  // as `observe()` is called, so this also supplies the very first
+  // measurement, not just later updates (orientation flip, a font load
+  // reflowing the label) — no separate synchronous read needed.
+  const [navEl, setNavEl] = useState(null);
+  const [navHeight, setNavHeight] = useState(null);
+  useEffect(() => {
+    if (!navEl || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setNavHeight(navEl.getBoundingClientRect().height));
+    ro.observe(navEl);
+    return () => ro.disconnect();
+  }, [navEl]);
+  // `undefined` while unmeasured (first paint, or no ResizeObserver) so the
+  // `var(--customer-nav-h, 4.5rem)` fallback in scrimClassName/pb takes
+  // over — close to the real height, never left permanently wrong the way
+  // the old flat 6rem was.
+  const navHeightStyle = navHeight != null ? { '--customer-nav-h': `${navHeight}px` } : undefined;
+
   // The restaurant's own palette, handed to .kit-light as CSS custom
   // properties (components/kit/tokens.css derives every other token from
   // these four via color-mix). Four inline variables instead of a stylesheet
@@ -690,7 +729,7 @@ export function CustomerApp() {
   }
 
   return (
-    <div className="kit-light min-h-screen bg-[var(--k-bg)] pb-24" style={themeStyle}>
+    <div className="kit-light min-h-screen bg-[var(--k-bg)] pb-[var(--customer-nav-h,4.5rem)]" style={{ ...themeStyle, ...navHeightStyle }}>
 
       {/* Header. Reduced to what a seated customer actually needs: who you're
           ordering from, which table you're at, and the language. The old
@@ -1096,7 +1135,7 @@ export function CustomerApp() {
       {/* Bottom Navigation. Solid surface + hairline top border instead of the
           frosted-glass bar; on a scrolling photo grid the blur was reading as
           smear rather than depth. */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--k-border)] bg-[var(--k-surface)] pb-[env(safe-area-inset-bottom)]">
+      <nav ref={setNavEl} className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--k-border)] bg-[var(--k-surface)] pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto grid max-w-md grid-cols-4">
           <BottomNavButton
             icon={<Home className="h-[21px] w-[21px]" strokeWidth={2.2} />}
@@ -1158,10 +1197,12 @@ export function CustomerApp() {
         ariaLabel={getLocalizedText("paymentType", lang)}
         theme={null}
         panelClassName="kit-light sm:rounded-[var(--k-r-lg)] sm:border sm:max-w-sm sm:mx-auto sm:my-auto"
-        /* top/right/left/bottom-24 (not inset-0) keeps the fixed bottom nav
+        /* top/right/left/bottom (not inset-0) keeps the fixed bottom nav
            visible above the scrim — see CartDrawer.jsx's Sheet for the full
-           rationale (same 6rem the page's own pb-24 reserves for that nav). */
-        scrimClassName="top-0 right-0 left-0 bottom-24 sm:items-center sm:justify-center sm:p-4"
+           rationale. bottom uses the same measured --customer-nav-h the
+           page's own root div reserves for that nav, so the sheet's edge
+           lands exactly at the nav's top with no gap. */
+        scrimClassName="top-0 right-0 left-0 bottom-[var(--customer-nav-h,4.5rem)] sm:items-center sm:justify-center sm:p-4"
       >
         <div className="p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-center">
           <h2 className="text-[15px] font-semibold text-[var(--k-text)]">
