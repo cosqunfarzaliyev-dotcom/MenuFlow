@@ -777,6 +777,7 @@ export function AdminApp() {
             <TablesManagement
               tables={tables}
               orders={orders}
+              currencySymbol={settings.currencySymbol}
               editingTableId={editingTableId}
               editingTableName={editingTableName}
               setEditingTableId={setEditingTableId}
@@ -2348,9 +2349,10 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
 }
 
 // Masalar — table management: rename tables, see live status.
-function TablesManagement({ tables, orders, editingTableId, editingTableName, setEditingTableId, setEditingTableName, updateTableName }) {
+function TablesManagement({ tables, orders, currencySymbol, editingTableId, editingTableName, setEditingTableId, setEditingTableName, updateTableName }) {
   const { t, language } = useAdminTranslation();
   const { t: tc } = useCommonTranslation();
+  const symbol = currencySymbol || '₼';
   // `orders[].table` is the human-readable table NUMBER (normalizeOrder in
   // supabaseService.js reads restaurant_tables.table_number), not this
   // table's id — comparing it against `tableId` (a uuid) here never matched
@@ -2365,12 +2367,17 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
   // "Hazırlanır" forever. Dropping it from this screen (the way
   // countActiveTables() drops it from the KPI) would hide the one order
   // that actually needs someone's attention — the opposite of what an
-  // inflated KPI number needed.
+  // inflated KPI number needed. `count` is every active order on the table,
+  // not just the one whose status is shown — `orders` arrives created_at
+  // ascending (fetchOrders), so [0] is the same oldest order .find() used
+  // to pick; a second/third simultaneous order no longer disappears from
+  // the row, it shows as a `×N` suffix next to the one status that's shown.
   const tableStatus = (tableId) => {
-    const active = orders.find(o => o.tableId === tableId && o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED);
-    if (!active) return { status: null, isOverdue: false, since: null };
+    const activeOrders = orders.filter(o => o.tableId === tableId && o.status !== ORDER_STATUS.SERVED && o.status !== ORDER_STATUS.CANCELLED);
+    if (activeOrders.length === 0) return { status: null, isOverdue: false, since: null, count: 0 };
+    const active = activeOrders[0];
     const startOfToday = startOfBusinessDay();
-    return { status: active.status, isOverdue: new Date(active.time) < startOfToday, since: active.time };
+    return { status: active.status, isOverdue: new Date(active.time) < startOfToday, since: active.time, count: activeOrders.length };
   };
   // A served-but-unpaid table used to read as "Boş" here — tableStatus()
   // above only tracks kitchen-pipeline status, so once the last order hit
@@ -2381,21 +2388,31 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
   // money" stay independently readable instead of one silently masking the
   // other.
   //
+  // No unpaid balance -> nothing to report here, regardless of how many PAST
+  // orders this table ever had. This used to return 'paid' the moment every
+  // historical order happened to be settled, even for a table with zero
+  // current activity — so a genuinely empty table (Status column already
+  // showing "Boş") could still carry a permanent "Ödənilib" residue with no
+  // operational meaning (observed live: masalar 1/2/4 on a fully idle
+  // restaurant). Symmetric with tableStatus() above: nothing active/owed ->
+  // nothing shown, rather than a stale label nobody asked for.
+  //
   // Same "flag it, never hide it" treatment as tableStatus() above, for the
   // same reason: an unpaid bill left over from a previous day is still a real
   // debt, so it must NOT be bounded away at midnight the way the "Aktiv
   // Masalar" KPI is. But an hour-old bill and a three-day-old one both
   // rendering as a plain "Ödənilməyib" tag made the stale one invisible in a
   // long table, so the older one now carries the overdue marker too. `since`
-  // is the OLDEST unpaid order, since that is the one that has been waiting.
+  // is the OLDEST unpaid order, since that is the one that has been waiting;
+  // `total` sums every unpaid order so the amount owed is readable without a
+  // trip to the Ödənişlər tab.
   const tablePaymentStatus = (tableId) => {
-    const relevant = orders.filter(o => o.tableId === tableId && o.status !== ORDER_STATUS.CANCELLED);
-    if (relevant.length === 0) return { paymentStatus: null, isOverdue: false, since: null };
-    const unpaid = relevant.filter(o => o.paymentStatus === 'unpaid');
-    if (unpaid.length === 0) return { paymentStatus: 'paid', isOverdue: false, since: null };
+    const unpaid = orders.filter(o => o.tableId === tableId && o.status !== ORDER_STATUS.CANCELLED && o.paymentStatus === 'unpaid');
+    if (unpaid.length === 0) return { paymentStatus: null, isOverdue: false, since: null, total: 0 };
     const startOfToday = startOfBusinessDay();
     const oldest = unpaid.reduce((a, b) => (new Date(a.time) <= new Date(b.time) ? a : b));
-    return { paymentStatus: 'unpaid', isOverdue: new Date(oldest.time) < startOfToday, since: oldest.time };
+    const total = unpaid.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    return { paymentStatus: 'unpaid', isOverdue: new Date(oldest.time) < startOfToday, since: oldest.time, total };
   };
 
   return (
@@ -2416,8 +2433,8 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
             </TableHead>
             <TableBody>
               {tables.map(table => {
-                const { status, isOverdue, since } = tableStatus(table.id);
-                const { paymentStatus, isOverdue: isPaymentOverdue, since: unpaidSince } = tablePaymentStatus(table.id);
+                const { status, isOverdue, since, count } = tableStatus(table.id);
+                const { paymentStatus, isOverdue: isPaymentOverdue, since: unpaidSince, total } = tablePaymentStatus(table.id);
                 const isEditing = editingTableId === table.id;
                 return (
                   <TableRow key={table.id}>
@@ -2451,7 +2468,7 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
                     <TableCell>
                       <div className="flex items-center gap-2 flex-wrap">
                         <Tag tone={status ? statusBadgeTone(status) : 'neutral'}>
-                          {status ? orderStatusLabels(t)[status] : t('statusEmpty')}
+                          {status ? orderStatusLabels(t)[status] : t('statusEmpty')}{count > 1 ? ` ×${count}` : ''}
                         </Tag>
                         {isOverdue && (
                           <Tag
@@ -2465,10 +2482,10 @@ function TablesManagement({ tables, orders, editingTableId, editingTableName, se
                       </div>
                     </TableCell>
                     <TableCell>
-                      {paymentStatus ? (
+                      {paymentStatus === 'unpaid' ? (
                         <div className="flex items-center gap-2 flex-wrap">
-                          <Tag tone={paymentStatus === 'paid' ? 'success' : 'warning'}>
-                            {paymentStatus === 'paid' ? t('paidStatus') : t('unpaidStatus')}
+                          <Tag tone="warning">
+                            {t('unpaidStatus')} · {total.toFixed(2)} {symbol}
                           </Tag>
                           {isPaymentOverdue && (
                             <Tag
