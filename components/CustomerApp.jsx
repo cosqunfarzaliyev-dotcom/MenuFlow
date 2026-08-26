@@ -374,8 +374,22 @@ export function CustomerApp() {
   // Drives the "Hesab" modal: only orders still owed, regardless of kitchen
   // status — a served order that hasn't been paid is exactly the "bitirdi,
   // indi ödəyir" case this feature exists for.
+  //
+  // `!o.paymentMethod` is what makes "Hesab" go quiet once the customer has
+  // already chosen how they're paying in the cart. That choice IS this
+  // modal's whole job (it does nothing but record a method and alert staff),
+  // so leaving the balance here afterwards asked the same question twice and
+  // let one order raise two bill alerts. An order sent with "Sonra
+  // ödəyəcəyəm" carries no payment_method (see CartDrawer.handleSendOrder),
+  // so it still shows up here and "Hesab" keeps working exactly as before.
+  //
+  // Customer-side visibility ONLY — payment_status stays 'unpaid' in the DB
+  // until staff actually settle the table, so StaffApp's per-table balance
+  // (which filters on paymentStatus, not paymentMethod), the admin
+  // "Ödənilməyib" KPI and the Z/X report all still show the money as owed.
+  // Nothing here marks anything paid.
   const unpaidOrders = orders.filter(
-    (o) => o.status !== ORDER_STATUS.CANCELLED && o.paymentStatus === 'unpaid',
+    (o) => o.status !== ORDER_STATUS.CANCELLED && o.paymentStatus === 'unpaid' && !o.paymentMethod,
   );
   const unpaidTotal = unpaidOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 

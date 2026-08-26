@@ -54,7 +54,13 @@ export const CartDrawer = ({
   const tables = useAppStore(state => state.tables);
   const restaurant = useAppStore(state => state.restaurant);
   const currencySymbol = useAppStore(state => state.settings?.currencySymbol) || '₼';
-  const [orderSubmitted, setOrderSubmitted] = useState(false);
+  // A SNAPSHOT of what was just sent, not a boolean. `items`/`totalPrice`
+  // come from the parent's cart state, and handleSendOrder clears that cart
+  // (onClearCart) before flipping to the success screen — so by the time the
+  // screen rendered, it was reading an already-empty array and always showed
+  // "0 ədəd / 0.00 ₼". Capturing the values before the clear is what makes
+  // the confirmation actually show the order that was placed.
+  const [submittedOrder, setSubmittedOrder] = useState(null);
   const [kitchenNote, setKitchenNote] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [paymentMethod, setPaymentMethod] = useState('later');
@@ -102,7 +108,7 @@ export const CartDrawer = ({
   const totalPrice = items.reduce((sum, item) => sum + calculateItemPrice(item), 0);
 
   const handleResetOrder = () => {
-    setOrderSubmitted(false);
+    setSubmittedOrder(null);
     setKitchenNote("");
     setPaymentMethod('later');
     if (typeof onClearCart === 'function') onClearCart();
@@ -182,8 +188,15 @@ export const CartDrawer = ({
         return;
       }
 
+      // Snapshot BEFORE onClearCart() — see the submittedOrder useState note.
+      setSubmittedOrder({
+        tableName: currentTable.name,
+        itemCount: items.length,
+        total: totalPrice,
+        paymentLabel: isPayingLater ? null : (paymentLabels[paymentMethod] || paymentMethod),
+      });
+
       if (typeof onClearCart === 'function') onClearCart();
-      setOrderSubmitted(true);
     } catch (err) {
       console.error(err);
       setSubmitError(err?.message || getLocalizedText('orderSubmitFailed', lang));
@@ -213,7 +226,7 @@ export const CartDrawer = ({
         </div>
       </SheetHeader>
 
-      {orderSubmitted ? (
+      {submittedOrder ? (
         /* Success screen */
         <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
           <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--k-success-soft)] text-[var(--k-success)]">
@@ -223,25 +236,34 @@ export const CartDrawer = ({
             {getLocalizedText("orderSent", lang)}
           </h3>
           <p className="mt-2 max-w-xs text-[13px] leading-relaxed text-[var(--k-text-3)]">
-            <strong className="font-medium text-[var(--k-accent)]">{currentTable.name}</strong>{' '}
+            <strong className="font-medium text-[var(--k-accent)]">{submittedOrder.tableName}</strong>{' '}
             {getLocalizedText("orderSuccessDesc", lang)}
           </p>
 
           <dl className="mt-6 w-full space-y-2.5 rounded-[var(--k-r)] border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-left text-[13px]">
             <div className="flex justify-between gap-3">
               <dt className="text-[var(--k-text-3)]">{getLocalizedText("table", lang)}</dt>
-              <dd className="font-medium text-[var(--k-text)]">{currentTable.name}</dd>
+              <dd className="font-medium text-[var(--k-text)]">{submittedOrder.tableName}</dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-[var(--k-text-3)]">{getLocalizedText("itemCount", lang)}</dt>
               <dd className="k-nums font-medium text-[var(--k-text)]">
-                {items.length} {getLocalizedText("piece", lang)}
+                {submittedOrder.itemCount} {getLocalizedText("piece", lang)}
               </dd>
             </div>
+            {/* Only when a method was actually chosen — a "Sonra ödəyəcəyəm"
+                order has none, and showing a blank row (or the word "later"
+                as if it were a method) would just be noise. */}
+            {submittedOrder.paymentLabel && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-[var(--k-text-3)]">{getLocalizedText("paymentType", lang)}</dt>
+                <dd className="font-medium text-[var(--k-text)]">{submittedOrder.paymentLabel}</dd>
+              </div>
+            )}
             <div className="flex justify-between gap-3 border-t border-[var(--k-border)] pt-2.5">
               <dt className="text-[var(--k-text-3)]">{getLocalizedText("totalAmount", lang)}</dt>
               <dd className="k-nums font-semibold text-[var(--k-accent)]">
-                {totalPrice.toFixed(2)} {currencySymbol}
+                {submittedOrder.total.toFixed(2)} {currencySymbol}
               </dd>
             </div>
           </dl>
@@ -366,7 +388,7 @@ export const CartDrawer = ({
       )}
 
       {/* Footer */}
-      {!orderSubmitted && items.length > 0 && (
+      {!submittedOrder && items.length > 0 && (
         <div className="shrink-0 space-y-4 border-t border-[var(--k-border)] bg-[var(--k-surface)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <dl className="space-y-1.5 text-[13px]">
             <div className="flex justify-between gap-3">
