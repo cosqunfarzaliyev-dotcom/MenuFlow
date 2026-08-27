@@ -30,17 +30,23 @@ export function TableHero({ lang, tableLabel, ticketLines }) {
   const ticketY = useTransform(scrollYProgress, [0, 1], [0, reduceMotion ? 0 : -20]);
 
   return (
-    // overflow-hidden: the QR table-stand and order-ticket cards below are
-    // deliberately positioned to bleed slightly past this container's own
-    // edge (negative left/right + a rotation, for the "laid on a table"
-    // effect) — on mobile, where this component has no surrounding page
-    // padding of its own, that bleed reaches the true viewport edge and
-    // reads as a gap on the right (see globals.css's `html { overflow-x:
-    // hidden }` comment for the mobile-Safari-specific half of this fix).
-    // Safe against the vertical parallax below: the full upward
-    // `qrY`/`ticketY` translation only completes once this section is
-    // scrolling out of view at the TOP anyway, so there's nothing left to
-    // visibly clip by the time it would matter.
+    // The QR table-stand and order-ticket cards used to sit at negative
+    // left/right offsets, bleeding past this container so they would read as
+    // "laid on a table" rather than boxed in. With overflow-hidden here that
+    // bleed was a real clip — measured at 14px off the QR card and 17px off
+    // the ticket — and once PhoneShowcase narrowed to 260px it stopped
+    // reading as intentional and just looked broken.
+    //
+    // Both sit inside the container now. The composition never needed the
+    // bleed: a 260px phone centred in 420px leaves ~80px of free space per
+    // side, and the cards still overlap the phone's corners at their
+    // rotations, which is what actually sells the flat-lay.
+    //
+    // overflow-hidden stays: on mobile this component has no page padding of
+    // its own, so anything that did escape would reach the true viewport edge
+    // and read as a gap on the right (see globals.css's `html { overflow-x:
+    // hidden }` comment for the mobile-Safari half of that fix). It is a
+    // guard now rather than a cropping tool.
     <div ref={ref} className="relative mx-auto max-w-[420px] overflow-hidden pt-6 pb-16 sm:pb-24">
       {/* The "table" itself — a soft radial pool of shadow under the
           composition, standing in for the surface everything sits on. */}
@@ -59,7 +65,7 @@ export function TableHero({ lang, tableLabel, ticketLines }) {
           table-tent QR stand rather than a generic app icon. */}
       <motion.div
         style={{ y: qrY }}
-        className="absolute -left-2 bottom-16 w-[130px] rotate-[9deg] sm:-left-6 sm:bottom-20"
+        className="absolute bottom-16 left-2 w-[130px] rotate-[9deg] sm:bottom-20 sm:left-3"
       >
         <div className="rounded-lg bg-[var(--mkt-linen)] p-3 pb-4 shadow-[0_18px_30px_-12px_rgba(42,33,21,0.18)]">
           <div className="flex h-8 items-center justify-center rounded-sm bg-[var(--mkt-text)]">
@@ -77,7 +83,7 @@ export function TableHero({ lang, tableLabel, ticketLines }) {
           checkmark, standing in for a kitchen order slip. */}
       <motion.div
         style={{ y: ticketY }}
-        className="absolute -right-3 top-10 w-[128px] -rotate-[7deg] sm:-right-8 sm:top-16"
+        className="absolute right-2 top-10 w-[128px] -rotate-[7deg] sm:right-3 sm:top-16"
       >
         <div className="rounded-sm bg-[var(--mkt-linen)] px-3 py-3 shadow-[0_14px_26px_-10px_rgba(42,33,21,0.16)]">
           <div className="flex items-center gap-1.5 border-b border-dashed border-[var(--mkt-text)]/25 pb-1.5">
