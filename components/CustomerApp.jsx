@@ -141,6 +141,47 @@ export function CustomerApp() {
   const cartStorageKey = restaurant?.slug && tableId ? `mf-cart:${restaurant.slug}:${tableId}` : null;
   const cartRestoredKeyRef = useRef(null);
 
+  // The expiry LATCH. Separate from the `mf-hidden-at:` stamp below, and the
+  // difference is the whole point: that stamp records "the tab went away at
+  // T" and is consumed the moment it is read, so once the session expired
+  // nothing was left behind and a plain refresh started a brand new session.
+  // This key records "this session is over" and is cleared by exactly one
+  // thing — a fresh navigation, i.e. scanning the QR again.
+  //
+  // Keyed off the ROUTE params rather than restaurant.slug (which the cart key
+  // uses) so it is readable on the very first render, before the restaurant
+  // fetch resolves. The lock has to be in place before the menu can paint,
+  // otherwise a reload flashes the full menu for a moment first.
+  const expiredKey = params?.restaurant && tableId ? `mf-expired:${params.restaurant}:${tableId}` : null;
+
+  // Re-applies the latch on every load of this page, and is the ONLY thing
+  // that clears it. Runs before the restaurant/menu fetches resolve, so an
+  // expired session never shows the menu even for a frame.
+  //
+  //   'navigate'      a fresh visit — the QR scan (or the URL typed/opened
+  //                   anew). This is the customer's way back in, so the latch
+  //                   is released here and only here.
+  //   'reload'        F5 / pull-to-refresh. Stays locked. This is the exact
+  //                   hole this effect closes: before it, refreshing after an
+  //                   expiry handed the customer a working menu again.
+  //   'back_forward'  bfcache restore / history nav. Stays locked.
+  //
+  // sessionStorage is per-tab, so a QR scan that opens a NEW tab starts clean
+  // regardless; this covers the scan that reuses the current one.
+  useEffect(() => {
+    if (!expiredKey) return;
+    const applyPersistedExpiry = () => setSessionExpired(true);
+    const isFreshVisit =
+      typeof performance === 'undefined' ||
+      performance.getEntriesByType('navigation')[0]?.type === 'navigate';
+
+    if (isFreshVisit) {
+      window.sessionStorage.removeItem(expiredKey);
+      return;
+    }
+    if (window.sessionStorage.getItem(expiredKey)) applyPersistedExpiry();
+  }, [expiredKey]);
+
   useEffect(() => {
     const loadAppData = async () => {
       setLoading(true);
@@ -553,6 +594,12 @@ export function CustomerApp() {
       // back to a full menu that merely looked "reset", which is the gap this
       // was reported for.
       setSessionExpired(true);
+      // ...and LATCH it, so the decision outlives this page. Without the
+      // write the expiry lived only in React state: reloading dropped it and
+      // the customer was handed a working menu again without ever rescanning
+      // the QR. Cleared only by a fresh navigation — see the effect near the
+      // top of this component.
+      if (expiredKey) window.sessionStorage.setItem(expiredKey, String(Date.now()));
     };
 
     // A stamp left over from a previous life of this tab (real close +
@@ -571,11 +618,13 @@ export function CustomerApp() {
     //
     // 2. `wasFreshNavigation` — rescanning the QR is the ONLY way out of the
     //    expiry screen (it has no button, by product decision), so a scan must
-    //    never land straight back on it. sessionStorage is per-tab, so a scan
-    //    opening a NEW tab has no stamp anyway; this covers the scan that
-    //    reuses the same tab. 'reload'/'back_forward' (bfcache restore, an
-    //    OS-killed tab coming back) still honour the stamp — those are
-    //    resumptions, not a new visit.
+    //    never land straight back on it. The latch effect at the top of this
+    //    component releases `expiredKey` on a fresh visit; this does the same
+    //    for the hidden-at stamp, which it cannot reach (different key, only
+    //    computable once the restaurant has loaded). Both guards are needed —
+    //    a leftover stamp would re-expire the very session the scan started.
+    //    'reload'/'back_forward' (bfcache restore, an OS-killed tab coming
+    //    back) still honour the stamp — those are resumptions, not a new visit.
     const wasFreshNavigation =
       typeof performance !== 'undefined' &&
       performance.getEntriesByType('navigation')[0]?.type === 'navigate';
@@ -613,7 +662,7 @@ export function CustomerApp() {
         clearTimeout(backgroundClearTimeoutRef.current);
       }
     };
-  }, [hiddenAtKey, ordersLoaded]);
+  }, [hiddenAtKey, ordersLoaded, expiredKey]);
 
   const handleRequestBill = async (methodKey) => {
     if (billRequesting) return;
