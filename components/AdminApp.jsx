@@ -19,10 +19,16 @@ import {
   Sidebar, SidebarMenuButton, ConfirmDialog, useConfirmDialog, Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell, TableEmptyRow,
   Card, CardHeader, CardBody, PageHeader, Button, Input, Select, Textarea, Checkbox, Field, Tag, LanguageToggle, Divider,
   ImageUploadField,
+  ChartCard, ChartTooltip, RankedBarList, StatTile, chartAxisProps, chartGridProps, chartCursor, chartLineCursor,
+  foldToTop, useChartAnim,
 } from '@/components/kit';
 import { buttonVariants } from '@/components/kit/variants';
 import { QRCodeSVG } from 'qrcode.react';
-import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+// Donuts and the plain line chart are gone (see components/kit/charts.jsx):
+// a ring cannot be read for the close values these cards plot, and both had a
+// legend under them restating the same numbers, so RankedBarList replaced the
+// pair. `Legend` was imported here and never used at all.
+import { AreaChart, Area, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { SettingsTab } from '@/components/SettingsTab';
 import { SalesReportView } from '@/components/admin/SalesReportView';
 import { IntegrationsTab } from '@/components/IntegrationsTab';
@@ -1945,12 +1951,12 @@ function AnalyticsDashboard({ orders, tables, currencySymbol }) {
     }));
   }, [orders, tables, t]);
 
-  // Categorical palette drawn entirely from --k-* tokens (accent + the 4
-  // semantic tones + muted text) rather than hardcoded hex — recharts takes
-  // these as plain SVG attribute strings, and CSS custom properties resolve
-  // fine there as long as the chart is a descendant of .kit-dark (it is).
-  const COLORS = ['var(--k-accent)', 'var(--k-success)', 'var(--k-info)', 'var(--k-warning)', 'var(--k-danger)'];
-  const tooltipStyle = { backgroundColor: 'var(--k-surface-2)', border: '1px solid var(--k-border)', borderRadius: '10px', color: 'var(--k-text)' };
+  // Palette, axes, tooltip and animation all come from components/kit/charts.jsx
+  // now. What used to be declared here was the five semantic tones used as a
+  // categorical set — so the table with the third-highest revenue rendered in
+  // --k-danger red, colour that reads as a verdict on a number that carries none.
+  const chartAnim = useChartAnim();
+  const money = (v) => `${Number(v).toFixed(2)} ${symbol}`;
 
   return (
     <div className="space-y-6">
@@ -1969,78 +1975,51 @@ function AnalyticsDashboard({ orders, tables, currencySymbol }) {
       </Tabs>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label={timeFilter === 'day' ? t('kpiDailyRevenue') : timeFilter === 'week' ? t('kpiWeeklyRevenue') : t('kpiMonthlyRevenue')} value={`${stats.revenue.toFixed(2)} ${symbol}`} icon={<TrendingUp className="w-5 h-5 text-[var(--k-success)]" />} tint="bg-[var(--k-success-soft)]" />
-        <KpiCard label={timeFilter === 'day' ? t('kpiTodayOrders') : timeFilter === 'week' ? t('kpiWeeklyOrders') : t('kpiMonthlyOrders')} value={stats.count} icon={<Activity className="w-5 h-5 text-[var(--k-accent)]" />} tint="bg-[var(--k-accent-soft)]" />
-        <KpiCard label={t('kpiAvgCheck')} value={`${stats.aov.toFixed(2)} ${symbol}`} icon={<BarChart3 className="w-5 h-5 text-[var(--k-info)]" />} tint="bg-[var(--k-info-soft)]" />
-        <KpiCard label={t('kpiActiveTables')} value={stats.activeTables} icon={<Users className="w-5 h-5 text-[var(--k-warning)]" />} tint="bg-[var(--k-warning-soft)]" />
+        <StatTile index={0} icon={TrendingUp} tone="success" label={timeFilter === 'day' ? t('kpiDailyRevenue') : timeFilter === 'week' ? t('kpiWeeklyRevenue') : t('kpiMonthlyRevenue')} countTo={stats.revenue} formatCount={money} />
+        <StatTile index={1} icon={Activity} tone="accent" label={timeFilter === 'day' ? t('kpiTodayOrders') : timeFilter === 'week' ? t('kpiWeeklyOrders') : t('kpiMonthlyOrders')} countTo={stats.count} formatCount={(v) => Math.round(v)} />
+        <StatTile index={2} icon={BarChart3} tone="info" label={t('kpiAvgCheck')} countTo={stats.aov} formatCount={money} />
+        <StatTile index={3} icon={Users} tone="warning" label={t('kpiActiveTables')} countTo={stats.activeTables} formatCount={(v) => Math.round(v)} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card variant="plain" className="lg:col-span-2">
-          <CardHeader>
-            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><BarChart3 className="w-4 h-4 text-[var(--k-accent)]"/> {timeFilter === 'day' ? t('chartHourly') : timeFilter === 'week' ? t('chartWeekly') : t('chartMonthly')} {t('chartOrderDynamics')}</h4>
-          </CardHeader>
-          <CardBody>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="label" stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${symbol}${val}`} />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    itemStyle={{ color: 'var(--k-text)', fontWeight: 600 }}
-                  />
-                  <Bar dataKey="sales" name={t('salesSeriesLabel')} fill="var(--k-accent)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardBody>
-        </Card>
+        <ChartCard
+          className="lg:col-span-2"
+          icon={<BarChart3 className="w-4 h-4 text-[var(--k-chart-1)]" />}
+          title={`${timeFilter === 'day' ? t('chartHourly') : timeFilter === 'week' ? t('chartWeekly') : t('chartMonthly')} ${t('chartOrderDynamics')}`}
+          ariaLabel={t('chartOrderDynamicsAria')}
+          height={288}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            {/* left margin is 0, not negative: an explicit YAxis width plus a
+                negative left margin subtract twice and clip the tick labels.
+                Currency goes AFTER the number — `₼900` was wrong for az-AZ. */}
+            <BarChart data={stats.chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid {...chartGridProps} />
+              <XAxis dataKey="label" {...chartAxisProps} />
+              <YAxis {...chartAxisProps} tickFormatter={(val) => `${val} ${symbol}`} width={64} />
+              {/* Currency was missing here: the axis said ₼ and the tooltip said
+                  a bare number. */}
+              <Tooltip cursor={chartCursor} content={<ChartTooltip formatter={money} />} />
+              {/* maxBarSize caps the mark; without it recharts fills the whole
+                  band, and a day view with 3 buckets drew three fat slabs. */}
+              <Bar dataKey="sales" name={t('salesSeriesLabel')} fill="var(--k-chart-1)" radius={[4, 4, 0, 0]} maxBarSize={24} {...chartAnim} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
+        {/* Was a donut with a legend beneath it printing the same numbers. The
+            ring could not be read for values this close together, and the list
+            already said everything it did — so the list became the chart. */}
         <Card variant="plain">
           <CardHeader>
-            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><PieChartIcon className="w-4 h-4 text-[var(--k-warning)]"/> {t('chartRevenueDistributionByTable')}</h4>
+            <h3 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><BarChart3 className="w-4 h-4 text-[var(--k-chart-1)]"/> {t('chartRevenueDistributionByTable')}</h3>
           </CardHeader>
           <CardBody>
-            <div className="h-56">
-              {stats.topTables.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={stats.topTables}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                      stroke="none"
-                    >
-                      {stats.topTables.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value) => `${value.toFixed(2)} ${symbol}`}
-                      contentStyle={tooltipStyle}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-[var(--k-text-3)] text-sm">{t('noData')}</div>
-              )}
-            </div>
-            <div className="mt-4 space-y-2">
-              {stats.topTables.map((tableStat, i) => (
-                <div key={i} className="flex justify-between items-center text-xs font-medium">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                    <span className="text-[var(--k-text-2)]">{tableStat.name}</span>
-                  </div>
-                  <span className="text-[var(--k-text)]">{tableStat.value.toFixed(2)} {symbol}</span>
-                </div>
-              ))}
-            </div>
+            {stats.topTables.length > 0 ? (
+              <RankedBarList rows={stats.topTables} formatValue={money} />
+            ) : (
+              <EmptyState icon={<BarChart3 className="w-5 h-5" />} title={t('noData')} />
+            )}
           </CardBody>
         </Card>
       </div>
@@ -2048,31 +2027,26 @@ function AnalyticsDashboard({ orders, tables, currencySymbol }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card variant="plain">
           <CardHeader>
-            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><TrendingUp className="w-4 h-4 text-[var(--k-success)]"/> {t('topSellersTitle')}</h4>
+            <h3 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><TrendingUp className="w-4 h-4 text-[var(--k-chart-1)]"/> {t('topSellersTitle')}</h3>
           </CardHeader>
           <CardBody>
-            <div className="space-y-4">
-              {stats.topDishes.length > 0 ? stats.topDishes.map((dish, i) => (
-                <div key={i} className="flex flex-col gap-1.5">
-                  <div className="flex justify-between text-sm font-medium">
-                    <span className="text-[var(--k-text-2)]">{i + 1}. {dish.name}</span>
-                    <span className="text-[var(--k-success)]">{dish.count} {t('unitsSold')}</span>
-                  </div>
-                  <div className="w-full bg-[var(--k-surface-3)] rounded-full h-1.5">
-                    <div
-                      className="bg-[var(--k-success)] h-1.5 rounded-full"
-                      style={{ width: `${Math.max(5, (dish.count / (stats.totalItemsSold || 1)) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )) : (
-                <EmptyState
-                  icon={<TrendingUp className="w-5 h-5" />}
-                  title={t('noSalesYetTitle')}
-                  description={t('noSalesYetDescription')}
-                />
-              )}
-            </div>
+            {stats.topDishes.length > 0 ? (
+              // Same component the SuperAdmin plan bars use. The version here
+              // was hand-rolled, un-animated, and scaled every bar against the
+              // grand total, so the top dish drew a stub whenever the menu was
+              // wide — RankedBarList scales to the largest row instead.
+              <RankedBarList
+                rows={stats.topDishes.map((d) => ({ name: d.name, value: d.count }))}
+                total={stats.totalItemsSold}
+                formatValue={(v) => `${v} ${t('unitsSold')}`}
+              />
+            ) : (
+              <EmptyState
+                icon={<TrendingUp className="w-5 h-5" />}
+                title={t('noSalesYetTitle')}
+                description={t('noSalesYetDescription')}
+              />
+            )}
           </CardBody>
         </Card>
 
@@ -2150,26 +2124,11 @@ function statusBadgeTone(status) {
   return 'warning';
 }
 
-// KPI card — used for every metric strip in the admin panel (Dashboard,
-// Hesabat/Analytics, Ödənişlər) so every tab shares the same tinted-icon-well
-// treatment instead of each rolling its own variant. Props/behavior
-// unchanged, every call site keeps working as-is — only the underlying
-// Card/token layer changed.
-function KpiCard({ label, value, icon, tint }) {
-  return (
-    <Card variant="plain">
-      <CardBody className="flex items-center gap-4">
-        <div className={`w-11 h-11 rounded-[var(--k-r)] flex items-center justify-center shrink-0 ${tint}`}>
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <p className="text-[var(--k-text-3)] text-[11px] font-medium uppercase tracking-wide mb-1 truncate">{label}</p>
-          <h4 className="text-lg font-semibold text-[var(--k-text)] truncate">{value}</h4>
-        </div>
-      </CardBody>
-    </Card>
-  );
-}
+// KpiCard used to live here. It has been replaced by `StatTile` from
+// components/kit — the local copy was one of four near-identical stat tiles in
+// the repo, and the two on the SuperAdmin side had already drifted into a
+// different, larger design with an animated count-up. Same figure, two looks,
+// depending on which panel you happened to be in.
 
 // Dashboard — the new "analytics hub" home page.
 function DashboardHome({ orders, tables, products, categories, currencySymbol }) {
@@ -2209,7 +2168,7 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
     // satılan". Same non-cancelled rule as everywhere else in the panel.
     const soldOrders = orders.filter(o => o.status !== ORDER_STATUS.CANCELLED);
 
-    // Category split (by items sold) for the donut chart
+    // Category split, by items sold.
     const categoryCounts = {};
     soldOrders.forEach(o => {
       o.items.forEach(item => {
@@ -2219,10 +2178,14 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
         categoryCounts[name] = (categoryCounts[name] || 0) + item.quantity;
       });
     });
-    const categoryData = Object.entries(categoryCounts)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 6);
+    // Folded rather than sliced. `.slice(0, 6)` dropped the tail silently, so a
+    // restaurant with nine categories saw shares that didn't add up to the
+    // whole — the list claimed to describe every sale and didn't.
+    const categoryData = foldToTop(
+      Object.entries(categoryCounts).map(([name, value]) => ({ name, value })),
+      6,
+      t('otherCategoriesLabel'),
+    );
 
     // Best sellers for the bar chart
     const dishCounts = {};
@@ -2235,7 +2198,16 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
     });
     const bestSellers = Object.values(dishCounts).sort((a, b) => b.count - a.count).slice(0, 5);
 
-    return { todayRevenue, activeTables, revenueByDay, categoryData, bestSellers };
+    // Today vs yesterday, straight off the series the chart already plots —
+    // revenueByDay[6] is today, [5] is yesterday. No extra query. Yesterday at
+    // zero has no meaningful percentage (every increase is "infinite"), so the
+    // delta is withheld rather than shown as a fake number.
+    const yesterdayRevenue = revenueByDay[5]?.revenue ?? 0;
+    const revenueDelta = yesterdayRevenue > 0
+      ? Math.round(((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100)
+      : null;
+
+    return { todayRevenue, activeTables, revenueByDay, categoryData, bestSellers, revenueDelta };
   }, [orders, categories, language, t]);
 
   const recentOrders = useMemo(() => {
@@ -2244,8 +2216,8 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
     });
   }, [orders, tables, t]);
 
-  const DONUT_COLORS = ['var(--k-accent)', 'var(--k-success)', 'var(--k-info)', 'var(--k-warning)', 'var(--k-danger)', 'var(--k-text-3)'];
-  const tooltipStyle = { backgroundColor: 'var(--k-surface-2)', border: '1px solid var(--k-border)', borderRadius: '10px' };
+  const chartAnim = useChartAnim();
+  const money = (v) => `${Number(v).toFixed(2)} ${symbol}`;
 
   return (
     <div className="space-y-6">
@@ -2261,96 +2233,103 @@ function DashboardHome({ orders, tables, products, categories, currencySymbol })
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label={t('kpiTotalOrders')} value={orders.length} icon={<ListOrdered className="w-5 h-5 text-[var(--k-accent)]" />} tint="bg-[var(--k-accent-soft)]" />
-        <KpiCard label={t('kpiTodayRevenue')} value={`${stats.todayRevenue.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-[var(--k-success)]" />} tint="bg-[var(--k-success-soft)]" />
-        <KpiCard label={t('kpiActiveTable')} value={stats.activeTables} icon={<Table2 className="w-5 h-5 text-[var(--k-warning)]" />} tint="bg-[var(--k-warning-soft)]" />
-        <KpiCard label={t('kpiProductCount')} value={products.length} icon={<Package className="w-5 h-5 text-[var(--k-info)]" />} tint="bg-[var(--k-info-soft)]" />
+        <StatTile index={0} icon={ListOrdered} tone="accent" label={t('kpiTotalOrders')} countTo={orders.length} formatCount={(v) => Math.round(v)} />
+        {/* The one tile that can carry a trend: the seven-day series is already
+            computed for the chart below, so the sparkline and the vs-yesterday
+            delta cost nothing extra. */}
+        <StatTile
+          index={1}
+          icon={DollarSign}
+          colorIndex={0}
+          label={t('kpiTodayRevenue')}
+          countTo={stats.todayRevenue}
+          formatCount={money}
+          sparkline={stats.revenueByDay.map((d) => d.revenue)}
+          delta={stats.revenueDelta}
+          deltaLabel={t('vsYesterdayLabel')}
+        />
+        <StatTile index={2} icon={Table2} tone="warning" label={t('kpiActiveTable')} countTo={stats.activeTables} formatCount={(v) => Math.round(v)} />
+        <StatTile index={3} icon={Package} tone="info" label={t('kpiProductCount')} countTo={products.length} formatCount={(v) => Math.round(v)} />
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card variant="plain" className="lg:col-span-2">
-          <CardHeader>
-            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><TrendingUp className="w-4 h-4 text-[var(--k-accent)]" /> {t('revenueLast7Days')}</h4>
-          </CardHeader>
-          <CardBody>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={stats.revenueByDay} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--k-border)" />
-                  <XAxis dataKey="label" stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${symbol}${v}`} />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    labelStyle={{ color: 'var(--k-text)' }}
-                    itemStyle={{ color: 'var(--k-accent)' }}
-                    formatter={(value) => [`${Number(value).toFixed(2)} ${symbol}`, t('revenueLabel')]}
-                  />
-                  <Line type="monotone" dataKey="revenue" stroke="var(--k-accent)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--k-accent)' }} activeDot={{ r: 6 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardBody>
-        </Card>
+        {/* Line -> area. The gradient gives the trend a body to read against,
+            and dropping the per-point dots leaves the shape of the week rather
+            than seven markers competing with it; the active dot on hover still
+            pins the exact day. */}
+        <ChartCard
+          className="lg:col-span-2"
+          icon={<TrendingUp className="w-4 h-4 text-[var(--k-chart-1)]" />}
+          title={t('revenueLast7Days')}
+          ariaLabel={t('revenueLast7DaysAria')}
+          height={256}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={stats.revenueByDay} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="adminRevenueFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--k-chart-1)" stopOpacity={0.22} />
+                  <stop offset="100%" stopColor="var(--k-chart-1)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid {...chartGridProps} />
+              <XAxis dataKey="label" {...chartAxisProps} />
+              <YAxis {...chartAxisProps} tickFormatter={(v) => `${v} ${symbol}`} width={64} />
+              <Tooltip cursor={chartLineCursor} content={<ChartTooltip formatter={money} />} />
+              <Area
+                type="monotone"
+                dataKey="revenue"
+                name={t('revenueLabel')}
+                stroke="var(--k-chart-1)"
+                strokeWidth={2}
+                fill="url(#adminRevenueFill)"
+                dot={false}
+                // 2px ring in the surface colour so the marker stays legible
+                // where it sits on top of its own line.
+                activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--k-surface)' }}
+                {...chartAnim}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
         <Card variant="plain">
           <CardHeader>
-            <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><PieChartIcon className="w-4 h-4 text-[var(--k-warning)]" /> {t('categoriesChartTitle')}</h4>
+            <h3 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><BarChart3 className="w-4 h-4 text-[var(--k-chart-1)]" /> {t('categoriesChartTitle')}</h3>
           </CardHeader>
           <CardBody>
-            <div className="h-48">
-              {stats.categoryData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={stats.categoryData} cx="50%" cy="50%" innerRadius={55} outerRadius={78} paddingAngle={4} dataKey="value" stroke="none">
-                      {stats.categoryData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--k-text)' }} itemStyle={{ color: 'var(--k-text)' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-[var(--k-text-3)] text-sm">{t('noData')}</div>
-              )}
-            </div>
-            <div className="mt-3 space-y-1.5">
-              {stats.categoryData.map((c, i) => (
-                <div key={i} className="flex justify-between items-center text-xs font-medium">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-                    <span className="text-[var(--k-text-2)]">{c.name}</span>
-                  </div>
-                  <span className="text-[var(--k-text)]">{c.value}</span>
-                </div>
-              ))}
-            </div>
+            {stats.categoryData.length > 0 ? (
+              <RankedBarList
+                rows={stats.categoryData}
+                formatValue={(v) => `${v}`}
+              />
+            ) : (
+              <EmptyState icon={<BarChart3 className="w-5 h-5" />} title={t('noData')} />
+            )}
           </CardBody>
         </Card>
       </div>
 
-      <Card variant="plain">
-        <CardHeader>
-          <h4 className="text-[var(--k-text)] font-semibold flex items-center gap-2 text-sm"><BarChart3 className="w-4 h-4 text-[var(--k-success)]" /> {t('topSellingTitle')}</h4>
-        </CardHeader>
-        <CardBody>
-          <div className="h-64">
-            {stats.bestSellers.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.bestSellers} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--k-border)" />
-                  <XAxis dataKey="name" stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} interval={0} tick={{ width: 100 }} />
-                  <YAxis stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--k-text)' }} itemStyle={{ color: 'var(--k-success)' }} formatter={(v) => [`${v} ${t('unitsSold')}`, t('salesLabel')]} />
-                  <Bar dataKey="count" name={t('salesLabel')} fill="var(--k-success)" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-[var(--k-text-3)] text-sm">{t('noSalesYet')}</div>
-            )}
-          </div>
-        </CardBody>
-      </Card>
+      <ChartCard
+        icon={<BarChart3 className="w-4 h-4 text-[var(--k-chart-1)]" />}
+        title={t('topSellingTitle')}
+        ariaLabel={t('topSellingAria')}
+        height={256}
+        isEmpty={stats.bestSellers.length === 0}
+        emptyIcon={<BarChart3 className="w-5 h-5" />}
+        emptyTitle={t('noSalesYet')}
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={stats.bestSellers} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid {...chartGridProps} />
+            <XAxis dataKey="name" {...chartAxisProps} interval={0} tick={{ width: 100 }} />
+            <YAxis {...chartAxisProps} allowDecimals={false} width={44} />
+            <Tooltip cursor={chartCursor} content={<ChartTooltip formatter={(v) => `${v} ${t('unitsSold')}`} />} />
+            <Bar dataKey="count" name={t('salesLabel')} fill="var(--k-chart-1)" radius={[4, 4, 0, 0]} maxBarSize={24} {...chartAnim} />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartCard>
 
       {/* Premium Table — Son Sifarişlər */}
       <Card variant="plain" className="overflow-hidden">
@@ -2753,13 +2732,14 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
         </Banner>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <KpiCard label={t('kpiCash')} value={`${cashOrders.length}`} icon={<Wallet className="w-5 h-5 text-[var(--k-success)]" />} tint="bg-[var(--k-success-soft)]" />
-        <KpiCard label={t('kpiPosTerminal')} value={`${cardOrders.length}`} icon={<CreditCard className="w-5 h-5 text-[var(--k-accent)]" />} tint="bg-[var(--k-accent-soft)]" />
-        <KpiCard label={t('kpiWallet')} value={`${walletOrders.length}`} icon={<Smartphone className="w-5 h-5 text-[var(--k-info)]" />} tint="bg-[var(--k-info-soft)]" />
-        <KpiCard label={t('kpiTotalPayments')} value={`${grandTotal.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-[var(--k-warning)]" />} tint="bg-[var(--k-warning-soft)]" />
-        {/* New: what's still owed, across every payment method — the number
-            that didn't exist anywhere in this panel before 0025. */}
-        <KpiCard label={t('kpiUnpaid')} value={`${unpaidOrders.length} · ${unpaidTotal.toFixed(2)} ${symbol}`} icon={<Clock className="w-5 h-5 text-[var(--k-danger)]" />} tint="bg-[var(--k-danger-soft)]" />
+        <StatTile index={0} icon={Wallet} tone="success" label={t('kpiCash')} countTo={cashOrders.length} formatCount={(v) => Math.round(v)} />
+        <StatTile index={1} icon={CreditCard} tone="accent" label={t('kpiPosTerminal')} countTo={cardOrders.length} formatCount={(v) => Math.round(v)} />
+        <StatTile index={2} icon={Smartphone} tone="info" label={t('kpiWallet')} countTo={walletOrders.length} formatCount={(v) => Math.round(v)} />
+        <StatTile index={3} icon={DollarSign} tone="warning" label={t('kpiTotalPayments')} countTo={grandTotal} formatCount={(v) => `${Number(v).toFixed(2)} ${symbol}`} />
+        {/* What's still owed, across every payment method — the number that
+            didn't exist anywhere in this panel before 0025. Two figures in one
+            tile, so it stays a plain `value` rather than a counted one. */}
+        <StatTile index={4} icon={Clock} tone="danger" label={t('kpiUnpaid')} value={`${unpaidOrders.length} · ${unpaidTotal.toFixed(2)} ${symbol}`} />
       </div>
 
       <PaymentSchemaTable
@@ -2954,10 +2934,6 @@ function SubscriptionLockedScreen({ restaurant, onLogout }) {
       </Card>
     </div>
   );
-}
-
-function PieChartIcon({ className }) {
-  return <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
 }
 
 function RoleRedirect({ message, href }) {

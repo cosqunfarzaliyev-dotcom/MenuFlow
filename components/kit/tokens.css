@@ -70,6 +70,32 @@
   --k-info: #60A5FA;
   --k-info-soft: rgba(96, 165, 250, 0.13);
 
+  /* Categorical chart palette. Deliberately NOT the five semantic tones above:
+     --k-success is green because green MEANS good, --k-danger red because red
+     MEANS bad. The charts used to borrow that set, so "Masa 3" rendered red and
+     "Şirniyyat" green — colour that reads as a judgement on a value that carries
+     none. These six are identity-only, assigned in fixed order and never cycled;
+     a 7th series folds into "Digər" instead of reusing slot 1.
+
+     Not eyeballed. Each pair was measured with the data-viz validator against
+     both dark surfaces (#141416 card, #1C1C1F raised): OKLCH lightness inside
+     the 0.48–0.67 band, chroma >= 0.10, adjacent-pair OKLab ΔE >= 8 under
+     simulated protanopia/deuteranopia, >= 15 under normal vision, and >= 3:1
+     contrast on the surface. Adjacent slots alternate light/dark on purpose —
+     under colour blindness hue collapses and lightness is what still separates
+     them, so re-ordering these values silently breaks the CVD check. */
+  --k-chart-1: #DB7206;   /* orange  — the brand accent, darkened into the band */
+  --k-chart-2: #0177CC;   /* blue    */
+  --k-chart-3: #EA5098;   /* pink    */
+  --k-chart-4: #047F62;   /* teal    */
+  --k-chart-5: #9E71FD;   /* violet  */
+  --k-chart-6: #A28706;   /* gold    */
+
+  /* Gridlines: one step off the surface, solid. Dashes read as "threshold" or
+     "projection" when it is only a grid. */
+  --k-grid: var(--k-border);
+
+
   --k-focus: #F97316;
   --k-scrim: rgba(0, 0, 0, 0.72);
 
@@ -133,6 +159,23 @@
   --k-danger-soft: rgba(239, 68, 68, 0.10);
   --k-info: #1D4ED8;
   --k-info-soft: rgba(59, 130, 246, 0.10);
+
+  /* Chart palette, light-surface steps — validated against #FFFFFF the same way
+     the dark set is. Nothing on this surface plots anything today (the customer
+     menu has no charts); these exist so the namespace is complete and a future
+     print/report surface inherits correct values instead of the dark ones. They
+     are fixed hexes on purpose: chart identity must not shift with the
+     restaurant's --theme-* palette, or the same category changes colour
+     between two restaurants. */
+  --k-chart-1: #C16302;
+  --k-chart-2: #0177CC;
+  --k-chart-3: #D43B86;
+  --k-chart-4: #047F62;
+  --k-chart-5: #8C5EE8;
+  --k-chart-6: #8A7304;
+
+  --k-grid: var(--k-border);
+
 
   --k-focus: var(--theme-primary, #18181B);
   --k-scrim: rgba(24, 24, 27, 0.45);

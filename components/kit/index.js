@@ -35,3 +35,12 @@ export {
   buttonVariants, tagVariants, cardVariants, bannerVariants,
   pillVariants, fieldControlVariants, FOCUS,
 } from './variants';
+
+// Data visualisation. One recipe for every chart and stat tile in the panels —
+// see the header of charts.jsx for why the four per-call-site versions merged.
+export {
+  CHART_COLORS, chartColor, foldToTop,
+  CHART_ANIM_MS, useChartAnim,
+  chartAxisProps, chartGridProps, chartCursor, chartLineCursor,
+  ChartTooltip, ChartCard, RankedBarList, Sparkline, StatTile, useCountUp,
+} from './charts';

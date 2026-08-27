@@ -3,14 +3,15 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Building2, CheckCircle2, Clock, XCircle, Wallet, Users } from 'lucide-react';
-import { StatCard } from './StatCard';
 import { planMeta, subscriptionMeta, formatMoney, formatDate, LOCALE_TAGS } from './constants';
-import { Tag } from '@/components/kit';
+import { Tag, StatTile } from '@/components/kit';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
 export function DashboardTab({ restaurants, metrics, onOpenRestaurant }) {
   const { t, language } = useSuperAdminTranslation();
   const localeTag = LOCALE_TAGS[language] || 'az-AZ';
+  // Whole counts stay locale-grouped (1 234, not 1234) while counting up.
+  const counted = (v) => Math.round(v).toLocaleString(localeTag);
   const recent = [...restaurants]
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
     .slice(0, 5);
@@ -18,12 +19,16 @@ export function DashboardTab({ restaurants, metrics, onOpenRestaurant }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
-        <StatCard index={0} icon={Building2} label={t('totalRestaurantsLabel')} value={metrics.total} accent="#3b82f6" />
-        <StatCard index={1} icon={CheckCircle2} label={t('activeRestaurantLabel')} value={metrics.active} accent="#34d399" />
-        <StatCard index={2} icon={Clock} label={t('trialLabel')} value={metrics.trialing} accent="#fbbf24" />
-        <StatCard index={3} icon={XCircle} label={t('cancelledLabel')} value={metrics.cancelled} accent="#f87171" />
-        <StatCard index={4} icon={Wallet} label={t('monthlyRevenueLabel')} value={metrics.mrr} prefix="" suffix=" ₼" accent="#a78bfa" />
-        <StatCard index={5} icon={Users} label={t('activeUserLabel')} value={metrics.activeUsers} accent="#38bdf8" />
+        {/* Accents were raw hex here (#3b82f6, #34d399, …) composed into
+            `${accent}1a` fills. They are tokens now: a tile whose figure means
+            something wears the matching semantic tone, and the two that are
+            just counts wear a chart slot. */}
+        <StatTile index={0} icon={Building2} colorIndex={1} label={t('totalRestaurantsLabel')} countTo={metrics.total} formatCount={counted} />
+        <StatTile index={1} icon={CheckCircle2} tone="success" label={t('activeRestaurantLabel')} countTo={metrics.active} formatCount={counted} />
+        <StatTile index={2} icon={Clock} tone="warning" label={t('trialLabel')} countTo={metrics.trialing} formatCount={counted} />
+        <StatTile index={3} icon={XCircle} tone="danger" label={t('cancelledLabel')} countTo={metrics.cancelled} formatCount={counted} />
+        <StatTile index={4} icon={Wallet} colorIndex={4} label={t('monthlyRevenueLabel')} countTo={metrics.mrr} formatCount={(v) => formatMoney(v, '₼', localeTag)} />
+        <StatTile index={5} icon={Users} colorIndex={3} label={t('activeUserLabel')} countTo={metrics.activeUsers} formatCount={counted} />
       </div>
 
       <motion.div

@@ -1,116 +1,97 @@
 "use client";
 
 import React, { useMemo } from 'react';
-import { motion } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, Landmark, Percent, Activity } from 'lucide-react';
+import { Wallet, Landmark, Percent, Activity } from 'lucide-react';
+import {
+  ChartCard, ChartTooltip, StatTile,
+  chartAxisProps, chartGridProps, chartLineCursor, useChartAnim,
+} from '@/components/kit';
 import { formatMoney, LOCALE_TAGS } from './constants';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
-// `trend` is direction only ('up' | 'down' | null). It used to also print a
-// number, which on the churn/growth tiles was the exact same percentage already
-// shown as the tile's value — the same figure twice, once with an arrow.
-function MetricTile({ icon: Icon, label, value, trend, trendGood, accent, index }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-      className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-5"
-    >
-      <div className="flex items-center justify-between mb-3">
-        <div className="w-10 h-10 rounded-[var(--k-r)] flex items-center justify-center" style={{ backgroundColor: `${accent}1a`, border: `1px solid ${accent}33` }}>
-          <Icon className="w-[18px] h-[18px]" style={{ color: accent }} />
-        </div>
-        {trend && (
-          <span className={trendGood ? 'text-[var(--k-success)]' : 'text-[var(--k-danger)]'}>
-            {trend === 'up' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-          </span>
-        )}
-      </div>
-      <p className="text-[26px] font-semibold text-[var(--k-text)] leading-none mb-1 tracking-[-0.02em]">{value}</p>
-      <p className="text-[13px] text-[var(--k-text-3)] font-medium">{label}</p>
-    </motion.div>
-  );
-}
+// MetricTile used to live here — a fourth copy of the same stat tile, with its
+// accent passed in as a raw hex string and composed with `${accent}1a` alpha
+// suffixes, which is how hardcoded colour leaked past the token layer on this
+// surface. It is now kit's StatTile.
+//
+// The old tile also carried a bare trend arrow with no number. On the churn and
+// growth tiles that arrow duplicated the direction of the percentage already
+// shown as the tile's own value, so it is not reproduced: StatTile's `delta` is
+// for a change measured against a *different* period than the value itself.
 
 export function AnalyticsTab({ metrics }) {
   const { t, language } = useSuperAdminTranslation();
   const localeTag = LOCALE_TAGS[language] || 'az-AZ';
+  const chartAnim = useChartAnim();
 
-  // metrics.js hands back an ISO month start, not a pre-formatted az-AZ label,
-  // so the x-axis follows the panel's selected language.
+  // metrics.js hands back an ISO month start, not a pre-formatted label, so the
+  // x-axis follows the panel's selected language. Built from the dictionary's
+  // `shortMonthLabel` table rather than `toLocaleDateString(..., { month:
+  // 'short' })`: that rendered as a bare "M08" instead of "Avq" wherever the
+  // browser's ICU data has no az-AZ month names — a real gap for a locale this
+  // uncommon, not just a headless-browser quirk. `getUTCMonth()` matters here
+  // too — monthStart is UTC midnight, and a local getMonth() rolls back a day
+  // (and a month, at a year boundary) in any negative-UTC-offset timezone.
   const chartData = useMemo(
     () => (metrics.monthlySignups || []).map((row) => ({
-      month: new Date(row.monthStart).toLocaleDateString(localeTag, { month: 'short' }),
+      month: t('shortMonthLabel')(new Date(row.monthStart).getUTCMonth()),
       count: row.count,
     })),
-    [metrics.monthlySignups, localeTag]
+    [metrics.monthlySignups, t]
   );
+
+  const signupSeries = useMemo(() => chartData.map((row) => row.count), [chartData]);
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <MetricTile index={0} icon={Wallet} label={t('mrrTileLabel')} value={formatMoney(metrics.mrr, '₼', localeTag)} accent="#60A5FA" />
-        <MetricTile index={1} icon={Landmark} label={t('arrTileLabel')} value={formatMoney(metrics.arr, '₼', localeTag)} accent="#F97316" />
-        <MetricTile
-          index={2}
-          icon={Percent}
-          label={t('churnRateLabel')}
-          value={`${metrics.churnRate}%`}
-          trend={metrics.churnRate > 0 ? 'up' : null}
-          trendGood={false}
-          accent="#F87171"
-        />
-        <MetricTile
+        <StatTile index={0} icon={Wallet} colorIndex={1} label={t('mrrTileLabel')} value={formatMoney(metrics.mrr, '₼', localeTag)} />
+        <StatTile index={1} icon={Landmark} colorIndex={0} label={t('arrTileLabel')} value={formatMoney(metrics.arr, '₼', localeTag)} />
+        <StatTile index={2} icon={Percent} tone="danger" label={t('churnRateLabel')} value={`${metrics.churnRate}%`} />
+        {/* The one tile with a real trend to show: the value is this month's
+            growth rate, the sparkline is where it came from. */}
+        <StatTile
           index={3}
           icon={Activity}
+          tone="success"
           label={t('growthThisMonthLabel')}
           value={`${metrics.growthRate > 0 ? '+' : ''}${metrics.growthRate}%`}
-          trend={metrics.growthRate > 0 ? 'up' : (metrics.growthRate < 0 ? 'down' : null)}
-          trendGood={metrics.growthRate >= 0}
-          accent="#34D399"
+          sparkline={signupSeries}
         />
       </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.24, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-        className="rounded-[var(--k-r-lg)] border border-[var(--k-border)] bg-[var(--k-surface)] p-5"
+      <ChartCard
+        title={t('last6MonthsTitle')}
+        ariaLabel={t('last6MonthsAria')}
+        height={256}
       >
-        <h3 className="text-[15px] font-semibold text-[var(--k-text)] mb-4">{t('last6MonthsTitle')}</h3>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="saGrowthFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--k-accent)" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="var(--k-accent)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--k-border)" vertical={false} />
-              <XAxis dataKey="month" stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis stroke="var(--k-text-3)" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
-              <Tooltip
-                contentStyle={{ background: 'var(--k-surface-2)', border: '1px solid var(--k-border)', borderRadius: 10, fontSize: 12 }}
-                labelStyle={{ color: 'var(--k-text-3)' }}
-                itemStyle={{ color: 'var(--k-text)' }}
-              />
-              <Area
-                type="monotone"
-                dataKey="count"
-                name={t('newRestaurantSeriesLabel')}
-                stroke="var(--k-accent)"
-                strokeWidth={2.5}
-                fill="url(#saGrowthFill)"
-                animationDuration={1100}
-                animationEasing="ease-out"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </motion.div>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="saGrowthFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--k-chart-1)" stopOpacity={0.22} />
+                <stop offset="100%" stopColor="var(--k-chart-1)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid {...chartGridProps} />
+            <XAxis dataKey="month" {...chartAxisProps} />
+            <YAxis {...chartAxisProps} allowDecimals={false} width={40} />
+            <Tooltip cursor={chartLineCursor} content={<ChartTooltip />} />
+            <Area
+              type="monotone"
+              dataKey="count"
+              name={t('newRestaurantSeriesLabel')}
+              stroke="var(--k-chart-1)"
+              strokeWidth={2}
+              fill="url(#saGrowthFill)"
+              dot={false}
+              activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--k-surface)' }}
+              {...chartAnim}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </ChartCard>
     </div>
   );
 }

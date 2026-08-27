@@ -25,7 +25,7 @@
 // ---------------------------------------------------------------------------
 import React, { useMemo, useState } from 'react';
 import { Wallet, CreditCard, Smartphone, DollarSign, Clock, Ban, Receipt, Printer } from 'lucide-react';
-import { Card, CardHeader, CardBody, PageHeader, Button, Tabs, TabsTrigger, Input, EmptyState } from '@/components/kit';
+import { Card, CardHeader, CardBody, PageHeader, Button, Tabs, TabsTrigger, Input, EmptyState, StatTile } from '@/components/kit';
 import { useAdminTranslation, LOCALE_TAGS } from '@/lib/i18n/dictionaries/admin';
 import { buildSalesReport, getDayRange, getTodaySoFarRange } from '@/lib/services/reportService';
 
@@ -35,19 +35,11 @@ const toDateInputValue = (date) => {
   return new Date(d.getTime() - offset * 60000).toISOString().slice(0, 10);
 };
 
-function ReportKpiCard({ label, value, icon, tint }) {
-  return (
-    <Card variant="plain">
-      <CardBody className="flex items-center gap-4">
-        <div className={`w-11 h-11 rounded-[var(--k-r)] flex items-center justify-center shrink-0 ${tint}`}>{icon}</div>
-        <div className="min-w-0">
-          <p className="text-[var(--k-text-3)] text-[11px] font-medium uppercase tracking-wide mb-1 truncate">{label}</p>
-          <h4 className="text-lg font-semibold text-[var(--k-text)] truncate">{value}</h4>
-        </div>
-      </CardBody>
-    </Card>
-  );
-}
+// ReportKpiCard used to live here, a byte-for-byte copy of AdminApp's KpiCard.
+// Both are now kit's StatTile. Note these deliberately pass a plain `value`
+// rather than `countTo`: this view exists to be printed, and a count-up that is
+// still mid-animation when window.print() fires would put a wrong number on a
+// closing document.
 
 function PaymentMethodRow({ label, icon, tint, data, symbol }) {
   return (
@@ -125,12 +117,12 @@ export function SalesReportView({ orders, tables, restaurantName, currencySymbol
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <ReportKpiCard label={t('reportKpiRevenue')} value={`${report.revenueTotal.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-[var(--k-warning)]" />} tint="bg-[var(--k-warning-soft)]" />
-              <ReportKpiCard label={t('reportKpiOrderCount')} value={report.orderCount} icon={<Receipt className="w-5 h-5 text-[var(--k-accent)]" />} tint="bg-[var(--k-accent-soft)]" />
-              <ReportKpiCard label={t('reportKpiAvgOrder')} value={`${report.averageOrderValue.toFixed(2)} ${symbol}`} icon={<DollarSign className="w-5 h-5 text-[var(--k-info)]" />} tint="bg-[var(--k-info-soft)]" />
-              <ReportKpiCard label={t('kpiTotalPayments')} value={`${report.paidTotal.toFixed(2)} ${symbol}`} icon={<Wallet className="w-5 h-5 text-[var(--k-success)]" />} tint="bg-[var(--k-success-soft)]" />
-              <ReportKpiCard label={t('kpiUnpaid')} value={`${report.unpaidCount} · ${report.unpaidTotal.toFixed(2)} ${symbol}`} icon={<Clock className="w-5 h-5 text-[var(--k-danger)]" />} tint="bg-[var(--k-danger-soft)]" />
-              <ReportKpiCard label={t('reportKpiCancelled')} value={`${report.cancelledCount} · ${report.cancelledTotal.toFixed(2)} ${symbol}`} icon={<Ban className="w-5 h-5 text-[var(--k-text-3)]" />} tint="bg-[var(--k-surface-3)]" />
+              <StatTile index={0} icon={DollarSign} tone="warning" label={t('reportKpiRevenue')} value={`${report.revenueTotal.toFixed(2)} ${symbol}`} />
+              <StatTile index={1} icon={Receipt} tone="accent" label={t('reportKpiOrderCount')} value={report.orderCount} />
+              <StatTile index={2} icon={DollarSign} tone="info" label={t('reportKpiAvgOrder')} value={`${report.averageOrderValue.toFixed(2)} ${symbol}`} />
+              <StatTile index={3} icon={Wallet} tone="success" label={t('kpiTotalPayments')} value={`${report.paidTotal.toFixed(2)} ${symbol}`} />
+              <StatTile index={4} icon={Clock} tone="danger" label={t('kpiUnpaid')} value={`${report.unpaidCount} · ${report.unpaidTotal.toFixed(2)} ${symbol}`} />
+              <StatTile index={5} icon={Ban} tone="neutral" label={t('reportKpiCancelled')} value={`${report.cancelledCount} · ${report.cancelledTotal.toFixed(2)} ${symbol}`} />
             </div>
 
             <Card variant="plain">

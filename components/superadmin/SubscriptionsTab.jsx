@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { planMeta, formatMoney, LOCALE_TAGS } from './constants';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
 
@@ -12,6 +12,7 @@ export function SubscriptionsTab({ metrics }) {
   // sitting on a paid plan regardless of subscription_status, which contradicted
   // the MRR shown right next to it (that only counts status='active').
   const totalPaying = metrics.payingCount;
+  const reduced = useReducedMotion();
   const planKeys = metrics.planKeys || [];
 
   return (
@@ -54,11 +55,15 @@ export function SubscriptionsTab({ metrics }) {
                   <span className="text-[var(--k-text)] text-2xl font-semibold tabular-nums">{count}</span>
                   <span className="text-[13px] text-[var(--k-text-3)]">{t('restaurantsSuffixLower')}</span>
                 </div>
+                {/* Same 420ms / kit curve every other bar and chart in the two
+                   panels now animates on, and skipped entirely under
+                   prefers-reduced-motion — this one used to run at 500ms on a
+                   different easing and ignored the setting. */}
                 <div className="h-1.5 rounded-full bg-[var(--k-surface-3)] overflow-hidden">
                   <motion.div
-                    initial={{ width: 0 }}
+                    initial={reduced ? false : { width: 0 }}
                     animate={{ width: `${share}%` }}
-                    transition={{ delay: 0.25 + i * 0.05, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    transition={{ delay: reduced ? 0 : 0.2 + i * 0.04, duration: reduced ? 0 : 0.42, ease: [0.2, 0, 0, 1] }}
                     className="h-full rounded-full"
                     style={{ backgroundColor: meta.color }}
                   />
