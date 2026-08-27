@@ -86,19 +86,29 @@ export function PhoneShowcase({ lang = 'az', className = '', showCategories = fa
     : getLocalizedText('allMenu', lang);
 
   return (
-    <div className={`relative mx-auto w-full max-w-[300px] ${className}`}>
+    <div className={`relative mx-auto w-full max-w-[260px] ${className}`}>
       <div className="rounded-[2.5rem] border-4 border-[var(--mkt-line)] bg-[var(--mkt-text)] p-2.5 shadow-2xl shadow-black/15">
-        <div className="rounded-[2rem] overflow-hidden bg-[var(--k-bg)] kit-light" style={{ '--theme-primary': 'var(--mkt-brass)' }}>
+        {/* Fixed 9:19.5 — a real handset's proportions (iPhone 14/15 class).
+            The screen is a viewport, not a container that grows: once the
+            header, search bar and category strip were added the frame stretched
+            to roughly 1:2.5 and stopped reading as a phone at all. Everything
+            below is shrink-0 except the product grid, which takes the remainder
+            and clips — which is exactly what a real phone does with a
+            scrollable menu, so the cut-off row is honest rather than a bug. */}
+        <div
+          className="rounded-[2rem] overflow-hidden bg-[var(--k-bg)] kit-light flex flex-col aspect-[9/19.5]"
+          style={{ '--theme-primary': 'var(--mkt-brass)' }}
+        >
           {/* Notch strip sits on the header's surface colour, so the header
               reads as one continuous bar the way it does on a real phone. */}
-          <div className="h-6 flex items-center justify-center bg-[var(--k-surface)]">
+          <div className="h-6 shrink-0 flex items-center justify-center bg-[var(--k-surface)]">
             <div className="w-16 h-1.5 rounded-full bg-slate-300" />
           </div>
 
           {/* Header — CustomerApp's own: brand initial, restaurant name, and
               the active-table line under it. Its absence was the single
               biggest tell that this was not the real menu. */}
-          <div className="flex items-center gap-2.5 border-b border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2.5">
+          <div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--k-r-sm)] bg-[var(--k-accent)] text-[13px] font-semibold text-[var(--k-accent-fg)]">
               M
             </span>
@@ -110,7 +120,7 @@ export function PhoneShowcase({ lang = 'az', className = '', showCategories = fa
             </div>
           </div>
 
-          <div className="px-3 pt-3 space-y-3">
+          <div className="shrink-0 px-3 pt-3 space-y-3">
             {/* Search + veg filter, drawn as static shapes rather than a live
                 Input: this is a picture of the menu, not a second
                 implementation of it. */}
@@ -148,19 +158,28 @@ export function PhoneShowcase({ lang = 'az', className = '', showCategories = fa
             <h2 className="text-[15px] font-bold tracking-[-0.01em] text-[var(--k-text)]">{headingLabel}</h2>
           </div>
 
-          <div className="max-h-[420px] overflow-hidden px-3 pb-4 pt-3 grid grid-cols-2 gap-3">
-            {products.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onOpenDetail={noop}
-                onAddToCart={noop}
-                lang={lang}
-              />
-            ))}
+          {/* The clipping lives on THIS wrapper, not on the grid itself. Put
+              flex-1/min-h-0 straight on the grid and its rows get squeezed to
+              the leftover height — ProductCard is `flex flex-col` with an
+              `aspect-square` image, so the image is the flex child that gives
+              way and collapses to 0px, leaving a card of bare text. The grid
+              below keeps its natural height and simply gets cut off by the
+              overflow here, which is what a real phone viewport does. */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <div className="grid grid-cols-2 gap-3 px-3 pb-4 pt-3">
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onOpenDetail={noop}
+                  onAddToCart={noop}
+                  lang={lang}
+                />
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-4 border-t border-[var(--k-border)] bg-[var(--k-surface)]">
+          <div className="mt-auto grid shrink-0 grid-cols-4 border-t border-[var(--k-border)] bg-[var(--k-surface)]">
             {BOTTOM_NAV_ITEMS.map(({ key, Icon, labelKey, active }) => (
               <div key={key} className={cn('flex flex-col items-center justify-center gap-1 py-2', active ? 'text-[var(--k-accent)]' : 'text-[var(--k-text-3)]')}>
                 <span className={cn('flex h-7 w-11 items-center justify-center rounded-full', active ? 'bg-[var(--k-accent-soft)]' : 'bg-transparent')}>
