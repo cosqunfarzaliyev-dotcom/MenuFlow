@@ -65,9 +65,21 @@ export function DesignTab() {
   const [bannerSaving, setBannerSaving] = useState(false);
   const [bannerSaveError, setBannerSaveError] = useState(null);
 
+  // Waits for the restaurant to resolve, and re-runs if it changes. Two
+  // reasons, and the second one matters more than the first:
+  //
+  // 1. This used to fire once on mount with no guard. If the tab was opened
+  //    before loadProfile() had resolved, `restaurant` was still null.
+  // 2. loadBanners() reads restaurant?.id and fetchBanners() only applies its
+  //    `.eq('restaurant_id', ...)` filter WHEN THAT ID IS TRUTHY — so a null
+  //    restaurant meant an unfiltered query, and `banners_public_read` is
+  //    `using (true)`. In a multi-restaurant deployment that briefly listed
+  //    every other restaurant's banners in this admin's panel, with edit and
+  //    delete buttons next to them. Gating on the id closes that.
   useEffect(() => {
+    if (!restaurant?.id) return;
     loadBanners();
-  }, [loadBanners]);
+  }, [loadBanners, restaurant?.id]);
 
   useEffect(() => {
     setPrimary(restaurant?.theme_primary_color || DEFAULT_THEME.primary);
