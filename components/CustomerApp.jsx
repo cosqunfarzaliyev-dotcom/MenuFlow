@@ -17,6 +17,7 @@ import { applyDiscounts } from "@/lib/services/promotionsService";
 import { requestWalletPayment } from "@/lib/services/paymentService";
 import { FEATURES, hasFeature } from "@/lib/services/entitlementService";
 import { getServiceRules } from "@/lib/services/serviceModelService";
+import { CategoryTile } from "@/components/CategoryTile";
 import {
   Sheet, Button, Tag, Pill, Input, LanguageToggle,
   EmptyState, LoadingState, ErrorState,
@@ -1473,36 +1474,6 @@ export function CustomerApp() {
 // --k-accent-soft üzərində --k-accent tonunda ikon (restoranın öz brend
 // rəngi), aktiv olanda tam dolu --k-accent — Pill komponenti ilə eyni
 // active/passive məntiqi, sadəcə kvadrat kaşe formasında.
-function CategoryTile({ icon, label, active, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className="group flex w-[68px] shrink-0 flex-col items-center gap-1.5 focus-visible:outline-none"
-    >
-      <span
-        className={cn(
-          'flex h-14 w-14 items-center justify-center rounded-[var(--k-r-lg)] border transition-colors duration-[var(--k-dur)]',
-          'group-focus-visible:ring-2 group-focus-visible:ring-[var(--k-focus)]',
-          active
-            ? 'border-[var(--k-accent)] bg-[var(--k-accent)] text-[var(--k-accent-fg)]'
-            : 'border-transparent bg-[var(--k-accent-soft)] text-[var(--k-accent)]',
-        )}
-      >
-        {icon}
-      </span>
-      <span
-        className={cn(
-          'line-clamp-2 w-full text-center text-[11px] leading-tight',
-          active ? 'font-semibold text-[var(--k-text)]' : 'font-medium text-[var(--k-text-3)]',
-        )}
-      >
-        {label}
-      </span>
-    </button>
-  );
-}
 
 // Alt naviqasiya düyməsi. Aktiv vəziyyət ikonun arxasındakı accent-tonlu
 // kapsulla verilir — CategoryTile və Fərdiləşdirmə çipləri ilə eyni "seçilmiş =

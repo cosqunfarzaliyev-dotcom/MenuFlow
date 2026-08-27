@@ -1,47 +1,50 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Home, ShoppingCart, Bell, CreditCard } from 'lucide-react';
+import { Home, ShoppingCart, Bell, CreditCard, Search, Leaf, UtensilsCrossed } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
+import { CategoryTile } from '@/components/CategoryTile';
 import { PRODUCTS, CATEGORIES } from '@/data/menuData';
 import { getLocalizedCategoryName, getLocalizedText } from '@/lib/translations';
 import { cn } from '@/lib/utils';
 
 // Reused by app/[locale]/page.jsx (home QR showcase) and
 // app/[locale]/demo/page.jsx — a phone-frame mock around the REAL
-// `ProductCard` component rendering REAL seed data (data/menuData.js, the
-// same seed CustomerApp itself falls back to), not a fabricated screenshot.
-// Clearly framed by both call sites as an illustrative preview, not a
-// live/interactive menu — handlers are no-ops on purpose, this is a
-// marketing showcase, not a functional cart.
+// `ProductCard`/`CategoryTile` components rendering REAL seed data
+// (data/menuData.js, the same seed CustomerApp itself falls back to), not a
+// fabricated screenshot. Both call sites frame it as an illustrative preview,
+// not a live menu — handlers are no-ops on purpose.
 //
-// Still "use client" (not converted to a Server Component along with
-// MarketingFooter): ProductCard is itself "use client" and takes
-// onOpenDetail/onAddToCart function props — a Server Component parent
-// cannot pass plain functions to a Client Component child (they aren't
-// serializable across that boundary), so the `noop` functions below must be
-// created client-side. `lang` still comes in as a plain prop, not the
-// client languageStore — only the component boundary is client, not the
-// language source.
+// ---------------------------------------------------------------------------
+// WHY THIS MIRRORS CustomerApp.jsx STRUCTURALLY
+// ---------------------------------------------------------------------------
+// This mockup is what a prospective restaurant owner believes they are buying.
+// An earlier version drew its own pill-shaped category tabs on a cream canvas
+// with no header and no search bar — close enough to look deliberate,
+// different enough that the demo and the real menu read as two separate
+// products. The order below is CustomerApp's own: header -> search ->
+// categories -> section heading -> product grid -> bottom nav.
 //
-// ProductCard reads `--k-*` tokens under a `.kit-light`/`.kit-dark` ancestor
-// (the same production panel design system CustomerApp itself renders
-// through, `components/kit/tokens.css`) — without re-declaring `.kit-light`
-// here, every `--k-*` class inside ProductCard resolves to nothing and the
-// card renders unstyled. `--theme-primary` feeds `.kit-light`'s `--k-accent`
-// (the per-restaurant brand color in the real app); pointed at
-// `var(--mkt-brass)` here so the demo's accent matches the marketing site's
-// own palette instead of an arbitrary placeholder.
+// Two things keep it from drifting again: CategoryTile and ProductCard are
+// literally the components the customer menu renders, and the canvas uses
+// kit-light's own --k-bg rather than the marketing palette. (An earlier build
+// deliberately retinted the screen to --mkt-ground so the phone read as "the
+// same room as the site" — that traded fidelity for cohesion, and fidelity is
+// the entire job of this mockup.)
+//
+// --theme-primary stays --mkt-brass: the real menu's accent is per-restaurant
+// (0043_customer_theme_colors.sql), so a branded accent is accurate — it shows
+// the theming feature rather than misrepresenting a fixed colour.
+//
+// Still "use client": ProductCard takes function props, which a Server
+// Component parent cannot pass across that boundary. `lang` is a plain prop,
+// not the client languageStore.
 const SAMPLE_PRODUCT_IDS = ['p1', 'b1', 's1', 'd1'];
 
 // Curated 4-per-category picks for the `showCategories` (demo page) mode —
-// real category ids from data/menu.json, not a fabricated taxonomy, so
-// switching tabs is browsing the same seed catalog CustomerApp itself falls
-// back to. Four per category so the 2-column grid below always fills a
-// clean 2x2, matching the real menu's own base grid instead of leaving a
-// dangling half-empty row. Kept separate from SAMPLE_PRODUCT_IDS so the
-// compact home-hero mockup (TableHero) stays a fixed 4-item snapshot, not
-// affected by this.
+// real category ids from data/menu.json, so switching tabs browses the same
+// seed catalog CustomerApp falls back to. Four per category fills the
+// 2-column grid cleanly, matching the real menu's own base grid.
 const CATEGORY_PRODUCT_IDS = {
   pizza: ['p1', 'p2', 'p3', 'p4'],
   burger: ['b1', 'b2', 'b3', 'b4'],
@@ -55,12 +58,11 @@ const DEMO_CATEGORIES = CATEGORIES.filter((cat) => CATEGORY_PRODUCT_IDS[cat.id])
 
 const noop = () => {};
 
-// Mirrors CustomerApp.jsx's real bottom nav bar (icon + label, active tab in
-// the accent color) so the mockup's chrome doesn't stop at the product grid
-// — the nav is as much "the real menu design" as the cards are. Rendered as
-// plain divs, not buttons: unlike the category tabs above (which genuinely
-// switch what's shown), nothing here has a real target in a static preview
-// — a clickable-looking dead button would be worse than an honest static row.
+// Mirrors CustomerApp's bottom nav. Plain divs, not buttons: the category
+// tiles above genuinely switch what is shown, but nothing here has a target in
+// a static preview, and a clickable-looking dead button is worse than an
+// honest static row. Four items = the waiter-service model, the default a new
+// restaurant starts on (lib/services/serviceModelService.js).
 const BOTTOM_NAV_ITEMS = [
   { key: 'menu', Icon: Home, labelKey: 'navMenu', active: true },
   { key: 'cart', Icon: ShoppingCart, labelKey: 'navCart' },
@@ -68,54 +70,85 @@ const BOTTOM_NAV_ITEMS = [
   { key: 'bill', Icon: CreditCard, labelKey: 'navBill' },
 ];
 
-// `showCategories`: the demo page's richer mode — a real category tab bar
-// (still static/illustrative, tabs just swap which curated products show;
-// no add-to-cart/detail-modal wiring, that's still out of scope for a
-// marketing snapshot) so /demo actually resembles a full, browsable menu
-// instead of a fixed 3-item strip. The compact default (home hero) is
-// unchanged for callers that don't pass it.
+// `showCategories`: the demo page's richer mode — the category strip becomes
+// interactive and swaps which curated products show. The home hero keeps its
+// fixed 4-item snapshot, but renders the same chrome, so both pages show one
+// consistent picture of the product.
 export function PhoneShowcase({ lang = 'az', className = '', showCategories = false }) {
   const [activeCategory, setActiveCategory] = useState(DEMO_CATEGORIES[0]?.id);
   const productIds = showCategories ? CATEGORY_PRODUCT_IDS[activeCategory] ?? [] : SAMPLE_PRODUCT_IDS;
   const products = PRODUCTS.filter((p) => productIds.includes(p.id));
+  // The home snapshot shows a cross-section of the whole menu, so "Bütün
+  // Menyu" is the honest active tile there; the demo tracks the real selection.
+  const activeCategoryRow = showCategories ? activeCategory : 'all';
+  const headingLabel = showCategories
+    ? getLocalizedCategoryName(DEMO_CATEGORIES.find((c) => c.id === activeCategory) || {}, lang)
+    : getLocalizedText('allMenu', lang);
 
   return (
     <div className={`relative mx-auto w-full max-w-[300px] ${className}`}>
       <div className="rounded-[2.5rem] border-4 border-[var(--mkt-line)] bg-[var(--mkt-text)] p-2.5 shadow-2xl shadow-black/15">
-        <div className="rounded-[2rem] overflow-hidden bg-[var(--mkt-ground)] kit-light" style={{ '--theme-primary': 'var(--mkt-brass)' }}>
-          {/* Screen background is --mkt-ground (site cream), not kit-light's
-              own --k-bg — the phone should read as "the same room as the
-              marketing site," not a slightly different off-white next to
-              it. Cards (--k-surface, white) and the bottom nav still use
-              kit-light's real tokens on top of this, unchanged — only the
-              base canvas layer is retinted. */}
-          <div className="h-6 flex items-center justify-center bg-[var(--mkt-ground)]">
-            {/* Sits on the phone's cream screen, not the dark bezel — a
-                light neutral, not --mkt-line (that's tuned for the page
-                background and would be nearly invisible here). */}
+        <div className="rounded-[2rem] overflow-hidden bg-[var(--k-bg)] kit-light" style={{ '--theme-primary': 'var(--mkt-brass)' }}>
+          {/* Notch strip sits on the header's surface colour, so the header
+              reads as one continuous bar the way it does on a real phone. */}
+          <div className="h-6 flex items-center justify-center bg-[var(--k-surface)]">
             <div className="w-16 h-1.5 rounded-full bg-slate-300" />
           </div>
-          {showCategories && (
-            <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-3 pt-1 pb-2">
+
+          {/* Header — CustomerApp's own: brand initial, restaurant name, and
+              the active-table line under it. Its absence was the single
+              biggest tell that this was not the real menu. */}
+          <div className="flex items-center gap-2.5 border-b border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--k-r-sm)] bg-[var(--k-accent)] text-[13px] font-semibold text-[var(--k-accent-fg)]">
+              M
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold leading-tight text-[var(--k-text)]">MenuFlow</p>
+              <p className="truncate text-[11px] leading-tight text-[var(--k-text-3)]">
+                {getLocalizedText('activeTable', lang)} · {getLocalizedText('tableFallbackName', lang)(1)}
+              </p>
+            </div>
+          </div>
+
+          <div className="px-3 pt-3 space-y-3">
+            {/* Search + veg filter, drawn as static shapes rather than a live
+                Input: this is a picture of the menu, not a second
+                implementation of it. */}
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--k-text-3)]" aria-hidden="true" />
+                <div className="h-9 w-full rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] pl-8 pr-3 flex items-center truncate text-[11px] text-[var(--k-text-3)]">
+                  {getLocalizedText('searchPlaceholder', lang)}
+                </div>
+              </div>
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] text-[var(--k-success)]">
+                <Leaf className="h-4 w-4" aria-hidden="true" />
+              </span>
+            </div>
+
+            {/* The real CategoryTile, not a look-alike — see this file's header. */}
+            <div className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-1 no-scrollbar">
+              <CategoryTile
+                active={activeCategoryRow === 'all'}
+                onClick={noop}
+                icon={<UtensilsCrossed className="h-5 w-5" aria-hidden="true" />}
+                label={getLocalizedText('allMenu', lang)}
+              />
               {DEMO_CATEGORIES.map((cat) => (
-                <button
+                <CategoryTile
                   key={cat.id}
-                  type="button"
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={cn(
-                    'shrink-0 rounded-full px-2.5 py-1.5 text-[11px] font-semibold whitespace-nowrap transition-colors',
-                    activeCategory === cat.id
-                      ? 'bg-[var(--k-accent)] text-[var(--k-accent-fg)]'
-                      : 'bg-[var(--k-surface-2)] text-[var(--k-text-2)]',
-                  )}
-                >
-                  <span aria-hidden="true" className="mr-1">{cat.icon}</span>
-                  {getLocalizedCategoryName(cat, lang)}
-                </button>
+                  active={activeCategoryRow === cat.id}
+                  onClick={showCategories ? () => setActiveCategory(cat.id) : noop}
+                  icon={<span aria-hidden="true" className="text-xl leading-none">{cat.icon}</span>}
+                  label={getLocalizedCategoryName(cat, lang)}
+                />
               ))}
             </div>
-          )}
-          <div className="max-h-[520px] overflow-hidden px-3 pb-4 grid grid-cols-2 gap-3">
+
+            <h2 className="text-[15px] font-bold tracking-[-0.01em] text-[var(--k-text)]">{headingLabel}</h2>
+          </div>
+
+          <div className="max-h-[420px] overflow-hidden px-3 pb-4 pt-3 grid grid-cols-2 gap-3">
             {products.map((product) => (
               <ProductCard
                 key={product.id}
@@ -126,6 +159,7 @@ export function PhoneShowcase({ lang = 'az', className = '', showCategories = fa
               />
             ))}
           </div>
+
           <div className="grid grid-cols-4 border-t border-[var(--k-border)] bg-[var(--k-surface)]">
             {BOTTOM_NAV_ITEMS.map(({ key, Icon, labelKey, active }) => (
               <div key={key} className={cn('flex flex-col items-center justify-center gap-1 py-2', active ? 'text-[var(--k-accent)]' : 'text-[var(--k-text-3)]')}>
