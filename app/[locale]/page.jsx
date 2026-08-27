@@ -35,7 +35,7 @@ import { supabaseServer } from '@/lib/supabase-server';
 // title/desc in marketing.js on purpose (STRUCTURED content — deliberately
 // out of the minimal CMS scope; see lib/services/siteContentService.js's
 // header for exactly which keys moved).
-const FEATURE_TEASER = ['featureQrMenu', 'featureOrders', 'featureAdmin', 'featureLocalization'];
+const FEATURE_TEASER = ['featureQrMenu', 'featureServiceModels', 'featureOrders', 'featureAdmin', 'featureLocalization'];
 
 const ECOSYSTEM_ROLES = [
   { icon: User, titleKey: 'ecosystemCustomerTitle', descKey: 'ecosystemCustomerDesc' },

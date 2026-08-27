@@ -27,6 +27,7 @@ import { SubscriptionsTab } from '@/components/superadmin/SubscriptionsTab';
 import { AnalyticsTab } from '@/components/superadmin/AnalyticsTab';
 import { UsersTab } from '@/components/superadmin/UsersTab';
 import { AnnouncementsTab } from '@/components/superadmin/AnnouncementsTab';
+import { ErrorsTab } from '@/components/superadmin/ErrorsTab';
 import { SitePagesTab } from '@/components/superadmin/SitePagesTab';
 import { SiteContactTab } from '@/components/superadmin/SiteContactTab';
 import { SiteFaqTab } from '@/components/superadmin/SiteFaqTab';
@@ -369,6 +370,10 @@ export function SuperAdminApp() {
                       )}
                       {activeTab === 'subscriptions' && <SubscriptionsTab metrics={metrics} />}
                       {activeTab === 'analytics' && <AnalyticsTab metrics={metrics} />}
+                      {/* Reads client_errors (0047). Loads its own data — it
+                          is the only tab whose content is unrelated to the
+                          restaurants/plans fetches this component runs. */}
+                      {activeTab === 'errors' && <ErrorsTab />}
                       {activeTab === 'users' && <UsersTab users={users} loading={usersLoading} />}
                       {activeTab === 'announcements' && (
                         <AnnouncementsTab

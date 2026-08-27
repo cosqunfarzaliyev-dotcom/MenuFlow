@@ -1,4 +1,5 @@
 import './globals.css'; // Global styles
+import { ErrorReporter } from '@/components/ErrorReporter';
 
 // NEXT_PUBLIC_SITE_URL is optional in local dev (falls back to
 // menuflow.az — a placeholder production domain); every generateMetadata()
@@ -22,7 +23,13 @@ export default function RootLayout({ children }) {
   // root, so nothing needs a body-level default anymore.
   return (
     <html lang="az" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        {/* Renders nothing; attaches the window-level error listeners that
+            report to client_errors (0047). Mounted at the ROOT so it covers
+            the marketing site and all four panels, not just one surface. */}
+        <ErrorReporter />
+        {children}
+      </body>
     </html>
   );
 }

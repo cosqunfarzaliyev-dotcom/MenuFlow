@@ -17,8 +17,11 @@ import { supabaseServer } from '@/lib/supabase-server';
 // grouping. Each course renders via MenuList (components/marketing/
 // MenuList.jsx) — the same numbered dot-leader listing the homepage teaser
 // uses, not an icon-card grid.
-const FRONT_OF_HOUSE = ['featureQrMenu', 'featureLocalization', 'featurePayments', 'featurePromotions'];
-const BACK_OF_HOUSE = ['featureOrders', 'featureAdmin', 'featureAnalytics'];
+const FRONT_OF_HOUSE = [
+  'featureQrMenu', 'featureServiceModels', 'featureLocalization',
+  'featureMenuTranslations', 'featurePayments', 'featureTheming', 'featurePromotions',
+];
+const BACK_OF_HOUSE = ['featureOrders', 'featurePush', 'featureAdmin', 'featurePos', 'featureAnalytics'];
 
 export async function generateMetadata({ params }) {
   const { locale } = await params;

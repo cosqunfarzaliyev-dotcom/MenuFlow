@@ -4,7 +4,7 @@ import React from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  LayoutDashboard, Building2, CreditCard, LineChart, Users, ShieldCheck,
+  LayoutDashboard, Building2, CreditCard, LineChart, Users, ShieldCheck, AlertTriangle,
   LogOut, ChevronLeft, ChevronRight, X, Package, FileText, Phone, HelpCircle, Megaphone,
 } from 'lucide-react';
 import { useSuperAdminTranslation } from '@/lib/i18n/dictionaries/superadmin';
@@ -21,6 +21,7 @@ const RESTAURANT_TABS = (t) => [
   { id: 'analytics', label: t('tabAnalytics'), icon: LineChart },
   { id: 'users', label: t('tabUsers'), icon: Users },
   { id: 'announcements', label: t('tabAnnouncements'), icon: Megaphone },
+  { id: 'errors', label: t('tabErrors'), icon: AlertTriangle },
 ];
 
 // `site-` prefixed ids — one flat, namespaced activeTab string rather than
