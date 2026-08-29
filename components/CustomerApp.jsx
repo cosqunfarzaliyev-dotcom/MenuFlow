@@ -726,6 +726,19 @@ export function CustomerApp() {
   // ilə eynidir, ona görə axtarış nəticələri ekranda görünənlə üst-üstə düşür.
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  // CATEGORIES already arrives ordered by sort_order (supabaseService's
+  // fetchCategories), but PRODUCTS is fetched ordered by name alone — so the
+  // "Bütün Menyu" view interleaved every category's items alphabetically
+  // instead of reading as one section per category. This map recovers the
+  // category's own display order to sort products by, without touching the
+  // fetch (which single-category views still rely on for plain A→Z order).
+  const categoryOrderIndex = useMemo(() => {
+    const map = new Map();
+    CATEGORIES.forEach((cat, index) => map.set(cat.id, index));
+    return map;
+  }, [CATEGORIES]);
+
   const filteredProducts = useMemo(() => {
     let list = selectedCategory === "all"
       ? pricedProducts
@@ -745,10 +758,48 @@ export function CustomerApp() {
       });
     }
 
+    // Only "Bütün Menyu" needs grouping — a single-category view is already
+    // homogeneous. Stable sort (Array.prototype.sort is stable) keeps each
+    // category's own products in their existing name order, just clustered
+    // together instead of scattered across the grid.
+    if (selectedCategory === "all") {
+      list = [...list].sort((a, b) => {
+        const orderA = categoryOrderIndex.get(a.category) ?? Number.MAX_SAFE_INTEGER;
+        const orderB = categoryOrderIndex.get(b.category) ?? Number.MAX_SAFE_INTEGER;
+        return orderA - orderB;
+      });
+    }
+
     return list;
-  }, [selectedCategory, pricedProducts, vegOnly, normalizedQuery, lang]);
+  }, [selectedCategory, pricedProducts, vegOnly, normalizedQuery, lang, categoryOrderIndex]);
 
   const isFiltering = Boolean(normalizedQuery) || vegOnly;
+
+  // "Bütün Menyu" groups filteredProducts (already category-sorted above)
+  // back into per-category buckets so the grid can carry a label above each
+  // cluster instead of reading as one undifferentiated block. Search/VEG
+  // results stay a flat list — those are a result set, not a browsable menu,
+  // same reasoning as the heading being hidden under isFiltering below.
+  const groupedProducts = useMemo(() => {
+    if (selectedCategory !== 'all' || isFiltering) return null;
+    const byCategory = new Map();
+    filteredProducts.forEach((product) => {
+      const key = categoryOrderIndex.has(product.category) ? product.category : '__uncategorized__';
+      if (!byCategory.has(key)) byCategory.set(key, []);
+      byCategory.get(key).push(product);
+    });
+    const groups = CATEGORIES
+      .filter((cat) => byCategory.has(cat.id))
+      .map((cat) => ({
+        id: cat.id,
+        label: getLocalizedCategoryName(cat, lang),
+        items: byCategory.get(cat.id),
+      }));
+    if (byCategory.has('__uncategorized__')) {
+      groups.push({ id: '__uncategorized__', label: null, items: byCategory.get('__uncategorized__') });
+    }
+    return groups;
+  }, [selectedCategory, isFiltering, filteredProducts, categoryOrderIndex, CATEGORIES, lang]);
 
   const cartTotalQty = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
@@ -1207,7 +1258,34 @@ export function CustomerApp() {
                   )}
             </h2>
           )}
-          {filteredProducts.length > 0 ? (
+          {filteredProducts.length > 0 && groupedProducts ? (
+            // Bütün Menyu: one labelled sub-section per category instead of
+            // a single flat grid, so the category the products already
+            // belong to (see the sort above) is legible, not just implied
+            // by adjacency.
+            <div className="space-y-6">
+              {groupedProducts.map((group) => (
+                <div key={group.id}>
+                  {group.label && (
+                    <h3 className="mb-3 text-[15px] font-semibold text-[var(--k-text-2)]">
+                      {group.label}
+                    </h3>
+                  )}
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+                    {group.items.map(product => (
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        onOpenDetail={setSelectedProduct}
+                        onAddToCart={handleAddToCart}
+                        lang={lang}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredProducts.length > 0 ? (
             <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
               {filteredProducts.map(product => (
                 <ProductCard
@@ -1297,7 +1375,15 @@ export function CustomerApp() {
                actually on screen, since only one tab-style highlight
                should ever be lit at a time. */
             active={!isCartOpen && !isBillModalOpen}
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            onClick={() => {
+              // Menyu must also double as "back" out of whichever sheet is
+              // open (Səbət/Hesab) — otherwise it never re-highlights and
+              // the customer has no way back to the menu but the sheet's
+              // own close button.
+              setIsCartOpen(false);
+              setIsBillModalOpen(false);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
           <BottomNavButton
             icon={<ShoppingCart className="h-[21px] w-[21px]" strokeWidth={2.2} />}

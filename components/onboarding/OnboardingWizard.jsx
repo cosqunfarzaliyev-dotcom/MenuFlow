@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import {
   Store, Image as ImageIcon, Globe, DollarSign, Phone, LayoutGrid,
   UtensilsCrossed, Palette, CheckCircle2, ChevronLeft, ChevronRight, PlusCircle,
@@ -231,6 +232,9 @@ export function OnboardingWizard({ restaurant, profile }) {
   if (completed) {
     return (
       <div className="w-full max-w-lg bg-[var(--k-surface)]/90 backdrop-blur p-6 sm:p-8 rounded-3xl border border-[var(--k-border)] text-center shadow-2xl">
+        <div className="h-16 px-5 rounded-2xl mx-auto flex items-center justify-center border mb-6 bg-blue-500/10 border-blue-500/25">
+          <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={130} height={20} className="h-5 w-auto object-contain" unoptimized />
+        </div>
         <div className="w-16 h-16 mx-auto bg-emerald-500/15 rounded-2xl flex items-center justify-center border border-emerald-500/30 mb-6">
           <CheckCircle2 className="w-8 h-8 text-emerald-400" />
         </div>
@@ -257,6 +261,9 @@ export function OnboardingWizard({ restaurant, profile }) {
 
   return (
     <div className="w-full max-w-2xl bg-[var(--k-surface)]/90 backdrop-blur p-6 sm:p-8 rounded-3xl border border-[var(--k-border)] shadow-2xl">
+      <div className="flex justify-center mb-5">
+        <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={100} height={15} className="h-4 w-auto object-contain" unoptimized />
+      </div>
       <div className="flex items-center justify-between flex-wrap gap-y-3 mb-6">
         <div className="flex items-center gap-2">
           {STEPS.map((step, i) => (

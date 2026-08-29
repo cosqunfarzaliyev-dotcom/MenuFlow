@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { KeyRound, Loader2, CheckCircle2 } from 'lucide-react';
 import { LanguageToggle } from '@/components/kit';
@@ -71,6 +72,9 @@ export default function ResetPasswordPage() {
     return (
       <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
         <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
+          <div className="h-16 px-5 rounded-2xl mx-auto flex items-center justify-center border mb-6 bg-blue-500/10 border-blue-500/25">
+            <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={130} height={20} className="h-5 w-auto object-contain" unoptimized />
+          </div>
           <h2 className="text-xl font-bold text-white mb-2">{t('invalidLinkTitle')}</h2>
           <p className="text-slate-400 text-sm mb-6">
             {t('invalidLinkDescription')}
@@ -87,6 +91,9 @@ export default function ResetPasswordPage() {
     return (
       <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center p-4">
         <div className="max-w-sm text-center bg-slate-950/60 p-8 rounded-3xl border border-slate-800">
+          <div className="h-16 px-5 rounded-2xl mx-auto flex items-center justify-center border mb-6 bg-blue-500/10 border-blue-500/25">
+            <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={130} height={20} className="h-5 w-auto object-contain" unoptimized />
+          </div>
           <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-white mb-2">{t('passwordUpdatedTitle')}</h2>
           <p className="text-slate-400 text-sm">{t('redirectingToLogin')}</p>
@@ -101,8 +108,11 @@ export default function ResetPasswordPage() {
         <div className="flex justify-center mb-4">
           <LanguageToggle />
         </div>
-        <div className="w-16 h-16 bg-slate-900 rounded-2xl mx-auto flex items-center justify-center border border-slate-800 mb-6">
-          <KeyRound className="w-8 h-8 text-blue-500" />
+        <div className="h-16 px-5 rounded-2xl mx-auto flex items-center justify-center border mb-6 bg-blue-500/10 border-blue-500/25">
+          <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={130} height={20} className="h-5 w-auto object-contain" unoptimized />
+        </div>
+        <div className="flex justify-center mb-2">
+          <KeyRound className="w-5 h-5 text-blue-500" aria-hidden="true" />
         </div>
         <h2 className="text-2xl font-bold text-white mb-2">{t('newPasswordTitle')}</h2>
         <p className="text-slate-400 text-sm mb-6">{t('newPasswordSubtitle')}</p>

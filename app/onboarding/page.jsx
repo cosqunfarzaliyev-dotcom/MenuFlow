@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { Store, Loader2, Clock, LogOut } from 'lucide-react';
 import { LanguageToggle } from '@/components/kit';
@@ -100,6 +101,9 @@ export default function OnboardingPage() {
       <div className="w-full max-w-md bg-slate-950/60 backdrop-blur p-8 rounded-3xl border border-slate-800 text-center">
         <div className="flex justify-center mb-4">
           <LanguageToggle />
+        </div>
+        <div className="h-16 px-5 rounded-2xl mx-auto flex items-center justify-center border mb-6 bg-blue-500/10 border-blue-500/25">
+          <Image src="/brand/menuflow-logo-dark-bg-h48.png" alt="MenuFlow" width={130} height={20} className="h-5 w-auto object-contain" unoptimized />
         </div>
         <div className="w-16 h-16 mx-auto bg-amber-500/15 rounded-2xl flex items-center justify-center border border-amber-500/30 mb-6">
           <Clock className="w-8 h-8 text-amber-400" />
