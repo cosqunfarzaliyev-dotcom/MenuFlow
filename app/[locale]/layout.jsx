@@ -50,6 +50,23 @@ export async function generateMetadata({ params }) {
   return {
     title: { default: t('metaSiteTitle'), template: `%s · ${t('metaSiteName')}` },
     description: t('metaSiteDescription'),
+    // Overrides the root layout's default noindex (app/layout.jsx) — this is
+    // the one segment actually meant to rank.
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        // Without these three Google truncates the snippet, refuses a large
+        // thumbnail, and skips video previews entirely — they are opt-IN,
+        // and their absence (not a "noindex") is why a correctly-indexed
+        // page can still render as a bare blue link with no image.
+        'max-snippet': -1,
+        'max-image-preview': 'large',
+        'max-video-preview': -1,
+      },
+    },
     alternates: {
       canonical: `/${locale}`,
       languages: localeAlternates(),
