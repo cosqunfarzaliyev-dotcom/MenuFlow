@@ -4,6 +4,7 @@ import { fetchSiteContent, buildSiteContentMap } from '@/lib/services/siteConten
 import { supabaseServer } from '@/lib/supabase-server';
 import { MarketingHeader } from '@/components/marketing/MarketingHeader';
 import { MarketingFooter } from '@/components/marketing/MarketingFooter';
+import { HtmlLangSync } from '@/components/marketing/HtmlLangSync';
 
 // ============================================================================
 // Public marketing site — locale root.
@@ -140,6 +141,7 @@ export default async function LocaleLayout({ children, params }) {
 
   return (
     <div className="mkt min-h-screen">
+      <HtmlLangSync locale={locale} />
       <script
         type="application/ld+json"
         // Values are our own i18n strings and SuperAdmin-authored site_content,
