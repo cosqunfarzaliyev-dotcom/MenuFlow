@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { supabase, supabaseReady } from '@/lib/supabase';
@@ -9,9 +9,10 @@ import { KeyRound, Loader2, CheckCircle2 } from 'lucide-react';
 import { LanguageToggle } from '@/components/kit';
 import { useAuthTranslation } from '@/lib/i18n/dictionaries/auth';
 
-export default function ResetPasswordPage() {
+function ResetPasswordPageContent() {
   const { t } = useAuthTranslation();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [ready, setReady] = useState(false);
   const [hasRecoverySession, setHasRecoverySession] = useState(false);
   const [password, setPassword] = useState('');
@@ -22,6 +23,25 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     if (!supabaseReady) { setReady(true); return; }
+
+    // lib/supabase.js's createBrowserClient (@supabase/ssr) hardcodes
+    // flowType: 'pkce', so the emailed recovery link — after Supabase's own
+    // server verifies it — lands here as `/reset-password?code=...`, NOT as
+    // the old implicit-flow `#access_token=...` hash that would fire
+    // PASSWORD_RECOVERY on its own. Without this exchange no session is ever
+    // established: getSession() stays null, PASSWORD_RECOVERY never fires,
+    // and every real recovery link fell through to "Link etibarsızdır" even
+    // though it was perfectly valid — this was the actual bug, not an
+    // expired/malformed link.
+    const code = searchParams.get('code');
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ data, error: exchangeError }) => {
+        if (!exchangeError && data?.session) setHasRecoverySession(true);
+        setReady(true);
+      });
+      return;
+    }
+
     // Clicking the reset-password email link signs the user into a
     // short-lived "recovery" session and fires PASSWORD_RECOVERY here.
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
@@ -36,7 +56,7 @@ export default function ResetPasswordPage() {
       setReady(true);
     });
     return () => listener?.subscription?.unsubscribe();
-  }, []);
+  }, [searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -134,5 +154,17 @@ export default function ResetPasswordPage() {
         </button>
       </form>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={(
+      <div className="kit-dark min-h-screen bg-[var(--k-bg)] flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
+      </div>
+    )}>
+      <ResetPasswordPageContent />
+    </Suspense>
   );
 }
