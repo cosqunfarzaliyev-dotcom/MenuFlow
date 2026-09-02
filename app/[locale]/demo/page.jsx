@@ -5,7 +5,7 @@ import { buttonVariants } from '@/components/mkt/variants';
 import { Badge } from '@/components/mkt';
 import { PhoneShowcase } from '@/components/marketing/PhoneShowcase';
 import { Reveal } from '@/components/marketing/Reveal';
-import { getMarketingDictionary, LOCALES } from '@/lib/i18n/server';
+import { getMarketingDictionary, localeAlternates } from '@/lib/i18n/server';
 import { fetchSiteContent, buildSiteContentMap } from '@/lib/services/siteContentService';
 import { supabaseServer } from '@/lib/supabase-server';
 
@@ -18,7 +18,7 @@ export async function generateMetadata({ params }) {
     description: content['demo.hero.subtitle'],
     alternates: {
       canonical: `/${locale}/demo`,
-      languages: Object.fromEntries(LOCALES.map((l) => [l, `/${l}/demo`])),
+      languages: localeAlternates('demo'),
     },
   };
 }

@@ -12,6 +12,28 @@ export const metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://menuflow.az'),
   title: 'MenuFlow — Rəqəmsal QR Menyu və İdarəetmə Sistemi',
   description: 'MenuFlow — Rəqəmsal QR Menyu və İdarəetmə Sistemi',
+  applicationName: 'MenuFlow',
+  // Only ever shown for a page that doesn't override it — every indexable
+  // page lives under app/[locale]/ and supplies its own localized copy.
+  // These are the crawl-level defaults that segment then narrows.
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      // Without these three Google truncates the snippet, refuses a large
+      // thumbnail, and skips video previews entirely — they are opt-IN, and
+      // their absence (not a "noindex") is why a correctly-indexed page can
+      // still render as a bare blue link with no image.
+      'max-snippet': -1,
+      'max-image-preview': 'large',
+      'max-video-preview': -1,
+    },
+  },
+  // Turns off iOS Safari's auto-linking of anything that merely LOOKS like a
+  // phone number (order ids, prices, table numbers) into a blue tel: link.
+  formatDetection: { telephone: false, address: false, email: false },
 };
 
 export default function RootLayout({ children }) {

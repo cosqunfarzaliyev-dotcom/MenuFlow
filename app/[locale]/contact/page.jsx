@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/mkt/variants';
 import { Card, CardBody, Badge } from '@/components/mkt';
 import { Reveal } from '@/components/marketing/Reveal';
-import { getMarketingDictionary, LOCALES } from '@/lib/i18n/server';
+import { getMarketingDictionary, localeAlternates } from '@/lib/i18n/server';
 import { fetchSiteContent, buildSiteContentMap } from '@/lib/services/siteContentService';
 import { supabaseServer } from '@/lib/supabase-server';
 
@@ -26,7 +26,7 @@ export async function generateMetadata({ params }) {
     description: content['contact.hero.subtitle'],
     alternates: {
       canonical: `/${locale}/contact`,
-      languages: Object.fromEntries(LOCALES.map((l) => [l, `/${l}/contact`])),
+      languages: localeAlternates('contact'),
     },
   };
 }

@@ -1,7 +1,7 @@
 import { fetchPlans, fetchPlanFeatures } from '@/lib/services/planService';
 import { FEATURE_REGISTRY, FEATURE_KEYS } from '@/lib/services/entitlementService';
 import { supabaseServer } from '@/lib/supabase-server';
-import { getPricingDictionary, LOCALES } from '@/lib/i18n/server';
+import { getPricingDictionary, localeAlternates } from '@/lib/i18n/server';
 import { fetchSiteContent, buildSiteContentMap } from '@/lib/services/siteContentService';
 import { PricingToggle } from '@/components/marketing/PricingToggle';
 
@@ -47,7 +47,7 @@ export async function generateMetadata({ params }) {
     description: content['pricing.hero.subtitle'],
     alternates: {
       canonical: `/${locale}/pricing`,
-      languages: Object.fromEntries(LOCALES.map((l) => [l, `/${l}/pricing`])),
+      languages: localeAlternates('pricing'),
     },
   };
 }

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { Badge } from '@/components/mkt';
-import { getMarketingDictionary, LOCALES } from '@/lib/i18n/server';
+import { getMarketingDictionary, localeAlternates } from '@/lib/i18n/server';
 import { fetchSiteContent, fetchFaqItems, buildSiteContentMap, resolveFaqItem } from '@/lib/services/siteContentService';
 import { supabaseServer } from '@/lib/supabase-server';
 import { FaqAccordionList } from '@/components/marketing/FaqAccordionList';
@@ -20,7 +20,7 @@ export async function generateMetadata({ params }) {
     description: content['faq.hero.subtitle'],
     alternates: {
       canonical: `/${locale}/faq`,
-      languages: Object.fromEntries(LOCALES.map((l) => [l, `/${l}/faq`])),
+      languages: localeAlternates('faq'),
     },
   };
 }

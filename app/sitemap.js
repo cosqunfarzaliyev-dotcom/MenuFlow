@@ -1,4 +1,4 @@
-import { LOCALES, DEFAULT_LOCALE } from '@/lib/i18n/server';
+import { LOCALES, DEFAULT_LOCALE, localeAlternates } from '@/lib/i18n/server';
 
 // One entry per (page, locale) — 6 pages x 3 locales = 18 URLs, each with a
 // full `alternates.languages` map so a crawler landing on any one locale's
@@ -17,9 +17,12 @@ export default function sitemap() {
     SLUGS.map((slug) => ({
       url: `${SITE_URL}${pathFor(locale, slug)}`,
       lastModified,
-      alternates: {
-        languages: Object.fromEntries(LOCALES.map((l) => [l, `${SITE_URL}${pathFor(l, slug)}`])),
-      },
+      // Same helper the pages' own hreflang tags use (lib/i18n/server.js), so
+      // the sitemap's cluster and the <link rel="alternate"> cluster can never
+      // disagree — Google cross-checks the two and drops the whole group when
+      // they do. Absolute URLs here: a sitemap has no metadataBase to resolve
+      // root-relative paths against.
+      alternates: { languages: localeAlternates(slug, SITE_URL) },
       // /az is DEFAULT_LOCALE's own copy — pricing.js/marketing.js's `az`
       // block is the source every other locale falls back through
       // (lib/i18n/resolve.js), so it's also the priority=1 entry per slug.
