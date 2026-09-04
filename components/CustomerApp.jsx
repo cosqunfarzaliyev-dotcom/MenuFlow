@@ -157,46 +157,28 @@ export function CustomerApp() {
   const cartStorageKey = restaurant?.slug && tableId ? `mf-cart:${restaurant.slug}:${tableId}` : null;
   const cartRestoredKeyRef = useRef(null);
 
-  // The expiry LATCH. Separate from the `mf-hidden-at:` stamp below, and the
-  // difference is the whole point: that stamp records "the tab went away at
-  // T" and is consumed the moment it is read, so once the session expired
-  // nothing was left behind and a plain refresh started a brand new session.
-  // This key records "this session is over" and is cleared by exactly one
-  // thing — a fresh navigation, i.e. scanning the QR again.
+  // The session lock. Persisted in localStorage (not sessionStorage) so it
+  // survives an actual browser close — sessionStorage's per-tab lifetime was
+  // exactly what let "close the browser fully, reopen it" silently drop the
+  // lock before. Keyed off the ROUTE params rather than restaurant.slug (which
+  // the cart key uses) purely for consistency with the rest of this file; it
+  // no longer needs to be readable pre-fetch (see the loadAppData comment
+  // below for why the check itself moved there).
   //
-  // Keyed off the ROUTE params rather than restaurant.slug (which the cart key
-  // uses) so it is readable on the very first render, before the restaurant
-  // fetch resolves. The lock has to be in place before the menu can paint,
-  // otherwise a reload flashes the full menu for a moment first.
-  const expiredKey = params?.restaurant && tableId ? `mf-expired:${params.restaurant}:${tableId}` : null;
-
-  // Re-applies the latch on every load of this page, and is the ONLY thing
-  // that clears it. Runs before the restaurant/menu fetches resolve, so an
-  // expired session never shows the menu even for a frame.
-  //
-  //   'navigate'      a fresh visit — the QR scan (or the URL typed/opened
-  //                   anew). This is the customer's way back in, so the latch
-  //                   is released here and only here.
-  //   'reload'        F5 / pull-to-refresh. Stays locked. This is the exact
-  //                   hole this effect closes: before it, refreshing after an
-  //                   expiry handed the customer a working menu again.
-  //   'back_forward'  bfcache restore / history nav. Stays locked.
-  //
-  // sessionStorage is per-tab, so a QR scan that opens a NEW tab starts clean
-  // regardless; this covers the scan that reuses the current one.
-  useEffect(() => {
-    if (!expiredKey) return;
-    const applyPersistedExpiry = () => setSessionExpired(true);
-    const isFreshVisit =
-      typeof performance === 'undefined' ||
-      performance.getEntriesByType('navigation')[0]?.type === 'navigate';
-
-    if (isFreshVisit) {
-      window.sessionStorage.removeItem(expiredKey);
-      return;
-    }
-    if (window.sessionStorage.getItem(expiredKey)) applyPersistedExpiry();
-  }, [expiredKey]);
+  // Stores JSON `{ generation }`, compared against the table's LIVE
+  // `session_generation` (restaurant_tables, 0051_table_session_generation.sql)
+  // — a counter that ONLY advances when staff settle that table's bill
+  // (settle_table_payment(..., p_paid => true)). That is the one truthful
+  // "a new customer's session began" signal available: restaurant_tables
+  // .qr_token (0008) is a fixed, deterministic value generated once per table
+  // and deliberately never rotated (the printed sticker is permanent), so a
+  // real QR scan and simply reopening the same saved link are, byte for byte,
+  // the same HTTP request — nothing about the request, the tab, storage
+  // presence, navigation type, or browser lifecycle can tell them apart.
+  // Comparing against a real server-side counter sidesteps that entirely:
+  // the lock only ever releases because staff performed a real, physical
+  // action (clearing the table), never because of anything the browser did.
+  const tableLockKey = params?.restaurant && tableId ? `mf-table-lock:${params.restaurant}:${tableId}` : null;
 
   useEffect(() => {
     const loadAppData = async () => {
@@ -234,9 +216,40 @@ export function CustomerApp() {
         // would silently return [] for this anon session (orders RLS has no
         // anon SELECT policy at all). They're loaded once `resolvedTable` is
         // known, below, via the QR-token-gated loadTableOrders().
-        await Promise.all([
+        const [, , loadedTables] = await Promise.all([
           loadMenuData(), loadAlerts(), loadTables(), loadBanners(), loadDiscounts(), loadPlans(),
         ]);
+
+        // Session-lock check — see tableLockKey's own comment for the full
+        // reasoning. This has to run HERE, once `tables` has actually come
+        // back, rather than in a synchronous mount-time effect the way the
+        // old sessionStorage-based latch did: the generation to compare
+        // against only exists on the server, so there is nothing to read
+        // before this fetch resolves. `loading` still gates the entire
+        // render below (menu vs. spinner vs. locked screen), and this runs
+        // — and calls setSessionExpired — before `finally` flips it to
+        // false, so there is no frame where the full menu can flash first.
+        if (slug && tableNumber) {
+          const lockKey = `mf-table-lock:${slug}:${tableNumber}`;
+          const tableRow = (loadedTables || []).find(
+            (t) => t.table_number?.toString() === tableNumber?.toString() || t.id === tableNumber,
+          );
+          const currentGeneration = tableRow?.session_generation;
+          let persistedLock = null;
+          try {
+            persistedLock = JSON.parse(window.localStorage.getItem(lockKey) || 'null');
+          } catch {
+            persistedLock = null;
+          }
+          if (persistedLock && currentGeneration != null && persistedLock.generation === currentGeneration) {
+            setSessionExpired(true);
+          } else if (persistedLock) {
+            // Stale: the table's generation has moved on since this lock was
+            // written (staff settled the bill) — that always means a brand
+            // new session, so drop the old lock instead of re-applying it.
+            window.localStorage.removeItem(lockKey);
+          }
+        }
       } catch (err) {
         console.error('CustomerApp load error', err);
         setLoadError(err?.message || String(err));
@@ -569,7 +582,18 @@ export function CustomerApp() {
     hasActiveOrderRef.current = activeOrders.length > 0;
   }, [activeOrders]);
 
-  // Auto-clear on a backgrounded/closed tab. sessionStorage alone doesn't
+  // The table's session_generation as of this page load (0051), kept in a
+  // ref so clearBackgroundedState below — defined once per effect run, fired
+  // from a timeout/event listener — can read the current value without
+  // needing to become an effect dependency. Written alongside a lock so a
+  // later load can tell whether staff have since settled this table (see
+  // tableLockKey's comment for the full reasoning).
+  const currentGenerationRef = useRef(null);
+  useEffect(() => {
+    currentGenerationRef.current = resolvedTable?.session_generation ?? null;
+  }, [resolvedTable?.session_generation]);
+
+  // Auto-clear on a backgrounded/closed tab. localStorage alone doesn't
   // solve "the menu shouldn't stay open forever" on mobile — a locked
   // screen or a backgrounded browser tab routinely stays alive for hours,
   // so without this the cart (and whatever modal/search state was on
@@ -585,15 +609,16 @@ export function CustomerApp() {
   // The `setTimeout` below only fires while this page's JS is still
   // running — which an actually-*closed* tab, or a backgrounded one the OS
   // kills for memory (routine on mobile, often well under 30s), never is.
-  // That silently defeated the whole feature: sessionStorage still holds
-  // the old cart (it's only cleared as a side effect of setCartItems([])
-  // running, via the persist effect below), so reopening the menu just
-  // restored it — indistinguishable from the clear never having happened.
-  // `hiddenAtKey` fixes that with a synchronous sessionStorage write (not a
-  // pending timer) the instant the tab goes hidden, checked against wall
-  // time the next moment JS *is* running again — on remount (a real close
-  // + reopen) or on the `visible` transition — so elapsed time is measured
-  // correctly even when nothing was alive to count it in the background.
+  // That would silently defeat the whole feature if the elapsed-hidden-time
+  // stamp lived only in memory: reopening the menu would show no sign the
+  // clear should have already happened. `hiddenAtKey` fixes that with a
+  // synchronous localStorage write (not a pending timer) the instant the tab
+  // goes hidden, checked against wall time the next moment JS *is* running
+  // again — on remount (a real close + reopen) or on the `visible`
+  // transition — so elapsed time is measured correctly even when nothing was
+  // alive to count it in the background. localStorage rather than
+  // sessionStorage specifically so this still resolves correctly after an
+  // actual browser close, not just a same-tab backgrounding.
   const BACKGROUND_CLEAR_DELAY_MS = 30000;
   const backgroundClearTimeoutRef = useRef(null);
   const hiddenAtKey = cartStorageKey ? `mf-hidden-at:${cartStorageKey}` : null;
@@ -615,12 +640,17 @@ export function CustomerApp() {
       // back to a full menu that merely looked "reset", which is the gap this
       // was reported for.
       setSessionExpired(true);
-      // ...and LATCH it, so the decision outlives this page. Without the
-      // write the expiry lived only in React state: reloading dropped it and
-      // the customer was handed a working menu again without ever rescanning
-      // the QR. Cleared only by a fresh navigation — see the effect near the
-      // top of this component.
-      if (expiredKey) window.sessionStorage.setItem(expiredKey, String(Date.now()));
+      // ...and LATCH it, so the decision outlives this page — anchored to
+      // the table's CURRENT generation, so a later load can tell whether
+      // staff have since settled this table (a new generation always means
+      // a new session, regardless of what any browser did in between). No
+      // generation known yet (resolvedTable hasn't resolved) means nothing
+      // durable to anchor the lock to, so it's skipped rather than written
+      // unattributed — the in-memory setSessionExpired(true) above still
+      // covers the rest of this page's own lifetime either way.
+      if (tableLockKey && currentGenerationRef.current != null) {
+        window.localStorage.setItem(tableLockKey, JSON.stringify({ generation: currentGenerationRef.current }));
+      }
     };
 
     // A stamp left over from a previous life of this tab (real close +
@@ -628,39 +658,24 @@ export function CustomerApp() {
     // soon as this effect can actually run, instead of trusting a timer
     // that never got the chance to.
     //
-    // Two guards on this path that the `visible` transition below does NOT
-    // need, because both are about a FRESH MOUNT specifically:
-    //
-    // 1. `ordersLoaded` — on a fresh mount `orders` is still the store's
-    //    initial [], so hasActiveOrderRef would read false for a customer who
-    //    genuinely has a live order. That only cost a wiped cart before; now
-    //    it would lock them out of their own order behind the expiry screen.
-    //    The stamp sits in sessionStorage, so deferring the read is free.
-    //
-    // 2. `wasFreshNavigation` — rescanning the QR is the ONLY way out of the
-    //    expiry screen (it has no button, by product decision), so a scan must
-    //    never land straight back on it. The latch effect at the top of this
-    //    component releases `expiredKey` on a fresh visit; this does the same
-    //    for the hidden-at stamp, which it cannot reach (different key, only
-    //    computable once the restaurant has loaded). Both guards are needed —
-    //    a leftover stamp would re-expire the very session the scan started.
-    //    'reload'/'back_forward' (bfcache restore, an OS-killed tab coming
-    //    back) still honour the stamp — those are resumptions, not a new visit.
-    const wasFreshNavigation =
-      typeof performance !== 'undefined' &&
-      performance.getEntriesByType('navigation')[0]?.type === 'navigate';
-
+    // `ordersLoaded` guards this specifically because the `visible`
+    // transition below does not need it: on a fresh mount `orders` is still
+    // the store's initial [], so hasActiveOrderRef would read false for a
+    // customer who genuinely has a live order. That only cost a wiped cart
+    // before; now it would lock them out of their own order behind the
+    // expiry screen. The stamp sits in localStorage, so deferring the read
+    // is free.
     if (ordersLoaded) {
-      const staleHiddenAt = Number(window.sessionStorage.getItem(hiddenAtKey));
-      window.sessionStorage.removeItem(hiddenAtKey);
-      if (!wasFreshNavigation && staleHiddenAt && Date.now() - staleHiddenAt >= BACKGROUND_CLEAR_DELAY_MS) {
+      const staleHiddenAt = Number(window.localStorage.getItem(hiddenAtKey));
+      window.localStorage.removeItem(hiddenAtKey);
+      if (staleHiddenAt && Date.now() - staleHiddenAt >= BACKGROUND_CLEAR_DELAY_MS) {
         clearBackgroundedState();
       }
     }
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        window.sessionStorage.setItem(hiddenAtKey, String(Date.now()));
+        window.localStorage.setItem(hiddenAtKey, String(Date.now()));
         backgroundClearTimeoutRef.current = setTimeout(clearBackgroundedState, BACKGROUND_CLEAR_DELAY_MS);
         return;
       }
@@ -669,8 +684,8 @@ export function CustomerApp() {
         clearTimeout(backgroundClearTimeoutRef.current);
         backgroundClearTimeoutRef.current = null;
       }
-      const hiddenAt = Number(window.sessionStorage.getItem(hiddenAtKey));
-      window.sessionStorage.removeItem(hiddenAtKey);
+      const hiddenAt = Number(window.localStorage.getItem(hiddenAtKey));
+      window.localStorage.removeItem(hiddenAtKey);
       if (hiddenAt && Date.now() - hiddenAt >= BACKGROUND_CLEAR_DELAY_MS) {
         clearBackgroundedState();
       }
@@ -683,7 +698,7 @@ export function CustomerApp() {
         clearTimeout(backgroundClearTimeoutRef.current);
       }
     };
-  }, [hiddenAtKey, ordersLoaded, expiredKey]);
+  }, [hiddenAtKey, ordersLoaded, tableLockKey]);
 
   const handleRequestBill = async (methodKey) => {
     if (billRequesting) return;
