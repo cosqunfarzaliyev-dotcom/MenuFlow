@@ -31,8 +31,7 @@ import { PricingToggle } from '@/components/marketing/PricingToggle';
 // (That is exactly what happened when POS_INTEGRATION/PUSH_NOTIFICATIONS
 // were added to entitlementService.js without updating this map.)
 const FEATURE_LABEL_KEYS = {
-  apple_pay: 'featureApplePayLabel',
-  google_pay: 'featureGooglePayLabel',
+  wallet_pay: 'featureWalletPayLabel',
   banners: 'featureBannersLabel',
   pos_integration: 'featurePosIntegrationLabel',
   push_notifications: 'featurePushNotificationsLabel',

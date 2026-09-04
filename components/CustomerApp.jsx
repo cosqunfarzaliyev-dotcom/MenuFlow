@@ -1583,17 +1583,27 @@ export function CustomerApp() {
                     intent. */}
 
                 {/* Real charge, not an intent — see handleEpointPay's own
-                    comment. Gated on epoint_payment_enabled from
-                    get_public_restaurant() (0048), true only once the
-                    restaurant's admin has connected AND enabled the gateway in
-                    AdminApp → Integrations. The gateway itself (Epoint) is
+                    comment. Gated on TWO things now, both required:
+                    epoint_payment_enabled from get_public_restaurant() (0048)
+                    — the restaurant's admin connected AND enabled the gateway
+                    in AdminApp → Integrations — AND FEATURES.WALLET_PAY
+                    (single combined entitlement since 0050_wallet_pay_
+                    combined_feature.sql; was two separate keys before that,
+                    collapsed once it was clear the customer only ever sees
+                    one device-labelled button, never two). This entitlement
+                    check was re-added after a real bug: the "clean up old
+                    Apple/Google Pay code" pass removed every consumer of it,
+                    which made SuperAdmin's toggle silently do nothing — while
+                    /pricing still sells it as a Pro-plan feature. This is NOT
+                    the original Epoint design (which was deliberately plan-
+                    gate-free); it's a deliberate partial reversal to keep
+                    that SuperAdmin toggle and the pricing page's claim
+                    meaningful. The gateway itself (Epoint) is still
                     deliberately never named here — this button says "Apple
                     Pay" or "Google Pay" depending on the device
-                    (detectWalletBrand(), paymentService.js), never a combined
-                    label, and never the processor's own name. The old fake
-                    Google/Apple Pay pair above is hidden whenever this one
-                    shows (see that block's own comment) — never both at once. */}
-                {restaurant?.epoint_payment_enabled && (
+                    (detectWalletBrand(), paymentService.js), never the
+                    processor's own name. */}
+                {restaurant?.epoint_payment_enabled && hasFeature(restaurant, FEATURES.WALLET_PAY) && (
                   <div className="mt-2.5">
                     <Button
                       size="lg"

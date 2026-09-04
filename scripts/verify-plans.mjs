@@ -39,23 +39,21 @@ const restore = () => {
 //    is the "behavior-neutral swap" the 0021 migration's seed data promises.
 {
   const rows = [
-    { plan: { key: 'basic' }, feature_key: FEATURES.APPLE_PAY, enabled: false },
-    { plan: { key: 'basic' }, feature_key: FEATURES.GOOGLE_PAY, enabled: false },
+    { plan: { key: 'basic' }, feature_key: FEATURES.WALLET_PAY, enabled: false },
     { plan: { key: 'basic' }, feature_key: FEATURES.BANNERS, enabled: false },
-    { plan: { key: 'pro' }, feature_key: FEATURES.APPLE_PAY, enabled: true },
-    { plan: { key: 'pro' }, feature_key: FEATURES.GOOGLE_PAY, enabled: true },
+    { plan: { key: 'pro' }, feature_key: FEATURES.WALLET_PAY, enabled: true },
     { plan: { key: 'pro' }, feature_key: FEATURES.BANNERS, enabled: true },
   ];
   const before = {
     basicBanners: hasFeature({ plan: 'basic' }, FEATURES.BANNERS),
-    proApplePay: hasFeature({ plan: 'pro' }, FEATURES.APPLE_PAY),
+    proWalletPay: hasFeature({ plan: 'pro' }, FEATURES.WALLET_PAY),
   };
   hydratePlanFeatureDefaults(rows);
   const after = {
     basicBanners: hasFeature({ plan: 'basic' }, FEATURES.BANNERS),
-    proApplePay: hasFeature({ plan: 'pro' }, FEATURES.APPLE_PAY),
+    proWalletPay: hasFeature({ plan: 'pro' }, FEATURES.WALLET_PAY),
   };
-  if (before.basicBanners !== after.basicBanners || before.proApplePay !== after.proApplePay) {
+  if (before.basicBanners !== after.basicBanners || before.proWalletPay !== after.proWalletPay) {
     fail('hydrating with DB rows matching the hardcoded defaults must not change any hasFeature() answer');
   }
   restore();
@@ -76,13 +74,15 @@ const restore = () => {
 
 // 3. Merge, not replace — hydrating one feature for a plan must leave that
 //    plan's OTHER features exactly as they were (a partial DB fetch must
-//    never blank out keys it didn't mention).
+//    never blank out keys it didn't mention). Two independent witness keys
+//    (WALLET_PAY, POS_INTEGRATION — both true on pro) so this can't pass by
+//    accident if only one of them were left alone.
 {
   hydratePlanFeatureDefaults([{ plan: { key: 'pro' }, feature_key: FEATURES.BANNERS, enabled: false }]);
   if (hasFeature({ plan: 'pro' }, FEATURES.BANNERS) !== false) {
     fail('the hydrated feature must change');
   }
-  if (hasFeature({ plan: 'pro' }, FEATURES.APPLE_PAY) !== true || hasFeature({ plan: 'pro' }, FEATURES.GOOGLE_PAY) !== true) {
+  if (hasFeature({ plan: 'pro' }, FEATURES.WALLET_PAY) !== true || hasFeature({ plan: 'pro' }, FEATURES.POS_INTEGRATION) !== true) {
     fail('hydrating one feature for a plan must not blank out that plan\'s other features (merge, not replace)');
   }
   restore();
@@ -108,12 +108,12 @@ const restore = () => {
       { plan: null, feature_key: FEATURES.BANNERS, enabled: true },
       { plan: {}, feature_key: FEATURES.BANNERS, enabled: true },
       { plan: { key: 'basic' }, feature_key: null, enabled: true },
-      { plan: { key: 'basic' }, feature_key: FEATURES.GOOGLE_PAY, enabled: true },
+      { plan: { key: 'basic' }, feature_key: FEATURES.WALLET_PAY, enabled: true },
     ]);
   } catch (err) {
     fail(`hydratePlanFeatureDefaults must not throw on malformed rows: ${err.message}`);
   }
-  if (hasFeature({ plan: 'basic' }, FEATURES.GOOGLE_PAY) !== true) {
+  if (hasFeature({ plan: 'basic' }, FEATURES.WALLET_PAY) !== true) {
     fail('a valid row in the same batch as malformed ones must still be applied');
   }
   restore();

@@ -8,6 +8,7 @@ import { useAppStore } from '@/lib/store';
 import { fetchTableByNumber } from '@/lib/services/supabaseService';
 import { getLocalizedProduct, getLocalizedText } from '@/lib/translations';
 import { detectWalletBrand } from '@/lib/services/paymentService';
+import { FEATURES, hasFeature } from '@/lib/services/entitlementService';
 import { getServiceRules } from '@/lib/services/serviceModelService';
 import { Sheet, SheetHeader, Button, Input, Field, Tag, Banner, EmptyState } from '@/components/kit';
 import { useEpointWalletPayment } from '@/hooks/useEpointWalletPayment';
@@ -31,7 +32,8 @@ const FALLBACK_IMAGE =
 // resulting token — see paymentService.js's own header for why that never
 // charged anyone). The only wallet option is `wallet`, appended by
 // availablePaymentMethods below ONLY when the restaurant has a real Epoint
-// gateway connected — see that useMemo.
+// gateway connected AND the plan entitles it to Apple/Google Pay — see that
+// useMemo's own comment.
 const PAYMENT_METHODS = [
   { key: 'later', labelKey: 'payLater', icon: '🕒' },
   { key: 'cash', labelKey: 'cash' },
@@ -88,9 +90,21 @@ export const CartDrawer = ({
   const payLaterEnabled = serviceRules.payLaterAllowed;
   const selfPickup = serviceRules.selfPickup;
   const epointEnabled = Boolean(restaurant?.epoint_payment_enabled);
+  // walletEntitled: re-added after a real bug (see this component's own
+  // wallet-entry comment below and CustomerApp.jsx's matching one) — the
+  // "clean up old Apple/Google Pay code" pass removed every consumer of the
+  // entitlement, which made SuperAdmin's toggle silently do nothing even
+  // though /pricing still sells it as a Pro-plan feature. FEATURES.WALLET_PAY
+  // is a single combined key since 0050_wallet_pay_combined_feature.sql (was
+  // two separate keys before — collapsed once it was clear the customer only
+  // ever sees one device-labelled button, never two).
+  const walletEntitled = hasFeature(restaurant, FEATURES.WALLET_PAY);
   const availablePaymentMethods = useMemo(() => {
     const base = PAYMENT_METHODS.filter((m) => (m.key === 'later' ? payLaterEnabled : true));
-    if (epointEnabled) {
+    // Both required: the gateway must be connected+enabled by the admin
+    // (epointEnabled) AND the plan must entitle this restaurant to it
+    // (walletEntitled) — deliberately not epointEnabled alone anymore.
+    if (epointEnabled && walletEntitled) {
       base.push({
         key: 'wallet',
         label: walletBrand === 'apple' ? 'Apple Pay' : walletBrand === 'google' ? 'Google Pay' : 'Apple Pay / Google Pay',
@@ -98,7 +112,7 @@ export const CartDrawer = ({
       });
     }
     return base;
-  }, [payLaterEnabled, epointEnabled, walletBrand]);
+  }, [payLaterEnabled, epointEnabled, walletEntitled, walletBrand]);
 
   // Real Epoint charge at checkout — shared state machine with CustomerApp.
   // jsx's bill modal, see useEpointWalletPayment's own header. Unlike the

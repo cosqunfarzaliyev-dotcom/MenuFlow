@@ -33,10 +33,12 @@ const fail = (msg) => {
   failed = true;
 };
 
-// 1. Grandfather guard — the three launch keys must default ON. If someone
-//    "fixes" this thinking it's a bug, banners + wallet buttons vanish from
-//    every customer menu with no code change anywhere else.
-for (const key of [FEATURES.APPLE_PAY, FEATURES.GOOGLE_PAY, FEATURES.BANNERS]) {
+// 1. Grandfather guard — the two launch keys must default ON. If someone
+//    "fixes" this thinking it's a bug, banners + the wallet button vanish
+//    from every customer menu with no code change anywhere else.
+//    (Was three keys — APPLE_PAY/GOOGLE_PAY — before
+//    0050_wallet_pay_combined_feature.sql collapsed them into WALLET_PAY.)
+for (const key of [FEATURES.WALLET_PAY, FEATURES.BANNERS]) {
   if (FEATURE_REGISTRY[key].defaultEnabled !== true) {
     fail(`${key} must have defaultEnabled: true (grandfathered legacy default)`);
   }
@@ -57,7 +59,7 @@ for (const key of [FEATURES.APPLE_PAY, FEATURES.GOOGLE_PAY, FEATURES.BANNERS]) {
 //    has anything to do with the customer surface.
 {
   const customerSurfaceRow = { id: 'r1', slug: 'demo', name: 'Demo', is_active: true };
-  for (const key of [FEATURES.APPLE_PAY, FEATURES.GOOGLE_PAY, FEATURES.BANNERS]) {
+  for (const key of [FEATURES.WALLET_PAY, FEATURES.BANNERS]) {
     if (hasFeature(customerSurfaceRow, key) !== true) {
       fail(`customer-surface row (no feature_flags/plan) must resolve ${key} to true, got ${hasFeature(customerSurfaceRow, key)}`);
     }
@@ -134,9 +136,9 @@ for (const key of [FEATURES.APPLE_PAY, FEATURES.GOOGLE_PAY, FEATURES.BANNERS]) {
 // 7. Legacy plans ('free' / 'enterprise' / null) with explicit flags resolve
 //    via the override (step 3), not by being silently downgraded to basic.
 {
-  const legacyRow = { plan: 'enterprise', feature_flags: { banners: true, apple_pay: false, google_pay: true } };
+  const legacyRow = { plan: 'enterprise', feature_flags: { banners: true, wallet_pay: false } };
   if (hasFeature(legacyRow, FEATURES.BANNERS) !== true) fail("legacy plan 'enterprise' with explicit banners:true must resolve true");
-  if (hasFeature(legacyRow, FEATURES.APPLE_PAY) !== false) fail("legacy plan 'enterprise' with explicit apple_pay:false must resolve false");
+  if (hasFeature(legacyRow, FEATURES.WALLET_PAY) !== false) fail("legacy plan 'enterprise' with explicit wallet_pay:false must resolve false");
 }
 
 // 8. Plan-matrix completeness — every declared plan covers every registry
@@ -152,24 +154,25 @@ for (const key of [FEATURES.APPLE_PAY, FEATURES.GOOGLE_PAY, FEATURES.BANNERS]) {
 }
 
 // 9. Write-path no-op proof — every shape that already exists in the
-//    codebase today (DB column default; basic/pro plan seeds) must resolve
-//    to itself when read back, i.e. the resolver introduces no observable
-//    change for already-provisioned restaurants.
+//    codebase today (basic/pro plan seeds) must resolve to itself when read
+//    back, i.e. the resolver introduces no observable change for
+//    already-provisioned restaurants.
 //
 //    Each shape is checked against its OWN declared keys (Object.keys(flags)),
-//    not the full FEATURE_KEYS list. 'DB column default (0016)' deliberately
-//    stays a 3-key snapshot of what that migration actually wrote — it
-//    documents a real historical row shape, from before pos_integration
-//    (0026) existed, and a restaurant row provisioned back then genuinely
-//    has no pos_integration key in its feature_flags jsonb. Falling through
-//    to the plan default for that missing key is correct new behavior for a
-//    newly-registered feature, not a regression this check should catch;
-//    padding the shape with a guessed value would make it stop representing
-//    real historical data. (PLAN_FEATURE_DEFAULTS.basic/pro happen to cover
-//    every current key already — check 8 is what actually enforces that.)
+//    not the full FEATURE_KEYS list.
+//
+//    Used to also include a 'DB column default (0016)' shape
+//    ({apple_pay: true, google_pay: true, banners: true}) — a snapshot of a
+//    real historical row shape. Removed by
+//    0050_wallet_pay_combined_feature.sql: that check's whole premise is "an
+//    old row's own keys must still resolve to themselves", which by design
+//    no longer holds once a key is fully retired from the registry (as
+//    opposed to a *new* key being added, which is what the rest of this
+//    comment is actually about — apple_pay/google_pay are gone from
+//    FEATURE_KEYS, not just newly-missing from an old row). The two
+//    PLAN_FEATURE_DEFAULTS shapes below already cover wallet_pay.
 {
   const shapes = [
-    { name: 'DB column default (0016)', flags: { apple_pay: true, google_pay: true, banners: true } },
     { name: 'PLAN_FEATURE_DEFAULTS.basic', flags: PLAN_FEATURE_DEFAULTS.basic },
     { name: 'PLAN_FEATURE_DEFAULTS.pro', flags: PLAN_FEATURE_DEFAULTS.pro },
   ];

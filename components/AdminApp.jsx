@@ -2700,6 +2700,13 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
   const payable = useMemo(() => withTableName.filter(o => o.status !== ORDER_STATUS.CANCELLED), [withTableName]);
   const cashOrders = useMemo(() => payable.filter(o => o.paymentMethod === 'cash'), [payable]);
   const cardOrders = useMemo(() => payable.filter(o => o.paymentMethod === 'card'), [payable]);
+  // NOTE: does not yet include 'epoint' — orders settled through the real
+  // Epoint gateway (0048_epoint_payment_integration.sql) get payment_method
+  // = 'epoint', not 'google_pay'/'apple_pay', so they currently fall into
+  // unspecifiedCount below instead of here. Pre-existing gap, not fixed as
+  // part of collapsing FEATURES.APPLE_PAY/GOOGLE_PAY into WALLET_PAY below —
+  // this bucketing is a different concept (historical order data, not the
+  // plan entitlement).
   const walletOrders = useMemo(() => payable.filter(o => ['google_pay', 'apple_pay'].includes(o.paymentMethod)), [payable]);
   const unspecifiedCount = payable.length - cashOrders.length - cardOrders.length - walletOrders.length;
   // "Sonra ödəyəcəyəm" orders (payment_method null) plus any settled order
@@ -2720,15 +2727,12 @@ function PaymentsManagement({ orders, tables, currencySymbol, restaurant }) {
     <div className="space-y-6">
       <PageHeader title={t('titlePayments')} description={t('paymentsSubtitle')} />
 
-      {(!walletEnabled.google_pay || !walletEnabled.apple_pay) && (
+      {/* Single combined entitlement since 0050_wallet_pay_combined_feature.
+          sql — was a 3-way ternary over separate google_pay/apple_pay keys
+          before that; there's only one thing to be on or off now. */}
+      {!walletEnabled.wallet_pay && (
         <Banner tone="warning" icon={<span className="w-2 h-2 rounded-full bg-[var(--k-warning)] shrink-0 mt-1.5" />}>
-          <p className="text-xs font-medium">
-            {!walletEnabled.google_pay && !walletEnabled.apple_pay
-              ? t('walletBothDisabled')
-              : !walletEnabled.google_pay
-                ? t('walletGoogleDisabled')
-                : t('walletAppleDisabled')}
-          </p>
+          <p className="text-xs font-medium">{t('walletDisabled')}</p>
         </Banner>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
