@@ -46,3 +46,19 @@ verify_jwt = false
 # 'push_notify_secret' instead. Do NOT "fix" this to true.
 [functions.notify-push]
 verify_jwt = false
+
+# Browser-invoked by an unauthenticated customer (components/CustomerApp.jsx's
+# "Hesabı ödə" modal) — there is no user session to verify at the gateway.
+# The real gate is the QR token, re-checked inside the function via
+# get_table_orders()/verify_qr_token(). Do NOT "fix" this to true — it would
+# lock every customer out of paying online (see 0048_epoint_payment_
+# integration.sql).
+[functions.epoint-create-payment]
+verify_jwt = false
+
+# Same reasoning as epoint-create-payment above: called by the customer's
+# browser after returning from Epoint's hosted page, still no user session.
+# The gate is "Epoint's own get-status response confirms this exact
+# transaction succeeded" — see the function's own header comment.
+[functions.epoint-confirm-payment]
+verify_jwt = false

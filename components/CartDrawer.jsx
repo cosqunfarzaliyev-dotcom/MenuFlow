@@ -1,27 +1,21 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Image from 'next/image';
 import { Trash2, Plus, Minus, ShoppingBag, Send, CheckCircle2, UtensilsCrossed } from "lucide-react";
 
 import { useAppStore } from '@/lib/store';
 import { fetchTableByNumber } from '@/lib/services/supabaseService';
 import { getLocalizedProduct, getLocalizedText } from '@/lib/translations';
-import { requestWalletPayment } from '@/lib/services/paymentService';
-import { FEATURES, hasFeature } from '@/lib/services/entitlementService';
+import { detectWalletBrand } from '@/lib/services/paymentService';
 import { getServiceRules } from '@/lib/services/serviceModelService';
 import { Sheet, SheetHeader, Button, Input, Field, Tag, Banner, EmptyState } from '@/components/kit';
+import { useEpointWalletPayment } from '@/hooks/useEpointWalletPayment';
 import { cn } from '@/lib/utils';
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80";
 
-// Shown for every customer regardless of browser/device — feature-detecting
-// window.PaymentRequest/ApplePaySession beforehand just makes the buttons
-// invisible on browsers that report those APIs late or inconsistently
-// (common in in-app webviews). Tapping the button is itself the capability
-// check: if the wallet genuinely isn't available, requestWalletPayment()
-// below returns a clear error instead of silently charging nothing.
 // 'later' first and default-selected: paying is now voluntary at order time
 // (0025_order_payment_status.sql / the customer-facing "Hesab" flow) — a
 // customer who never touches this radiogroup used to silently submit as
@@ -30,14 +24,18 @@ const FALLBACK_IMAGE =
 // genuinely unspecified until staff settles it.
 // cash/card have NO separate icon here — lib/translations.js's `cash`/`card`
 // strings ("💵 Nəğd"/"💳 Kart") already carry their own emoji prefix, so an
-// icon field here would render it twice (confirmed live: "💵💵 Nəğd"). The
-// other three labels don't come from getLocalizedText, so they still need one.
+// icon field here would render it twice (confirmed live: "💵💵 Nəğd").
+//
+// No fake google_pay/apple_pay entries here anymore (they used to trigger the
+// native wallet sheet via the W3C Payment Request API and just discard the
+// resulting token — see paymentService.js's own header for why that never
+// charged anyone). The only wallet option is `wallet`, appended by
+// availablePaymentMethods below ONLY when the restaurant has a real Epoint
+// gateway connected — see that useMemo.
 const PAYMENT_METHODS = [
   { key: 'later', labelKey: 'payLater', icon: '🕒' },
   { key: 'cash', labelKey: 'cash' },
   { key: 'card', labelKey: 'card' },
-  { key: 'google_pay', label: 'Google Pay', icon: '🅖' },
-  { key: 'apple_pay', label: 'Apple Pay', icon: '' },
 ];
 
 export const CartDrawer = ({
@@ -55,6 +53,7 @@ export const CartDrawer = ({
   const createAlert = useAppStore(state => state.createAlert);
   const tables = useAppStore(state => state.tables);
   const restaurant = useAppStore(state => state.restaurant);
+  const qrToken = useAppStore(state => state.qrToken);
   const currencySymbol = useAppStore(state => state.settings?.currencySymbol) || '₼';
   // A SNAPSHOT of what was just sent, not a boolean. `items`/`totalPrice`
   // come from the parent's cart state, and handleSendOrder clears that cart
@@ -66,35 +65,70 @@ export const CartDrawer = ({
   const [kitchenNote, setKitchenNote] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [paymentMethod, setPaymentMethod] = useState('later');
-  const [walletAuthorizing, setWalletAuthorizing] = useState(false);
+  // Same "compute once on mount, not inline during render" reasoning as
+  // CustomerApp.jsx's own walletBrand state — detectWalletBrand() reads
+  // navigator/window, which would be an impure render otherwise.
+  const [walletBrand, setWalletBrand] = useState('both');
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWalletBrand(detectWalletBrand());
+  }, []);
 
   const currentTable = tables.find(t => t.table_number?.toString() === tableNumber?.toString() || t.id === tableNumber) || { id: tableNumber, name: getLocalizedText('tableFallbackName', lang)(tableNumber) };
 
-  // Wallet methods ride the same entitlement gate as the "Hesab" bill modal
-  // in CustomerApp.jsx (hasFeature(restaurant, FEATURES.GOOGLE_PAY/APPLE_PAY))
-  // — cash/card are never gated. Without this, a restaurant with the wallet
-  // switches turned off in SuperAdmin still had them selectable at checkout.
-  //
-  // 'later' is gated differently: by the restaurant's SERVICE MODEL (0045), not
-  // an entitlement. Only a waiter-service venue that settles up afterwards has
-  // any use for "I'll pay later" — see serviceModelService.js for the rule table
-  // and for why an operating mode is not something a plan sells.
-  // getServiceRules() falls back to the default model for a null/unknown value,
-  // so offline mode (supabaseReady === false, the data/menu.json seed) keeps the
-  // option exactly as before.
+  // 'later' is gated by the restaurant's SERVICE MODEL (0045), not an
+  // entitlement — cash/card are never gated. Only a waiter-service venue that
+  // settles up afterwards has any use for "I'll pay later" — see
+  // serviceModelService.js for the rule table and for why an operating mode
+  // is not something a plan sells. getServiceRules() falls back to the
+  // default model for a null/unknown value, so offline mode
+  // (supabaseReady === false, the data/menu.json seed) keeps the option
+  // exactly as before.
   const serviceRules = getServiceRules(restaurant);
   const payLaterEnabled = serviceRules.payLaterAllowed;
   const selfPickup = serviceRules.selfPickup;
-  const availablePaymentMethods = useMemo(
-    () =>
-      PAYMENT_METHODS.filter((m) => {
-        if (m.key === 'later') return payLaterEnabled;
-        if (m.key === 'google_pay') return hasFeature(restaurant, FEATURES.GOOGLE_PAY);
-        if (m.key === 'apple_pay') return hasFeature(restaurant, FEATURES.APPLE_PAY);
-        return true;
-      }),
-    [restaurant, payLaterEnabled],
-  );
+  const epointEnabled = Boolean(restaurant?.epoint_payment_enabled);
+  const availablePaymentMethods = useMemo(() => {
+    const base = PAYMENT_METHODS.filter((m) => (m.key === 'later' ? payLaterEnabled : true));
+    if (epointEnabled) {
+      base.push({
+        key: 'wallet',
+        label: walletBrand === 'apple' ? 'Apple Pay' : walletBrand === 'google' ? 'Google Pay' : 'Apple Pay / Google Pay',
+        icon: walletBrand === 'apple' ? '' : walletBrand === 'google' ? '🅖' : '💳',
+      });
+    }
+    return base;
+  }, [payLaterEnabled, epointEnabled, walletBrand]);
+
+  // Real Epoint charge at checkout — shared state machine with CustomerApp.
+  // jsx's bill modal, see useEpointWalletPayment's own header. Unlike the
+  // bill modal, the order here is created FIRST (handleSendOrder below), then
+  // payment starts for it — cancelling or failing does not un-send the order
+  // (already at the kitchen), it only means the customer pays later via the
+  // existing "Hesabı ödə" flow. pendingOrderSnapshotRef holds what the
+  // success screen should show once onSettled fires — set right before
+  // pay() is called, read back inside onSettled (which runs well after
+  // handleSendOrder's own scope has returned).
+  const pendingOrderSnapshotRef = useRef(null);
+  const {
+    creating: walletCreating,
+    widgetUrl: walletWidgetUrl,
+    amount: walletAmount,
+    pay: payWithWallet,
+    cancel: cancelWalletPayment,
+  } = useEpointWalletPayment({
+    restaurantId: restaurant?.id,
+    tableId: currentTable?.id,
+    qrToken,
+    onSettled: ({ status }) => {
+      const snapshot = pendingOrderSnapshotRef.current;
+      pendingOrderSnapshotRef.current = null;
+      if (!snapshot) return; // defensive — should never fire with nothing pending
+      setSubmittedOrder({ ...snapshot, paymentIncomplete: status !== 'success' });
+      if (typeof onClearCart === 'function') onClearCart();
+    },
+  });
+
   // With 'later' gone there is no neutral "haven't decided" option left, so
   // nothing is preselected and the send button stays locked until the customer
   // picks one — deliberately one extra tap, rather than silently declaring
@@ -142,8 +176,7 @@ export const CartDrawer = ({
     later: getLocalizedText('payLater', lang),
     cash: getLocalizedText('cash', lang),
     card: getLocalizedText('card', lang),
-    google_pay: 'Google Pay',
-    apple_pay: 'Apple Pay',
+    wallet: walletBrand === 'apple' ? 'Apple Pay' : walletBrand === 'google' ? 'Google Pay' : 'Apple Pay / Google Pay',
   };
 
   const handleSendOrder = async () => {
@@ -154,22 +187,6 @@ export const CartDrawer = ({
     // keyboard/programmatic submit can't send an order with no declared
     // method on a restaurant that requires one.
     if (paymentMethod === null) return;
-
-    // Wallet methods need the native Payment Request sheet approved before
-    // the order is created — cash/card just tag the order and send.
-    if (paymentMethod === 'google_pay' || paymentMethod === 'apple_pay') {
-      setWalletAuthorizing(true);
-      const { token, error: walletError } = await requestWalletPayment({
-        method: paymentMethod,
-        amount: totalPrice || 0,
-        label: getLocalizedText('cartTitle', lang) || 'MenuFlow sifariş',
-      });
-      setWalletAuthorizing(false);
-      if (!token) {
-        setSubmitError(walletError?.message || getLocalizedText('paymentCancelled', lang));
-        return;
-      }
-    }
 
     try {
       let table = tables.find((t) =>
@@ -233,7 +250,11 @@ export const CartDrawer = ({
       // ümumiyyətlə gizlidir. Göndərilsəydi, hər sifariş görünməyən bir sətir
       // və "Hesab tələbi" başlıqlı push bildirişi yaradardı (0030-un
       // alerts_push_notify trigger-i).
-      if (!isPayingLater && !selfPickup) {
+      // 'wallet' is excluded here too — epoint-confirm-payment settles (and
+      // resolves any active bill alert) automatically on success, same
+      // reasoning as the bill modal's Epoint path (CustomerApp.jsx). There is
+      // nothing for staff to "confirm" for a method that settles itself.
+      if (!isPayingLater && !selfPickup && paymentMethod !== 'wallet') {
         createAlert({
           tableId: table.id,
           type: 'bill',
@@ -248,18 +269,53 @@ export const CartDrawer = ({
       }
 
       // Snapshot BEFORE onClearCart() — see the submittedOrder useState note.
-      setSubmittedOrder({
+      const snapshot = {
         tableName: currentTable.name,
         itemCount: items.length,
         total: totalPrice,
         paymentLabel: isPayingLater ? null : (paymentLabels[paymentMethod] || paymentMethod),
-      });
+      };
 
+      if (paymentMethod === 'wallet') {
+        // The order is already sent — it can't be un-sent by a payment
+        // outcome. Hold the snapshot for the widget overlay branch below;
+        // onSettled (wired above) shows the success screen once payment
+        // concludes, whatever the outcome.
+        pendingOrderSnapshotRef.current = snapshot;
+        const { error: payError } = await payWithWallet(table.id);
+        if (payError) {
+          pendingOrderSnapshotRef.current = null;
+          // Order already went through — same "sent regardless" reasoning,
+          // just skip straight to the success screen with the incomplete
+          // note instead of getting stuck with no visible next step.
+          setSubmittedOrder({ ...snapshot, paymentIncomplete: true });
+          if (typeof onClearCart === 'function') onClearCart();
+        }
+        return;
+      }
+
+      setSubmittedOrder(snapshot);
       if (typeof onClearCart === 'function') onClearCart();
     } catch (err) {
       console.error(err);
       setSubmitError(err?.message || getLocalizedText('orderSubmitFailed', lang));
     }
+  };
+
+  // Manual close of the wallet widget overlay. Unlike CustomerApp.jsx's bill
+  // modal, where nothing exists yet at that point and a plain cancel() is
+  // enough, here the order was ALREADY sent before the widget opened —
+  // cancelling payment must still land on the success screen (same "sent
+  // regardless" reasoning as handleSendOrder's payError branch), not
+  // silently strand the customer on what would otherwise look like an
+  // untouched cart with no visible next step.
+  const handleWalletWidgetCancel = () => {
+    cancelWalletPayment();
+    const snapshot = pendingOrderSnapshotRef.current;
+    pendingOrderSnapshotRef.current = null;
+    if (!snapshot) return;
+    setSubmittedOrder({ ...snapshot, paymentIncomplete: true });
+    if (typeof onClearCart === 'function') onClearCart();
   };
 
   return (
@@ -342,9 +398,54 @@ export const CartDrawer = ({
             </div>
           </dl>
 
+          {/* Only for the 'wallet' method, and only when it didn't actually
+              succeed (cancelled/failed/timed out) — the order is sent either
+              way (see handleSendOrder), this just points them at the
+              existing "Hesabı ödə" flow for a retry instead of leaving the
+              unpaid state invisible. */}
+          {submittedOrder.paymentIncomplete && (
+            <Banner tone="warning" className="mt-3 text-left">
+              {getLocalizedText('walletPaymentIncompleteNote', lang)}
+            </Banner>
+          )}
+
           <Button variant="primary" size="block" onClick={handleResetOrder} className="mt-6">
             {getLocalizedText("completeAndNewOrder", lang)}
           </Button>
+        </div>
+      ) : walletWidgetUrl ? (
+        // Real Epoint charge — the order above was ALREADY sent (see
+        // handleSendOrder's 'wallet' branch); this only covers payment,
+        // never a page redirect (see useEpointWalletPayment's own header).
+        // Same JSX shape as CustomerApp.jsx's bill modal — same translation
+        // keys, same allow="payment" requirement for the wallet sheet to
+        // work inside a cross-origin iframe.
+        <div className="flex-1 overflow-y-auto p-4">
+          <p className="text-[13px] text-[var(--k-text-3)] mb-2">
+            {getLocalizedText('walletWidgetTitle', lang)}
+          </p>
+          {walletAmount != null && (
+            <p className="k-nums mb-2 text-lg font-semibold text-[var(--k-accent)]">
+              {Number(walletAmount).toFixed(2)} {currencySymbol}
+            </p>
+          )}
+          <div className="rounded-[var(--k-r)] overflow-hidden border border-[var(--k-border)] bg-[var(--k-surface)]" style={{ height: 420 }}>
+            <iframe
+              src={walletWidgetUrl}
+              allow="payment"
+              title="Apple Pay / Google Pay"
+              className="w-full h-full border-0"
+            />
+          </div>
+          <p className="mt-2.5 text-[12px] text-[var(--k-text-3)]">
+            {getLocalizedText('walletCheckingStatus', lang)}
+          </p>
+          <button
+            onClick={handleWalletWidgetCancel}
+            className="mt-3 text-[13px] font-medium text-[var(--k-text-3)] transition-colors hover:text-[var(--k-text)] focus-visible:outline-none focus-visible:underline"
+          >
+            {getLocalizedText('cancel', lang)}
+          </button>
         </div>
       ) : items.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
@@ -481,8 +582,10 @@ export const CartDrawer = ({
             </div>
           </dl>
 
-          {/* Payment method — cash/card just tag the order; Google/Apple
-              Pay pop the native wallet sheet on submit (see handleSendOrder). */}
+          {/* Payment method — cash/card just tag the order; `wallet` (real
+              Epoint charge, only present when the restaurant has connected
+              the gateway) opens the widget overlay after the order is sent,
+              see handleSendOrder's own comment. */}
           <div role="radiogroup" aria-label={getLocalizedText("paymentType", lang)}>
             <p className="mb-1.5 text-[13px] font-medium text-[var(--k-text-2)]">
               {getLocalizedText("paymentType", lang)}
@@ -524,8 +627,8 @@ export const CartDrawer = ({
             variant="primary"
             size="block"
             onClick={handleSendOrder}
-            disabled={items.length === 0 || walletAuthorizing || paymentMethod === null}
-            loading={walletAuthorizing}
+            disabled={items.length === 0 || walletCreating || paymentMethod === null}
+            loading={walletCreating}
             icon={<Send className="w-4 h-4" />}
             id="cart-submit-order-btn"
           >

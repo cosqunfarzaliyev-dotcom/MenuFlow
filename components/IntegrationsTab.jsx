@@ -18,7 +18,10 @@ import { useAdminTranslation } from "@/lib/i18n/dictionaries/admin";
 // service funksiyasının şərhi).
 export function IntegrationsTab() {
   const { t } = useAdminTranslation();
-  const { posIntegration, loadPosIntegration, savePosIntegration, disconnectPosIntegrationAction, syncPosMenu, testPosConnection } = useAppStore();
+  const {
+    posIntegration, loadPosIntegration, savePosIntegration, disconnectPosIntegrationAction, syncPosMenu, testPosConnection,
+    paymentIntegration, loadPaymentIntegration, savePaymentIntegration, disconnectPaymentIntegrationAction,
+  } = useAppStore();
   const posIntegrationEnabled = useFeature(FEATURES.POS_INTEGRATION);
   // Formal capability layer — role-level check, distinct from the
   // plan/entitlement check above. AdminApp.jsx already gates rendering this
@@ -52,6 +55,27 @@ export function IntegrationsTab() {
     if (posIntegrationEnabled) loadPosIntegration();
   }, [posIntegrationEnabled, loadPosIntegration]);
 
+  // Epoint — POS_INTEGRATION-dan fərqli olaraq entitlement qapısı yoxdur
+  // (restoranın öz Epoint merchant hesabı, plan/entitlement sisteminə
+  // bağlanmır — bax 0048's migration header), ona görə şərtsiz yüklənir.
+  const [epointPublicKey, setEpointPublicKey] = useState('');
+  const [epointPrivateKey, setEpointPrivateKey] = useState('');
+  const [epointEnabled, setEpointEnabled] = useState(false);
+  const [epointSaving, setEpointSaving] = useState(false);
+  const [epointSavedMessage, setEpointSavedMessage] = useState(false);
+  const epointConfirmDialog = useConfirmDialog();
+
+  useEffect(() => {
+    loadPaymentIntegration();
+  }, [loadPaymentIntegration]);
+
+  useEffect(() => {
+    if (!paymentIntegration) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEpointPublicKey(paymentIntegration.public_key || '');
+    setEpointEnabled(paymentIntegration.enabled);
+  }, [paymentIntegration]);
+
   // posIntegration yükləndikdə formanı onunla doldur — apiToken İSTİSNA
   // (heç vaxt server-dən gəlmir, həmişə boş başlayır). loadPosIntegration()
   // özü asinxron olsa da, bu effect nəticəni (artıq store-da olan
@@ -65,21 +89,6 @@ export function IntegrationsTab() {
     setSyncMenuEnabled(posIntegration.sync_menu_enabled);
     setSyncOrdersEnabled(posIntegration.sync_orders_enabled);
   }, [posIntegration]);
-
-  if (!posIntegrationEnabled) {
-    return (
-      <div className="max-w-2xl mx-auto space-y-6 pb-8">
-        <PageHeader title={t('titleIntegrations')} />
-        <Card variant="plain">
-          <CardBody className="text-center py-10">
-            <Plug className="w-8 h-8 text-[var(--k-text-3)] mx-auto mb-3" />
-            <h3 className="text-base font-semibold text-[var(--k-text)] mb-1">{t('integrationsUpsellTitle')}</h3>
-            <p className="text-sm text-[var(--k-text-3)] max-w-sm mx-auto">{t('integrationsUpsellBody')}</p>
-          </CardBody>
-        </Card>
-      </div>
-    );
-  }
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -135,8 +144,40 @@ export function IntegrationsTab() {
     });
   };
 
+  const handleEpointSubmit = async (event) => {
+    event.preventDefault();
+    setEpointSaving(true);
+    setEpointSavedMessage(false);
+    const { error } = await savePaymentIntegration({
+      publicKey: epointPublicKey.trim(),
+      privateKey: epointPrivateKey.trim(),
+      enabled: epointEnabled,
+    });
+    setEpointSaving(false);
+    if (!error) {
+      setEpointPrivateKey(''); // write-only — heç vaxt formda saxlanmır
+      setEpointSavedMessage(true);
+      setTimeout(() => setEpointSavedMessage(false), 3500);
+    }
+  };
+
+  const handleEpointDisconnect = () => {
+    epointConfirmDialog.confirm({
+      title: t('integrationsEpointDisconnectConfirmTitle'),
+      message: t('integrationsEpointDisconnectConfirmMessage'),
+      onConfirm: () => {
+        setEpointPublicKey('');
+        setEpointPrivateKey('');
+        setEpointEnabled(false);
+        disconnectPaymentIntegrationAction();
+      },
+    });
+  };
+
   const hasToken = Boolean(posIntegration?.has_token);
   const formDisabled = saving || !canManageIntegrations;
+  const hasEpointKey = Boolean(paymentIntegration?.has_private_key);
+  const epointFormDisabled = epointSaving || !canManageIntegrations;
 
   // Menu sync only ever has 3 states — it's a synchronous request/response
   // (the admin clicks a button and waits), unlike order push below.
@@ -179,6 +220,16 @@ export function IntegrationsTab() {
         </Banner>
       )}
 
+      {!posIntegrationEnabled ? (
+        <Card variant="plain">
+          <CardBody className="text-center py-10">
+            <Plug className="w-8 h-8 text-[var(--k-text-3)] mx-auto mb-3" />
+            <h3 className="text-base font-semibold text-[var(--k-text)] mb-1">{t('integrationsUpsellTitle')}</h3>
+            <p className="text-sm text-[var(--k-text-3)] max-w-sm mx-auto">{t('integrationsUpsellBody')}</p>
+          </CardBody>
+        </Card>
+      ) : (
+      <>
       <Card variant="plain">
         <CardHeader
           title={t('integrationsPosterTitle')}
@@ -289,8 +340,72 @@ export function IntegrationsTab() {
           </CardBody>
         </Card>
       )}
+      </>
+      )}
+
+      <Card variant="plain">
+        <CardHeader
+          title={t('integrationsEpointTitle')}
+          description={t('integrationsEpointDescription')}
+          actions={<Tag tone={hasEpointKey ? 'success' : 'neutral'}>{hasEpointKey ? t('integrationsConnectedLabel') : t('integrationsNotConnectedLabel')}</Tag>}
+        />
+        <CardBody>
+          <form onSubmit={handleEpointSubmit} className="space-y-5">
+            <fieldset disabled={epointFormDisabled} className="space-y-5 disabled:opacity-50">
+              <Field label={t('integrationsPublicKeyLabel')}>
+                {(id, a11y) => (
+                  <Input
+                    id={id} type="text" value={epointPublicKey}
+                    onChange={(e) => setEpointPublicKey(e.target.value)}
+                    placeholder={t('integrationsPublicKeyPlaceholder')} {...a11y}
+                  />
+                )}
+              </Field>
+
+              <Field label={t('integrationsPrivateKeyLabel')} hint={hasEpointKey ? t('integrationsPrivateKeyConnectedHint') : undefined}>
+                {(id, a11y) => (
+                  <Input
+                    id={id} type="password" value={epointPrivateKey} autoComplete="off"
+                    onChange={(e) => setEpointPrivateKey(e.target.value)}
+                    placeholder={hasEpointKey ? '••••••••' : t('integrationsPrivateKeyPlaceholder')} {...a11y}
+                  />
+                )}
+              </Field>
+
+              <Switch
+                checked={epointEnabled}
+                onChange={setEpointEnabled}
+                label={t('integrationsEpointEnabledLabel')}
+                description={t('integrationsEpointEnabledDescription')}
+              />
+
+              {epointSavedMessage && (
+                <Banner tone="success" icon={<CheckCircle2 className="w-4 h-4 shrink-0" />} className="font-medium">
+                  {t('integrationsSavedMessage')}
+                </Banner>
+              )}
+
+              <Button type="submit" variant="primary" size="block" loading={epointSaving}>
+                {t('integrationsSaveButton')}
+              </Button>
+
+              {hasEpointKey && (
+                <Button
+                  type="button" variant="danger" size="block"
+                  disabled={!canManageIntegrations}
+                  onClick={handleEpointDisconnect}
+                  icon={<Unplug className="w-4 h-4" />}
+                >
+                  {t('integrationsDisconnectButton')}
+                </Button>
+              )}
+            </fieldset>
+          </form>
+        </CardBody>
+      </Card>
 
       <ConfirmDialog {...confirmDialog.dialogProps} />
+      <ConfirmDialog {...epointConfirmDialog.dialogProps} />
     </div>
   );
 }

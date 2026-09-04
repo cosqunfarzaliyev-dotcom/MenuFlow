@@ -14,15 +14,16 @@ import { BannerCarousel } from "@/components/BannerCarousel";
 import { Bell, ShoppingCart, UtensilsCrossed, CheckCircle2, Clock, Home, CreditCard, Loader2, ArrowUpRight, XCircle, Search, X, Leaf, QrCode, ShoppingBag } from "lucide-react";
 import { getLocalizedText, getLocalizedCategoryName, getLocalizedProduct } from "@/lib/translations";
 import { applyDiscounts } from "@/lib/services/promotionsService";
-import { requestWalletPayment } from "@/lib/services/paymentService";
+import { detectWalletBrand } from "@/lib/services/paymentService";
 import { FEATURES, hasFeature } from "@/lib/services/entitlementService";
 import { getServiceRules } from "@/lib/services/serviceModelService";
 import { CategoryTile } from "@/components/CategoryTile";
 import {
   Sheet, Button, Tag, Pill, Input, LanguageToggle,
-  EmptyState, LoadingState, ErrorState,
+  EmptyState, LoadingState, ErrorState, Banner,
 } from "@/components/kit";
 import { useLanguage } from "@/hooks/useLanguage";
+import { useEpointWalletPayment } from "@/hooks/useEpointWalletPayment";
 import { cn, isVideoUrl, pickReadableForeground } from "@/lib/utils";
 
 // Only ever render admin-supplied banner links as a real navigable <a href>
@@ -69,6 +70,7 @@ export function CustomerApp() {
     loadBanners,
     discounts,
     loadDiscounts,
+    qrToken,
     setQrToken,
     loadPlans,
   } = useAppStore();
@@ -102,6 +104,19 @@ export function CustomerApp() {
   // getLocalizedCategoryName below keep their exact original call signature,
   // so this surface's translated output is unchanged (see PROJECT_CONTEXT.md).
   const { language: lang } = useLanguage();
+  // Which wallet brand to LABEL the Epoint button with — computed once on
+  // mount, not inline during render: detectWalletBrand() reads
+  // navigator.userAgent/window.ApplePaySession, and calling that directly in
+  // the render body would be an impure render (server always sees 'both',
+  // client could differ) — same class of issue this file already avoids
+  // elsewhere (see the `now` state's own comment). Defaults to 'both' (the
+  // combined fallback label) until the effect runs, which is correct for a
+  // server-rendered first paint anyway.
+  const [walletBrand, setWalletBrand] = useState('both');
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWalletBrand(detectWalletBrand());
+  }, []);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [vegOnly, setVegOnly] = useState(false);
@@ -537,8 +552,13 @@ export function CustomerApp() {
   };
 
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
-  const [walletPaying, setWalletPaying] = useState(null); // 'google_pay' | 'apple_pay' | null
   const [billRequesting, setBillRequesting] = useState(false);
+  // Epoint Apple Pay/Google Pay widget — the actual state machine lives in
+  // useEpointWalletPayment (shared with CartDrawer.jsx's checkout flow); this
+  // component only owns the result banner and the on-settle reaction.
+  // epointResultBanner: shown once the widget concludes — 'success' |
+  // 'pending' | 'error' | null.
+  const [epointResultBanner, setEpointResultBanner] = useState(null);
 
   // Kept in sync with the latest `activeOrders` on every render so the
   // 30s-later timeout below (whose closure is otherwise fixed at mount,
@@ -668,11 +688,11 @@ export function CustomerApp() {
   const handleRequestBill = async (methodKey) => {
     if (billRequesting) return;
     setBillRequesting(true);
+    // Only 'cash'/'card' reach this now — the old 'google_pay'/'apple_pay'
+    // fake-wallet caller (handleWalletPay) was removed, see paymentService.js.
     const paymentLabels = {
       cash: getLocalizedText('cash', lang),
       card: getLocalizedText('card', lang),
-      google_pay: 'Google Pay',
-      apple_pay: 'Apple Pay',
     };
     const paymentLabel = paymentLabels[methodKey] || methodKey;
 
@@ -689,19 +709,41 @@ export function CustomerApp() {
     setIsBillModalOpen(false);
   };
 
-  // Google Pay / Apple Pay: opens the real native wallet sheet (Payment
-  // Request API) for the current bill total, then records the order as
-  // paid-by-wallet. Actually settling funds requires a payment processor
-  // (Stripe etc.) wired in on the backend — see lib/services/paymentService.js.
-  const handleWalletPay = async (methodKey) => {
-    setWalletPaying(methodKey);
-    const { token, error } = await requestWalletPayment({ method: methodKey, amount: unpaidTotal || 0 });
-    setWalletPaying(null);
-    if (token) {
-      await handleRequestBill(methodKey);
-    } else if (error) {
-      alert(error.message || 'Ödəniş ləğv edildi.');
-    }
+  // Epoint — unlike cash/card above, this is a REAL charge,
+  // not a staff-notify-only intent (see paymentService.js's own header on why
+  // the wallet buttons never actually charge anyone). No bill alert is
+  // created here: epoint-confirm-payment marks the orders paid itself once
+  // Epoint's own get-status call confirms success (0048_epoint_payment_
+  // integration.sql), so there is nothing for staff to "confirm" afterwards.
+  // The state machine itself lives in useEpointWalletPayment — shared with
+  // CartDrawer.jsx's checkout flow, see that hook's own header for the full
+  // postMessage+poll protocol.
+  const {
+    creating: epointCreating,
+    widgetUrl: epointWidgetUrl,
+    pay: epointPay,
+    cancel: handleEpointCancel,
+  } = useEpointWalletPayment({
+    restaurantId: restaurant?.id,
+    tableId: resolvedTable?.id,
+    qrToken,
+    onSettled: ({ status, error }) => {
+      const banner =
+        status === 'success'
+          ? { tone: 'success', text: getLocalizedText('walletPaymentSuccess', lang) }
+          : status === 'pending'
+            ? { tone: 'info', text: getLocalizedText('walletPaymentPending', lang) }
+            : { tone: 'danger', text: error?.message || getLocalizedText('walletPaymentFailed', lang) };
+      setEpointResultBanner(banner);
+      setIsBillModalOpen(true);
+      if (status === 'success' && resolvedTable?.id) loadTableOrders(resolvedTable.id);
+    },
+  });
+
+  const handleEpointPay = async () => {
+    setEpointResultBanner(null);
+    const { error } = await epointPay();
+    if (error) alert(error.message || getLocalizedText('genericError', lang) || 'Xəta baş verdi.');
   };
 
   // Banner sistemi — yalnız aktiv bannerlər, BannerCarousel-ə keçirilməzdən
@@ -1462,78 +1504,113 @@ export function CustomerApp() {
             {getLocalizedText("paymentType", lang)}
           </h2>
 
+          {/* Rendered OUTSIDE the unpaidOrders.length check below: a
+              successful Epoint payment just flipped every unpaid order to
+              paid, so unpaidOrders is empty by the time this banner needs to
+              show — the customer must still see the confirmation. */}
+          {epointResultBanner && (
+            <Banner tone={epointResultBanner.tone} className="mt-3 text-left font-medium">
+              {epointResultBanner.text}
+            </Banner>
+          )}
+
           {unpaidOrders.length > 0 ? (
-            <>
-              {/* Previously this amount only ever fed silently into the
-                  wallet sheet — the customer had no way to see what they
-                  actually owed before tapping a payment method. */}
-              <p className="mt-1.5 k-nums text-2xl font-semibold text-[var(--k-accent)]">
-                {unpaidTotal.toFixed(2)} {settings.currencySymbol}
-              </p>
-              <p className="mt-1 text-[13px] text-[var(--k-text-3)]">
-                {getLocalizedText("paymentPrompt", lang)}
-              </p>
-
-              <div className="mt-5 flex gap-2.5">
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  onClick={() => handleRequestBill('cash')}
-                  disabled={billRequesting}
-                  className="flex-1"
-                >
-                  {getLocalizedText("cash", lang)}
-                </Button>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={() => handleRequestBill('card')}
-                  disabled={billRequesting}
-                  className="flex-1"
-                >
-                  {getLocalizedText("card", lang)}
-                </Button>
-              </div>
-              {/* Changing your mind here (cash -> card etc.) after already
-                  requesting the bill updates the same staff-side alert in
-                  place instead of sending a second, confusing notification.
-                  The final method actually charged is still whatever staff
-                  confirms in settle_table_payment — this only records
-                  intent. */}
-
-              {/* Always shown to customers — feature-detecting the wallet APIs
-                  up front hid these buttons on browsers/webviews that report
-                  PaymentRequest/ApplePaySession late or inconsistently.
-                  Tapping is itself the capability check: requestWalletPayment
-                  (lib/services/paymentService.js) returns a clear error if the
-                  wallet genuinely isn't available on this device. */}
-              {(hasFeature(restaurant, FEATURES.GOOGLE_PAY) || hasFeature(restaurant, FEATURES.APPLE_PAY)) && (
-                <div className="mt-2.5 flex gap-2.5">
-                  {hasFeature(restaurant, FEATURES.GOOGLE_PAY) && (
-                    <Button
-                      size="lg"
-                      disabled={walletPaying === 'google_pay'}
-                      loading={walletPaying === 'google_pay'}
-                      onClick={() => handleWalletPay('google_pay')}
-                      className="flex-1 bg-[var(--k-text)] text-[var(--k-surface)] border-transparent hover:bg-[var(--k-text)]/90"
-                    >
-                      G Pay
-                    </Button>
-                  )}
-                  {hasFeature(restaurant, FEATURES.APPLE_PAY) && (
-                    <Button
-                      size="lg"
-                      disabled={walletPaying === 'apple_pay'}
-                      loading={walletPaying === 'apple_pay'}
-                      onClick={() => handleWalletPay('apple_pay')}
-                      className="flex-1 bg-[var(--k-text)] text-[var(--k-surface)] border-transparent hover:bg-[var(--k-text)]/90"
-                    >
-                       Pay
-                    </Button>
-                  )}
+            epointWidgetUrl ? (
+              // Apple Pay / Google Pay widget, embedded right here — see
+              // handleEpointPay's own comment on why this is an <iframe>,
+              // never a page redirect. `allow="payment"` is required for the
+              // Payment Request API (what actually shows the Apple/Google
+              // Pay sheet) to work inside a cross-origin iframe at all.
+              <div className="mt-4">
+                <p className="text-[13px] text-[var(--k-text-3)] mb-2">
+                  {getLocalizedText('walletWidgetTitle', lang)}
+                </p>
+                <div className="rounded-[var(--k-r)] overflow-hidden border border-[var(--k-border)] bg-[var(--k-surface)]" style={{ height: 420 }}>
+                  <iframe
+                    src={epointWidgetUrl}
+                    allow="payment"
+                    title="Apple Pay / Google Pay"
+                    className="w-full h-full border-0"
+                  />
                 </div>
-              )}
-            </>
+                <p className="mt-2.5 text-[12px] text-[var(--k-text-3)]">
+                  {getLocalizedText('walletCheckingStatus', lang)}
+                </p>
+                <button
+                  onClick={handleEpointCancel}
+                  className="mt-3 text-[13px] font-medium text-[var(--k-text-3)] transition-colors hover:text-[var(--k-text)] focus-visible:outline-none focus-visible:underline"
+                >
+                  {getLocalizedText('cancel', lang)}
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Previously this amount only ever fed silently into the
+                    wallet sheet — the customer had no way to see what they
+                    actually owed before tapping a payment method. */}
+                <p className="mt-1.5 k-nums text-2xl font-semibold text-[var(--k-accent)]">
+                  {unpaidTotal.toFixed(2)} {settings.currencySymbol}
+                </p>
+                <p className="mt-1 text-[13px] text-[var(--k-text-3)]">
+                  {getLocalizedText("paymentPrompt", lang)}
+                </p>
+
+                <div className="mt-5 flex gap-2.5">
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    onClick={() => handleRequestBill('cash')}
+                    disabled={billRequesting}
+                    className="flex-1"
+                  >
+                    {getLocalizedText("cash", lang)}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={() => handleRequestBill('card')}
+                    disabled={billRequesting}
+                    className="flex-1"
+                  >
+                    {getLocalizedText("card", lang)}
+                  </Button>
+                </div>
+                {/* Changing your mind here (cash -> card etc.) after already
+                    requesting the bill updates the same staff-side alert in
+                    place instead of sending a second, confusing notification.
+                    The final method actually charged is still whatever staff
+                    confirms in settle_table_payment — this only records
+                    intent. */}
+
+                {/* Real charge, not an intent — see handleEpointPay's own
+                    comment. Gated on epoint_payment_enabled from
+                    get_public_restaurant() (0048), true only once the
+                    restaurant's admin has connected AND enabled the gateway in
+                    AdminApp → Integrations. The gateway itself (Epoint) is
+                    deliberately never named here — this button says "Apple
+                    Pay" or "Google Pay" depending on the device
+                    (detectWalletBrand(), paymentService.js), never a combined
+                    label, and never the processor's own name. The old fake
+                    Google/Apple Pay pair above is hidden whenever this one
+                    shows (see that block's own comment) — never both at once. */}
+                {restaurant?.epoint_payment_enabled && (
+                  <div className="mt-2.5">
+                    <Button
+                      size="lg"
+                      variant="primary"
+                      disabled={epointCreating}
+                      loading={epointCreating}
+                      onClick={handleEpointPay}
+                      className="w-full"
+                    >
+                      {epointCreating
+                        ? getLocalizedText('walletPreparing', lang)
+                        : walletBrand === 'apple' ? 'Apple Pay' : walletBrand === 'google' ? 'Google Pay' : getLocalizedText('payWithWallet', lang)}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )
           ) : (
             // Nothing owed — either no orders yet or staff already settled
             // the table. Showing payment buttons here would let a customer
@@ -1545,7 +1622,10 @@ export function CustomerApp() {
           )}
 
           <button
-            onClick={() => setIsBillModalOpen(false)}
+            onClick={() => {
+              handleEpointCancel();
+              setIsBillModalOpen(false);
+            }}
             className="mt-4 text-[13px] font-medium text-[var(--k-text-3)] transition-colors hover:text-[var(--k-text)] focus-visible:outline-none focus-visible:underline"
           >
             {getLocalizedText("cancel", lang)}
