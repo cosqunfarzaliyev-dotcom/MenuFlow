@@ -70,8 +70,28 @@ export function Sheet({
     if (!isOpen) return undefined;
 
     const previouslyFocused = document.activeElement;
-    const originalOverflow = document.body.style.overflow;
+    const scrollY = window.scrollY;
+    const originalBodyStyle = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      width: document.body.style.width,
+    };
+    // `overflow: hidden` alone does not stop background scrolling on iOS
+    // Safari — it scrolls the visual viewport independently of the body's
+    // own overflow, so the page behind the sheet (e.g. the customer menu)
+    // keeps scrolling under a finger drag. Pinning the body with
+    // `position: fixed` at its current scroll offset blocks that on iOS
+    // the same way `overflow: hidden` does everywhere else; the offset is
+    // restored via `window.scrollTo` on close so the page doesn't jump.
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
 
     const focusTimer = setTimeout(() => {
       const f = panelRef.current?.querySelectorAll(FOCUSABLE);
@@ -93,7 +113,13 @@ export function Sheet({
     return () => {
       clearTimeout(focusTimer);
       document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = originalOverflow;
+      document.body.style.overflow = originalBodyStyle.overflow;
+      document.body.style.position = originalBodyStyle.position;
+      document.body.style.top = originalBodyStyle.top;
+      document.body.style.left = originalBodyStyle.left;
+      document.body.style.right = originalBodyStyle.right;
+      document.body.style.width = originalBodyStyle.width;
+      window.scrollTo(0, scrollY);
       if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
     };
   }, [isOpen]);
