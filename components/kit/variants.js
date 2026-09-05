@@ -237,7 +237,14 @@ export const sheetScrimVariants = cva(
       side: {
         center: 'items-center justify-center p-4',
         right: 'justify-end',
-        bottom: 'items-end',
+        // `justify-center` matters even for a bottom sheet: a narrow `size`
+        // (e.g. the customer bill modal's `sm` -> max-w-sm/384px) is thinner
+        // than the viewport on plenty of phones (iPhone 14 Pro at 393px,
+        // Pro Max/Plus models at 430px, most modern Android widths too), and
+        // without it flex's default justify-start left-aligns the panel —
+        // the sheet renders pinned to the left edge with the rest of the
+        // screen's width sitting empty on the right.
+        bottom: 'items-end justify-center',
       },
       stacked: { true: 'z-[70]', false: 'z-[60]' },
     },
